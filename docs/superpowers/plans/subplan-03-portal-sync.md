@@ -1,0 +1,756 @@
+# 子计划 03 — Portal + Sync（E1, E2, F1, F5, F2–F4, F6, H1, G1, G2, G3, H2, H3）
+
+- 需求来源：[SPEC r3.1](../specs/2026-08-30-ustc-timetable-design.md)；路线图：[2026-08-30-ustc-timetable.md](2026-08-30-ustc-timetable.md)
+- 前置：子计划 01、02 完成。
+- 依赖顺序：**H1 完整交付后再做 G2**（SyncEngine 依赖指纹与 Differ）；G2 只依赖 parser/source **接口**（F1 定义），用 fake 注入完成全部 TDD，**不依赖真实 portal 证据**。gated 分支 F2→F3→F4→F6→G1 只产出注入实现，**不重写 SyncEngine**。
+- 证据门：F2/F3/F4/F6 与 G1 真实接线在用户交付 SPEC §13 证据前**不得执行**。
+- 路径约定：相对仓库根；命令在仓库根执行；测试过滤用完整 FQCN（可带包级后缀通配）；每个回归命令都是可直接执行的完整 `./gradlew` 命令。
+
+---
+
+## Task E1 — SessionStore（Keystore AES-GCM）+ SessionCookieHeader
+
+- SPEC §7.2（URL-aware raw Cookie header 模型）。**不使用**已弃用的 androidx security-crypto。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/auth/SessionCookieHeader.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/SessionBlob.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/SecretKeyProvider.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/AndroidKeystoreKeyProvider.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/SessionStore.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/auth/SessionStoreTest.kt`。
+
+接口与关键代码：
+```kotlin
+data class SessionCookieHeader(val requestUrl: String, val cookieHeader: String) {
+    /** scope 键 = 标准化 scheme + host + effectivePort + path（默认端口归一，空 path 归一为 /，query/fragment 不参与） */
+    data class Scope(val scheme: String, val host: String, val port: Int, val path: String) {
+        companion object {
+            fun of(raw: String): Scope {
+                val uri = java.net.URI(raw)
+                val scheme = uri.scheme.lowercase()
+                val port = if (uri.port == -1) (if (scheme == "https") 443 else 80) else uri.port
+                val path = if (uri.path.isNullOrEmpty()) "/" else uri.path
+                return Scope(scheme, uri.host.lowercase(), port, path)
+            }
+        }
+    }
+    val scope: Scope by lazy { Scope.of(requestUrl) }
+
+    companion object {
+        /** 只允许精确 scope 匹配；找不到返回 null——绝不借用兄弟 path / 其他 host / 其他 port 的 raw header
+         *  （CookieManager.getCookie(url) 已按具体 URL 做 scope 过滤，二次放宽只会扩大作用域）。
+         *  cookieHeader 原样返回：不重排、不拆解、不按 cookie-name 去重。 */
+        fun pickFor(requestUrl: String, headers: List<SessionCookieHeader>): SessionCookieHeader? =
+            headers.firstOrNull { it.scope == Scope.of(requestUrl) }
+    }
+}
+
+data class SessionBlob(val headers: List<SessionCookieHeader>, val capturedAt: Instant)  // 绝不含用户名/密码
+
+interface SecretKeyProvider { fun getOrCreateKey(): SecretKey }
+
+class AndroidKeystoreKeyProvider : SecretKeyProvider {
+    override fun getOrCreateKey(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey("ustc_session_key", null) as? SecretKey)?.let { return it }
+        val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        kg.init(KeyGenParameterSpec.Builder("ustc_session_key",
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256).build())
+        return kg.generateKey()
+    }
+}
+
+@Serializable private data class SessionBlobDto(val headers: List<HeaderDto>, val capturedAtEpochMilli: Long)
+@Serializable private data class HeaderDto(val requestUrl: String, val cookieHeader: String)
+
+class SessionStore(private val keys: SecretKeyProvider, private val storage: SessionStorage, private val random: Random = SecureRandom()) {
+    fun save(blob: SessionBlob) {
+        val iv = ByteArray(12); random.nextBytes(iv)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, keys.getOrCreateKey(), GCMParameterSpec(128, iv))
+        val ct = cipher.doFinal(Json.encodeToString(SessionBlobDto.from(blob)).toByteArray())
+        storage.write(iv + ct)
+    }
+    fun load(): SessionBlob? {
+        val raw = storage.read() ?: return null
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, keys.getOrCreateKey(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
+        val plain = cipher.doFinal(raw.copyOfRange(12, raw.size))
+        return Json.decodeFromString<SessionBlobDto>(plain.decodeToString()).toDomain()
+    }
+    fun clear() { storage.write(null) }
+}
+interface SessionStorage { fun read(): ByteArray?; fun write(data: ByteArray?) }  // 生产：app 私有文件；测试：内存
+```
+- 步骤：
+- [ ] 1. 写 failing test（`InMemorySessionStorage` + 测试用 `SecretKeySpec` provider；blob 样例含多条不同 scope 的 header，其中一条 cookieHeader 为 `"A=1; A=2; B=3"` 以覆盖重复 cookie-name）：
+  - `roundtrip_preserves_headers_verbatim`（含重复 cookie-name 的 header 字符串逐字还原）；
+  - `clear_removes_blob`（load 返回 null）；
+  - `tampered_ciphertext_fails`（翻转 1 字节后 load 抛 Exception）；
+  - `iv_is_random_per_save`（同一 blob 两次 save 后 storage 内容不同）；
+  - `pickFor_exact_scope_match_wins`（scheme+host+effectivePort+path 全等命中）；
+  - `same_host_sibling_path_not_reused`（`https://x/a` 的 header 不得用于 `https://x/b`）；
+  - `same_path_different_query_can_reuse`（同 scope，仅 query 不同 → 命中）；
+  - `different_port_not_reused`（`https://x:8443/a` ≠ `https://x/a`）；
+  - `different_host_not_reused`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.SessionStoreTest"`（编译失败即 RED）。
+- [ ] 3. 最小实现（如上；生产 `FileSessionStorage` 写 `context.filesDir/session.bin`）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.SessionStoreTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.*"` → GREEN。（真机 Keystore 冒烟归子计划 04 J2。）
+- [ ] 6. commit：`git add app/src && git commit -m "phaseE1: keystore AES-GCM session store over url-aware raw cookie headers"`。
+
+---
+
+## Task E2 — PortalDescriptor + WebView 登录外壳 + captureAndVerify 探测闭环
+
+- SPEC §6.3、§7.1、§7.2。真实 URL 均由 `PortalDescriptor` 注入；**本任务不写任何真实 USTC URL**。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/portal/PortalDescriptor.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/portal/CookieAwareFetcher.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/LoginPageDetector.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/UstcSessionManager.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/WebViewLoginActivity.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/auth/UstcSessionManagerTest.kt`、`app/src/test/java/com/ustc/timetable/school/ustc/portal/CookieAwareFetcherTest.kt`。
+- OkHttp 客户端约定：portal 专用 client 由 `AppContainer` 以 `followRedirects(false)` + `followSslRedirects(false)` 构造（重定向由 `CookieAwareFetcher` 手动处理，保证 raw header 不跨 origin 泄漏）。
+
+接口与关键代码：
+```kotlin
+// portal/PortalDescriptor.kt —— 全部真实值在 gated 分支（F2–F6）由证据填入 UstcPortalDescriptor
+interface PortalDescriptor {
+    val loginUrl: String          // SSO 登录页
+    val probeUrl: String          // 低成本已登录可达页（默认=选课结果页 URL；SPEC §13-9）
+    val selectionUrl: String
+    val timetableUrl: String
+    val sessionHosts: List<String> // 已登录门户域（用于判断 WebView 已离开登录域）
+}
+
+// auth/LoginPageDetector.kt —— 输入闭合：任何判定都基于一个真实响应的 (url, html)
+interface LoginPageDetector { fun isLoginPage(url: String, html: String): Boolean }
+
+// portal/CookieAwareFetcher.kt —— 手动重定向：逐跳按目标 URL 重新 pickFor；手工 raw header 绝不跨 origin 泄漏
+class CookieAwareFetcher(private val http: OkHttpClient, private val maxHops: Int = 5) {
+    suspend fun fetch(url: String, headers: List<SessionCookieHeader>): UstcPortalPage {
+        var current = url
+        var hops = 0
+        while (true) {
+            if (++hops > maxHops) throw SyncError.NetworkFailed.asIllegalState()
+            val h = SessionCookieHeader.pickFor(current, headers)   // 每跳重新 pick；新 scope 无 header 则该跳不带 Cookie
+            val request = Request.Builder().url(current).apply { if (h != null) header("Cookie", h.cookieHeader) }.build()
+            val page = withContext(Dispatchers.IO) {
+                http.newCall(request).execute().use { resp ->
+                    val location = resp.header("Location")
+                    if (resp.isRedirect && location != null) {
+                        current = resp.request.url.resolve(location)!!.toString()
+                        null                                         // 3xx：不返回本页，继续下一跳
+                    } else {
+                        UstcPortalPage(html = resp.body.string(), finalUrl = resp.request.url.toString())
+                    }
+                }
+            } ?: continue
+            return page
+        }
+    }
+}
+
+// auth/UstcSessionManager.kt
+interface CookieRetriever { fun cookieHeaderFor(url: String): String? }  // 生产：CookieManager.getInstance().getCookie(url)
+
+class UstcSessionManager(
+    private val descriptor: PortalDescriptor,
+    private val store: SessionStore,
+    private val cookies: CookieRetriever,
+    private val fetcher: CookieAwareFetcher,
+    private val detector: LoginPageDetector,
+    private val clock: Clock = Clock.systemUTC(),
+) {
+    fun hasSession(): Boolean = store.load() != null
+
+    /** 探测闭环：对三个目标 URL 分别收集 raw header（去重）→ fetcher 按 scope 选头抓 probeUrl → detector((finalUrl, html)) → 保存或抛失效 */
+    suspend fun captureAndVerify(): SessionBlob {
+        val targets = listOf(descriptor.probeUrl, descriptor.selectionUrl, descriptor.timetableUrl).distinct()
+        val headers = targets.mapNotNull { url ->
+            cookies.cookieHeaderFor(url)?.let { SessionCookieHeader(url, it) }
+        }.distinct()
+        if (headers.isEmpty()) throw SyncError.AuthenticationExpired.asIllegalState()
+        val page = fetcher.fetch(descriptor.probeUrl, headers)
+        if (detector.isLoginPage(page.finalUrl, page.html)) throw SyncError.AuthenticationExpired.asIllegalState()
+        val blob = SessionBlob(headers, clock.instant())
+        store.save(blob)
+        return blob
+    }
+    fun clear() = store.clear()
+}
+```
+- `WebViewLoginActivity` 行为（自动完成检测为最终主路径）：
+  1. `onCreate` 加载 `descriptor.loginUrl`；
+  2. `WebViewClient.onPageFinished`：若 `Uri.parse(url).host ∈ descriptor.sessionHosts` → 后台调 `captureAndVerify()`；成功 → `setResult(RESULT_OK)` + `finish()`；失败（仍在登录页）→ 忽略等待下一次 onPageFinished；
+  3. 连续 3 次探测未通过时显示 fallback 按钮「我已完成登录」，点击手动触发一次 `captureAndVerify()`；
+  4. 结果经 `ActivityResultContract` 返回调用方（G3/I2 使用）。
+- 步骤：
+- [ ] 1. 写 failing test（fake `PortalDescriptor`（`https://fixture.example/login` 等，probe/selection/timetable 跨两个 host 以覆盖多 host 路径）、fake `LoginPageDetector`、fake `CookieRetriever` 按返回 URL 派发不同 header、MockWebServer 作 probe 目标、followRedirects(false) 的 OkHttp）：
+  - `capture_stores_raw_headers_for_all_three_targets`（headers.size 覆盖三个目标，requestUrl 一一对应）；
+  - `capture_dedupes_identical_url_and_header_pairs`（两目标返回完全相同 header 且 URL 相同场景 → 去重后 1 条）；
+  - `duplicate_cookie_names_preserved_verbatim`（`"A=1; A=2; B=3"` 原样保存，未被拆解/合并）；
+  - `probe_uses_header_matching_probe_url`（MockWebServer 记录的 `Cookie:` 请求头 == probeUrl 对应的 raw header）；
+  - `capture_when_probe_is_login_page_throws_AuthExpired`（detector=true → 抛异常且 store 为空）；
+  - `capture_without_any_cookie_header_throws`（三个目标都取不到 header）；
+  - `clear_wipes_store`；
+  - fetcher（`CookieAwareFetcherTest`）：`redirect_repick_header_for_new_origin`（302 → 不同 origin 且该 origin 无 header → 第二跳请求不带 Cookie，返回最终页）、`redirect_same_scope_keeps_header`（302 同 scope → 第二跳带同一 header）、`manual_cookie_header_not_leaked_to_other_origin`（断言第二跳请求头不含第一跳 cookie）、`redirect_hop_limit_throws_NetworkFailed`（>5 跳）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.UstcSessionManagerTest" --tests "com.ustc.timetable.school.ustc.portal.CookieAwareFetcherTest"`。
+- [ ] 3. 最小实现（如上；`sealed class SyncError` 本任务在 `app/src/main/java/com/ustc/timetable/sync/SyncError.kt` 先落，G2 只增不挪。同文件一并定义异常包装与解包助手：
+```kotlin
+class SyncFailure(val error: SyncError) : IllegalStateException(error.toString())
+fun SyncError.asIllegalState(): SyncFailure = SyncFailure(this)
+fun Throwable.syncErrorOrNull(): SyncError? = (this as? SyncFailure)?.error
+```）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.UstcSessionManagerTest" --tests "com.ustc.timetable.school.ustc.portal.CookieAwareFetcherTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseE2: webview login shell with cookie-aware manual redirect fetcher and probe-based capture"`。
+
+---
+
+## Task F1 — DTO + parser 接口 + fixture 机制 + 证据请求发出
+
+- SPEC §6.2、§6.3、§6.4、§13。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/dto/Dtos.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/parser/ParserInterfaces.kt`、`app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcFixtureLoader.kt`、`app/src/test/resources/fixtures/ustc/README.md`、`app/src/test/resources/fixtures/ustc/sample_minimal.html`（自制教学样例，仅验证机制）。
+- DTO（完整）：
+```kotlin
+package com.ustc.timetable.school.ustc.dto
+
+data class UstcCourseSummary(
+    val courseCode: String, val name: String, val credits: Double?,
+    val department: String?, val courseType: String?,
+    val teacherSummary: String?, val weeksText: String?,
+)
+data class UstcTimetableEntry(
+    val courseName: String, val courseCode: String?, val weekdayText: String,
+    val periodText: String, val weekText: String, val locationText: String, val teacherText: String,
+)
+data class UstcSemesterMetaPartial(
+    val displayName: String?, val academicYear: String?, val term: Term?,
+    val week1Start: java.time.LocalDate?, val totalWeeks: Int?,
+    val startDate: java.time.LocalDate?, val endDate: java.time.LocalDate?,
+)
+data class UstcPortalPage(val html: String, finalUrl: String)
+```
+- `ParserInterfaces.kt`（**接口**；G2/SyncEngine 只依赖它们，因此 evidence-free）：
+```kotlin
+package com.ustc.timetable.school.ustc.parser
+
+import com.ustc.timetable.school.ustc.dto.UstcCourseSummary
+import com.ustc.timetable.school.ustc.dto.UstcPortalPage
+import com.ustc.timetable.school.ustc.dto.UstcSemesterMetaPartial
+import com.ustc.timetable.school.ustc.dto.UstcTimetableEntry
+
+interface CourseSelectionPageParser { fun parse(page: UstcPortalPage): List<UstcCourseSummary> }
+interface TimetablePageParser { fun parse(page: UstcPortalPage): List<UstcTimetableEntry> }
+data class SemesterMetaResult(val meta: UstcSemesterMetaPartial, val isConfident: Boolean)
+interface SemesterMetaParser { fun parse(selection: UstcPortalPage, timetable: UstcPortalPage): SemesterMetaResult }
+```
+- `UstcFixtureLoader.kt`：
+```kotlin
+object UstcFixtureLoader {
+    fun load(name: String): String =
+        checkNotNull(javaClass.getResourceAsStream("/fixtures/ustc/$name")) { "missing fixture $name" }
+            .readBytes().decodeToString()
+}
+```
+- fixture README 内容：来源要求（登录后保存的完整 HTML）、脱敏规则（姓名→`学生A`、学号→`PB00000000`、其余个人字段→`X`）、文件命名（`course_selection.html`、`timetable.html`、`login_page.html`、`auth_expired.html`）。
+- 步骤：
+- [ ] 1. 写 failing test `app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcFixtureLoaderTest.kt`：`fixtureLoader_reads_sanitized_html`（load `sample_minimal.html` 返回含 `<html` 的字符串）、`fixtureLoader_missing_file_throws`（不存在文件抛 `IllegalStateException`）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcFixtureLoaderTest"`。
+- [ ] 3. 最小实现：落地 Dtos、ParserInterfaces、UstcFixtureLoader、README 与 `sample_minimal.html`（自制最小 HTML：`<html><body><table><tr><td>probe</td></tr></table></body></html>`）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcFixtureLoaderTest"`。
+- [ ] 5. **向用户发出 SPEC §13 证据请求**（9 项），并在本文件末尾「证据状态」小节记录 received/pending；定向回归：`./gradlew :app:testDebugUnitTest` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF1: ustc dtos, parser interfaces, fixture harness, evidence request issued"`。
+
+---
+
+## Task F5 — UstcSnapshotNormalizer（不依赖真实 HTML，evidence-free）
+
+- SPEC §6.3、§3.3、§8.3.1。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/parser/NormalizedSchoolSnapshot.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/parser/UstcSnapshotNormalizer.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcSnapshotNormalizerTest.kt`。
+
+接口：
+```kotlin
+data class NormalizationIssue(val severity: Severity, val message: String) { enum class Severity { WARNING, HARD } }
+data class NormalizedSchoolSnapshot(
+    val courses: List<Course>,
+    val meetings: List<CourseMeeting>,
+    val issues: List<NormalizationIssue>,
+)
+class UstcSnapshotNormalizer {
+    fun normalize(
+        selection: List<UstcCourseSummary>,
+        timetable: List<UstcTimetableEntry>,
+        meta: UstcSemesterMetaPartial,
+        semesterId: SemesterId,
+    ): NormalizedSchoolSnapshot
+}
+```
+关键规则实现要点：
+- 教师-周次分段：`Regex("(\\S+?)\\s*([0-9,，、\\-–—单双周至到]+?)周")` 逐段匹配 `teacherText`；每段产出 `(teacher, weekText)`；`weekText` 含"单"→`WeekPattern.oddWithin(range)`、含"双"→`evenWithin`，否则 `WeekPattern.parse`；无段（教师不含周次）→ 整体一条，teacher 拆 `teacherNames`。
+- `(teacher, weekText)` 重复段合并去重；同一 `(weekday, startPeriod, endPeriod, weekPattern)` 且教室相同的多条输入合并 teacherNames。
+- `sourceCourseKey`：选课页有稳定编号列时用 `courseCode` 值；否则 `"name:" + name`（SPEC §8.3.1）。
+- `weekdayText` 映射：`星期X/周X/一..日 → 1..7`；`periodText`：`"第3-5节"/"3-5节"/"3-5"` → `3..5`。
+- 匹配：先 `courseCode` 精确，再 `name` 精确；都失败 → `NormalizationIssue(HARD, "unmatched timetable course: " + courseName)` 并抛 `SyncError.ValidationFailed.asIllegalState()`；缺 credits/courseType → WARNING 收集，`credits=null`。
+- 步骤：
+- [ ] 1. 写 failing test（手写 DTO 输入，SPEC §28 Parser 语义项全部在此覆盖）：`match_by_courseCode`、`match_by_name_fallback`、`split_teachers_by_week_three_segments`（"吴长征 2-6周/刘斯 7-12周/郭宇桥 13-18周" → 3 条 meeting 各含单教师）、`split_location_by_week`（同教师不同教室 → 2 条 meeting）、`odd_even_weeks`（"1-16周(单)" → oddWithin(1,16)；"双周" → evenWithin）、`custom_weekset_2_6_8_10_12`、`missing_credits_is_soft_issue`（issues 含 WARNING 且 `course.credits==null`）、`unmatched_timetable_course_is_hard_failure`（抛 ValidationFailed）、`malformed_period_text_throws_ParseFailed`（"第X节" → 抛 ParseFailed）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcSnapshotNormalizerTest"`。
+- [ ] 3. 最小实现（按上述规则；Course/Meeting 的 id 统一取固定标记值 `"pending"`——本层不生成 UUID，也不参与指纹与 diff；G2 的 `FreshLocalIds.assign` 在入库前统一重生成并保持 `courseId` 引用一致）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcSnapshotNormalizerTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF5: snapshot normalizer with teacher/location/week splitting"`。
+
+---
+
+## Task F2 — 选课结果页 Parser 实现类 UstcCourseSelectionPageParser【证据门】
+
+- 前置：SPEC §13-1/2/4/5 已交付，fixture `app/src/test/resources/fixtures/ustc/course_selection.html` 已脱敏入库。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/parser/UstcCourseSelectionPageParser.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/parser/CourseSelectionPageParserTest.kt`。
+- 步骤：
+- [ ] 1. 通读 fixture，**从真实 HTML 确定表格结构/列头/分页形态**，把期望解析结果写成 failing test 的 expected 列表（逐条来自 fixture 内容，不由猜测产生）：`parses_all_visible_courses`（expected = fixture 中全部课程的 `UstcCourseSummary` 列表）、`handles_missing_department`（缺院系行 → department=null）、`malformed_html_throws_ParseFailed`（截断 HTML → 抛 ParseFailed）、`parses_js_embedded_data_if_present`（若 §13-4/5 证明数据在 XHR JSON/内嵌脚本则按真实结构解析，expected 同上）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.CourseSelectionPageParserTest"`。
+- [ ] 3. 最小实现：`class UstcCourseSelectionPageParser : CourseSelectionPageParser`，Jsoup 按 fixture 真实结构取数；选择器常量集中文件顶部，每条注释标明对应 fixture 文件与行号证据。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.CourseSelectionPageParserTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF2: course selection parser against real sanitized fixture"`。
+
+---
+
+## Task F3 — 我的课表页 Parser 实现类 UstcTimetablePageParser【证据门】
+
+- 前置：§13-1/2/6 已交付，fixture `app/src/test/resources/fixtures/ustc/timetable.html` 入库。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/parser/UstcTimetablePageParser.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/parser/TimetablePageParserTest.kt`。
+- 步骤：
+- [ ] 1. 通读 fixture 写 failing test：`parses_entries_with_weekday_period_week_location_teacher`（expected=fixture 全部条目）、`handles_multiple_rows_per_course`、`parses_week_switcher_if_present`（§13-6：周次控件参数 → 供 F4 使用的数据；控件不存在则断言其不存在）、`malformed_html_throws_ParseFailed`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.TimetablePageParserTest"`。
+- [ ] 3. 最小实现：`class UstcTimetablePageParser : TimetablePageParser`，Jsoup 真实结构；选择器带 fixture 行号注释。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.TimetablePageParserTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF3: timetable page parser against real sanitized fixture"`。
+
+---
+
+## Task F4 — SemesterMetaParser 实现类 UstcSemesterMetaParser【证据门】
+
+- 前置：§13-2/6 已交付。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/parser/UstcSemesterMetaParser.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/parser/SemesterMetaParserTest.kt`。
+- 置信规则：`displayName && week1Start && totalWeeks` 三者齐 → `isConfident=true`，否则 false（其余字段尽量提取）。
+- 步骤：
+- [ ] 1. 写 failing test：`confident_when_name_week1start_totalweeks_present`、`not_confident_triggers_confirm_sheet_flag`（缺 totalWeeks → false）、`parses_week1start_from_week_switcher_dates`（用 §13-6 证据中的真实日期推导）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.SemesterMetaParserTest"`。
+- [ ] 3. 最小实现：`class UstcSemesterMetaParser : SemesterMetaParser`，从两页真实结构提取元数据，特征带 fixture 行号注释。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.SemesterMetaParserTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF4: semester meta parser with confidence flag"`。
+
+---
+
+## Task F6 — HeuristicLoginPageDetector【证据门】
+
+- 前置：§13-3/7 已交付，fixture `login_page.html`、`auth_expired.html` 入库。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/auth/HeuristicLoginPageDetector.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/auth/HeuristicLoginPageDetectorTest.kt`。
+- 步骤：
+- [ ] 1. 写 failing test：`real_login_page_detected`（fixture login_page.html + 其真实登录 URL → true）、`auth_expired_page_detected`（auth_expired.html → true）、`timetable_page_not_detected`（timetable.html + portal URL → false）、`course_selection_page_not_detected`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.HeuristicLoginPageDetectorTest"`。
+- [ ] 3. 最小实现：特征仅取自 fixture（URL host/path 特征 + HTML 表单/标题特征），每条特征注释 fixture 证据。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.HeuristicLoginPageDetectorTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseF6: login page detector from real fixtures"`。
+
+---
+
+## Task H1 — FingerprintedSchoolContent + 指纹 + SnapshotDiffer（多阶段最小代价配对）+ ChangeFormatter
+
+- SPEC §8.3。**完整交付，位于 G2 之前**（SyncEngine 依赖本任务的指纹与 Differ）。
+- 文件：`app/src/main/java/com/ustc/timetable/timetable/domain/FingerprintedSchoolContent.kt`、`app/src/main/java/com/ustc/timetable/timetable/domain/SchoolSnapshotFingerprint.kt`、`app/src/main/java/com/ustc/timetable/timetable/domain/SnapshotDiffer.kt`、`app/src/main/java/com/ustc/timetable/timetable/domain/ScheduleChange.kt`、`app/src/main/java/com/ustc/timetable/timetable/domain/ChangeFormatter.kt`；测试 `app/src/test/java/com/ustc/timetable/timetable/domain/SchoolSnapshotFingerprintTest.kt`、`app/src/test/java/com/ustc/timetable/timetable/domain/SnapshotDifferTest.kt`、`app/src/test/java/com/ustc/timetable/timetable/domain/ChangeFormatterNotificationTest.kt`。
+
+指纹内容与计算（关键代码）：
+```kotlin
+@Serializable
+data class FingerprintedSemesterMeta(
+    val displayName: String, val academicYear: String, val term: String,
+    val week1StartEpochDay: Long, val totalWeeks: Int,
+    val startDateEpochDay: Long, val endDateEpochDay: Long,
+)
+@Serializable
+data class FingerprintedCourse(
+    val sourceCourseKey: String, val courseCode: String, val name: String,
+    val credits: Double?, val courseType: String?,
+)
+@Serializable
+data class FingerprintedMeeting(
+    val sourceCourseKey: String, val weekday: Int, val startPeriod: Int, val endPeriod: Int,
+    val weekPatternMask: Long, val location: String, val teacherNames: List<String>,
+)
+@Serializable
+data class FingerprintedSchoolContent(
+    val semesterMeta: FingerprintedSemesterMeta,
+    val courses: List<FingerprintedCourse>,      // compute 时按 sourceCourseKey 排序
+    val meetings: List<FingerprintedMeeting>,    // compute 时按全字段排序
+) {
+    companion object {
+        fun of(semester: Semester, courses: List<Course>, meetings: List<CourseMeeting>): FingerprintedSchoolContent
+        fun of(semester: Semester, db: TimetableDatabase): FingerprintedSchoolContent  // 旧内容从 Room 的学校行构建
+    }
+}
+
+object SchoolSnapshotFingerprint {
+    private val json = Json { encodeDefaults = true }
+    fun compute(content: FingerprintedSchoolContent): String {
+        val canonical = json.encodeToString(
+            FingerprintedSchoolContent.serializer(),
+            content.copy(
+                courses = content.courses.sortedBy { it.sourceCourseKey },
+                meetings = content.meetings.sortedWith(compareBy({ it.sourceCourseKey }, { it.weekday },
+                    { it.startPeriod }, { it.endPeriod }, { it.weekPatternMask }, { it.location }, { it.teacherNames })),
+            ),
+        )
+        return java.security.MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+}
+```
+
+Diff 多阶段配对（关键代码；SPEC §8.3.3）：
+```kotlin
+class SnapshotDiffer {
+    fun diff(old: FingerprintedSchoolContent, new: FingerprintedSchoolContent): List<ScheduleChange> {
+        val changes = mutableListOf<ScheduleChange>()
+        val oldByKey = old.courses.associateBy { it.sourceCourseKey }
+        val newByKey = new.courses.associateBy { it.sourceCourseKey }
+        for (key in (oldByKey.keys + newByKey.keys).toSortedSet()) {
+            val o = oldByKey[key]; val n = newByKey[key]
+            val courseName = (n ?: o)!!.name
+            if (o == null) { changes += ScheduleChange.CourseAdded(courseName); continue }
+            if (n == null) { changes += ScheduleChange.CourseRemoved(courseName); continue }
+            diffMeetingsPerWeekday(o, n, old.meetings, new.meetings, courseName, changes)
+        }
+        return changes
+    }
+
+    private fun diffMeetingsPerWeekday(oldCourse: FingerprintedCourse, newCourse: FingerprintedCourse,
+                                       oldAll: List<FingerprintedMeeting>, newAll: List<FingerprintedMeeting>,
+                                       courseName: String, out: MutableList<ScheduleChange>) {
+        for (weekday in 1..7) {
+            val os = oldAll.filter { it.sourceCourseKey == oldCourse.sourceCourseKey && it.weekday == weekday }
+                .sortedBy(::stableKey).toMutableList()
+            val ns = newAll.filter { it.sourceCourseKey == newCourse.sourceCourseKey && it.weekday == weekday }
+                .sortedBy(::stableKey).toMutableList()
+            val pairs = mutableListOf<Pair<FM, FM>>()
+            // Stage 1：恒等保持——完全相等直接配对，未变化 meeting 优先保住原身份
+            for (o in os.toList()) {
+                val n = ns.firstOrNull { it == o }
+                if (n != null) { pairs += o to n; os.remove(o); ns.remove(n) }
+            }
+            // Stage 2：剩余项做带虚拟 unmatched 节点的最小代价指派（桶规模个位数，穷举可接受）；
+            // CONFIDENCE_THRESHOLD=2（仅共享 ≥2 字段的候选可配对）+ UNMATCHED_PENALTY=3；
+            // objective = Σ pairCost + UNMATCHED_PENALTY × 未匹配数，取全局最小，并列按字典序唯一解
+            pairs += minCostMatching(os, ns)
+            for ((o, n) in pairs) emitFieldDiffs(o, n, courseName, out)
+            os.forEach { out += ScheduleChange.MeetingRemoved(courseName, it.toSummary()) }
+            ns.forEach { out += ScheduleChange.MeetingAdded(courseName, it.toSummary()) }
+        }
+    }
+
+    private fun minCostMatching(os: MutableList<FM>, ns: MutableList<FM>): List<Pair<FM, FM>> {
+        // 目标函数（SPEC §8.3.3）：objective = Σ pairCost + UNMATCHED_PENALTY × 未匹配数，取全局最小。
+        // CONFIDENCE_THRESHOLD = 2：仅 pairCost ≤ 2（共享 ≥2 字段）的候选允许配对；
+        // UNMATCHED_PENALTY = 3：未匹配的 old/new 各计 3。因此空 pairing 不可能胜过任何允许配对（≤2 < 2×3），
+        // 低置信（3..4 差异）候选永不配对——算法不为提高匹配数量强迫低置信 pair，宁可 Removed + Added。
+        data class Candidate(val o: FM, val n: FM, val cost: Int)
+        val candidates = mutableListOf<Candidate>()
+        for (o in os) for (n in ns) {
+            val cost = diffCount(o, n)   // 节次/周次/地点/教师 逐字段比较（1..4）
+            if (cost <= CONFIDENCE_THRESHOLD) candidates += Candidate(o, n, cost)
+        }
+        // 穷举全部互不相交候选子集 S：objective(S) = Σ cost(S) + UNMATCHED_PENALTY × (|os|+|ns|-2|S|)；
+        // 取最小；并列按配对序列 (stableKey(o), stableKey(n)) 字典序取唯一解
+        return bestDisjointSubset(candidates.sortedWith(compareBy({ it.cost }, { stableKey(it.o) }, { stableKey(it.n) })), os, ns)
+    }
+
+    companion object { const val CONFIDENCE_THRESHOLD = 2; const val UNMATCHED_PENALTY = 3 }
+}
+```
+（`stableKey(m) = (m.startPeriod, m.endPeriod, m.weekPatternMask, m.location, m.teacherNames)`；`diffCount` = 该配对将产生的 change 条数；实现说明：`bestDisjointSubset` 用递归穷举全部互不相交子集并按目标函数取最优，桶内元素个位数。）
+
+- 步骤：
+- [ ] 1. 写 failing test：
+  - 指纹：`fingerprint_order_independent`、`fingerprint_excludes_local_ids_and_audit_fields`（courseId/meetingId/本地 semesterId/importedAt/lastSyncedAt/isCurrentAcademicSemester/portalLinked/profileId 变化 → 指纹不变）、`fingerprint_sensitive_to_every_school_field`（逐学校字段扰动 → 变化）、`fingerprint_excludes_manual_items`。
+  - 配对：`insert_earlier_meeting_does_not_shift_existing_pairing`（旧 [A, B]，新 [C(更早), A, B] → 恰一条 MeetingAdded(C)，A/B 零 change）；
+    `remove_middle_meeting_does_not_shift_existing_pairing`（旧 [A, B, C]，新 [A, C] → 恰一条 MeetingRemoved(B)）；
+    `time_change_with_other_unchanged_meetings_pairs_correctly`（三 meeting 中仅一个改节次 → 恰一条 TimeChanged，其余零 change）；
+    `minimum_cost_does_not_choose_empty_matching_for_single_field_change`（单字段时间变化场景：objective 必选 pairCost=1 的配对，不得以 Removed+Added 收场）；
+    `ambiguous_low_confidence_pair_prefers_remove_add`（仅 weekday 相同、节次/周次/地点/教师全不同 → pairCost=4 超 CONFIDENCE_THRESHOLD=2 → 不配对，MeetingRemoved + MeetingAdded，零伪造精确修改）；
+    `diff_time_change_is_TimeChanged_not_remove_add`、`diff_exact_on_location_change`（TH-B301→TH-C204）、`diff_teacher_and_weekpattern_changes`、`diff_meeting_added_removed`、`diff_course_added_removed_by_sourceCourseKey`、`identical_snapshots_empty_diff`、`unpairable_leftovers_become_removed_and_added_not_forced_changes`（新旧完全无相似项 → Removed+Added，零伪造精确修改）。
+  - 文案：`formatter_第10周教室格式`（单周 → "第10周教室：TH-B301 → TH-C204"；多周 → "第7–12周教室：…"）、`formatter_course_added_removed_lines`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprintTest" --tests "com.ustc.timetable.timetable.domain.SnapshotDifferTest" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"`。
+- [ ] 3. 最小实现（如上；`ScheduleChange` 类型清单与 SPEC §8.3.3 一字不差；`MeetingSummary(courseName, weekday, periodsText, weeksText, location, teachersText)`）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprintTest" --tests "com.ustc.timetable.timetable.domain.SnapshotDifferTest" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseH1: school-content fingerprint, staged minimum-cost meeting pairing, formatter"`。
+
+---
+
+## Task G1 — UstcHttpPortalSource【证据门分支末梢；只产出注入实现】
+
+- SPEC §7.3、§7.4、§10。G1 完成后**只替换注入实现**（descriptor/parser/detector 的真实版本），SyncEngine 及下游不改写。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/portal/UstcHttpPortalSource.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/portal/UstcPortalDescriptor.kt`（真实 URL 常量唯一落点，**证据门后填写**）；测试 `app/src/test/java/com/ustc/timetable/school/ustc/portal/UstcHttpPortalSourceTest.kt`（MockWebServer3）。
+
+接口与关键代码：
+```kotlin
+class UstcHttpPortalSource(
+    private val descriptor: PortalDescriptor,
+    private val session: SessionStore,
+    private val detector: LoginPageDetector,
+    private val fetcher: CookieAwareFetcher,   // E2 交付；http 客户端 followRedirects(false)，重定向手动逐跳重选头
+) : SchoolPortalSource {
+    override suspend fun fetchCourseSelectionPage(): UstcPortalPage = fetch(descriptor.selectionUrl)
+    override suspend fun fetchTimetablePage(): UstcPortalPage = fetch(descriptor.timetableUrl)
+
+    private suspend fun fetch(url: String): UstcPortalPage {
+        val blob = session.load() ?: throw SyncError.AuthenticationExpired.asIllegalState()
+        val page = try { fetcher.fetch(url, blob.headers) } catch (e: java.io.IOException) { throw SyncError.NetworkFailed.asIllegalState() }
+        if (detector.isLoginPage(page.finalUrl, page.html)) throw SyncError.AuthenticationExpired.asIllegalState()
+        return page
+    }
+}
+```
+- 步骤：
+- [ ] 1. 写 failing test（MockWebServer + fake detector + 内存 SessionStore + E2 的 `CookieAwareFetcher`；预置两条不同 host 的 header 覆盖多 host）：`fetch_returns_page`、`picks_matching_header_per_target_url`（selection 与 timetable 各带各自的 raw header，MockWebServer 记录值逐一断言）、`missing_header_for_url_omits_cookie_header`、`redirect_then_detector_runs_on_final_url`（302 → 新 URL → detector 收到最终页的 (finalUrl, html)）、`login_page_response_throws_AuthExpired`（detector 命中 → AuthenticationExpired 且不重试）、`network_error_throws_NetworkFailed`（`server.shutdown()` 后请求）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.portal.UstcHttpPortalSourceTest"`。
+- [ ] 3. 最小实现（如上；`UstcPortalDescriptor` 在证据交付前以测试域常量实现（`https://fixture.example/login` 等，仅供 MockWebServer 测试构造），F2–F6 完成后由证据填入真实 URL 并加注释指向对应 fixture 文件与行号）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.portal.UstcHttpPortalSourceTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*" --tests "com.ustc.timetable.sync.*"` → GREEN（验证替换注入实现未破坏 SyncEngine）。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseG1: http portal source with per-url cookie header selection and auth detection"`。
+
+---
+
+## Task G2 — SyncEngine 管线 + 单事务写入（evidence-free，fake 注入）
+
+- SPEC §8.1、§8.2、§8.3、§10。只依赖 F1 的 parser/source **接口**与 F5 normalizer、H1 指纹/Differ；portal 用 fake 实现。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/SyncResult.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncEngine.kt`（`SyncError.kt` 已在 E2 落）、`app/src/main/java/com/ustc/timetable/timetable/domain/FreshLocalIds.kt`、`app/src/main/java/com/ustc/timetable/timetable/data/db/ApplySchoolSnapshot.kt` 增补 `importNewSemesterWithSnapshot`；测试 `app/src/test/java/com/ustc/timetable/sync/SyncEngineTest.kt`。
+
+接口与关键代码：
+```kotlin
+sealed class SyncResult {
+    data object NoChange : SyncResult
+    data class Success(val changes: List<ScheduleChange>) : SyncResult   // changes 为空 = 指纹漂移无通知语义，静默
+    data class Failed(val error: SyncError) : SyncResult
+}
+
+class SyncEngine(
+    private val portal: SchoolPortalSource,                // 接口（F1/E2 已定义），测试注入 fake
+    private val selectionParser: CourseSelectionPageParser, // 接口
+    private val timetableParser: TimetablePageParser,       // 接口
+    private val metaParser: SemesterMetaParser,             // 接口
+    private val normalizer: UstcSnapshotNormalizer,
+    private val differ: SnapshotDiffer,
+    private val db: TimetableDatabase,
+    private val clock: Clock,
+) {
+    /** 目标学期恒为 academic-current && portalLinked（SPEC §8.1）；viewedSemesterId 不参与。
+     *  gate 权威在本方法：纯手动学期返回 NoChange 且绝不调用 SchoolPortalSource；
+     *  WeeklySyncWorker 只调 engine，不复制 gate 逻辑（见 H3 测试契约）。 */
+    suspend fun syncCurrentAcademicSemester(): SyncResult {
+        val target = db.semesterDao().academicCurrentPortalLinked()?.let { Mappers.toDomain(it) }
+            ?: return SyncResult.NoChange                       // 纯手动学期：静默空转，零 portal 调用
+        return sync(target)
+    }
+
+    private suspend fun sync(target: Semester): SyncResult = try {
+        val selectionPage = portal.fetchCourseSelectionPage()
+        val timetablePage = portal.fetchTimetablePage()
+        val selection = selectionParser.parse(selectionPage)
+        val entries = timetableParser.parse(timetablePage)
+        val metaResult = metaParser.parse(selectionPage, timetablePage)
+        val fresh = normalizer.normalize(selection, entries, metaResult.meta, target.id)
+        val ided = FreshLocalIds.assign(fresh)                  // 重生成 CourseId/MeetingId，保持 courseId 引用一致
+        val newContent = FingerprintedSchoolContent.of(target, ided.courses, ided.meetings)
+        val newFp = SchoolSnapshotFingerprint.compute(newContent)
+        if (target.sourceFingerprint == newFp) return SyncResult.NoChange
+        val changes = if (target.sourceFingerprint == null) emptyList()
+            else differ.diff(FingerprintedSchoolContent.of(target, db), newContent)
+        db.applySchoolSnapshot(target.id.value, ided.courses, ided.meetings, newFp, clock.instant())
+        SyncResult.Success(changes)
+    } catch (e: Exception) {
+        when (val err = e.syncErrorOrNull()) {
+            null -> throw e
+            else -> SyncResult.Failed(err)
+        }
+    }
+}
+```
+- `FreshLocalIds.assign(fresh)`：遍历 courses 生成 `CourseId(UUID.randomUUID().toString())`，以旧 id→新 id 映射重写 meetings 的 `courseId`；纯函数，测试 `assign_keeps_referential_integrity`。
+- 导入事务（SPEC §8.2 顺序：boundProfile → semester → academic switch → 学校行 → meta；I2 使用）：
+```kotlin
+suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
+    boundProfile: ScheduleProfileEntity,      // 该学期私有 profile 克隆行
+    semester: SemesterEntity,                 // semester.profileId 必须等于 boundProfile.id
+    courses: List<Course>, meetings: List<CourseMeeting>,
+    fingerprint: String, syncedAt: Instant,
+) = withTransaction {
+    scheduleProfileDao().insert(boundProfile)
+    semesterDao().insert(semester)
+    semesterDao().setExclusiveAcademicCurrent(semester.id)
+    courseDao().insertCourses(courses.map { Mappers.toEntity(it, semester.id) })
+    courseDao().insertMeetings(meetings.map { Mappers.toEntity(it) })
+    semesterDao().updateSyncMeta(semester.id, fingerprint, syncedAt.toEpochMilli())
+}
+```
+- 步骤：
+- [ ] 1. 写 failing test（fake `SchoolPortalSource` + fake 三 parser 接口 + 真 normalizer + in-memory Room；旧学期数据由 `applySchoolSnapshot` 预置）：
+  - `success_replaces_school_rows`；
+  - `parse_failure_keeps_old_data`（fake parser 抛 → Failed(ParseFailed)，Room 数据与指纹不变）；
+  - `network_failure_keeps_old_data`；
+  - `auth_expired_keeps_old_data`（fake detector/portal 命中 → Failed(AuthenticationExpired)，数据不变）；
+  - `manual_items_survive_sync`；
+  - `fingerprint_equal_no_writes_no_changes`（同内容重跑 → NoChange，`lastSyncedAt` 不变——NoChange 路径不触碰 DB）；
+  - `fingerprint_drift_without_user_visible_changes_updates_fingerprint_silently`（仅 credits 变化 → Success(empty)，指纹已更新）；
+  - `changed_snapshot_produces_exact_diff_list`（改一处教室 → changes 恰含一条 LocationChanged）；
+  - `sync_target_is_academic_current_portal_linked_only`（库中含历史学期 → 只替换 academic-current；纯手动学期 → NoChange 静默，且 fake `SchoolPortalSource` 调用计数 == 0——gate 权威在 engine）；
+  - `assign_keeps_referential_integrity`（FreshLocalIds 单测）；
+  - `import_success_semester_points_to_private_profile_clone`（`importNewSemesterWithSnapshot` 后 semester.profileId == boundProfile.id，academic-current 已切换）；
+  - `import_failure_leaves_no_orphan_profile`（meetings 引用不存在的 courseId 触发 FK 失败 → 回滚后 `schedule_profiles` 表无 boundProfile 行、semesters 表无新学期行）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.SyncEngineTest"`。
+- [ ] 3. 最小实现（如上；两条事务函数按 SPEC §8.2 顺序）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.SyncEngineTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN（全量，覆盖 A5 事务与 H1 配对回归）。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseG2: evidence-free sync engine, single-db-transaction replacement and import with bound profile"`。
+
+---
+
+## Task G3 — 手动同步 UX + 失效弹窗 + 重登续跑
+
+- SPEC §5.1、§5.5、§7.4。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/ManualSyncController.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/AuthExpiredDialog.kt`；修改 `app/src/main/java/com/ustc/timetable/timetable/ui/TimetableViewModel.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/TimetableScreen.kt`；测试 `app/src/test/java/com/ustc/timetable/sync/ManualSyncFlowTest.kt`。
+
+接口：
+```kotlin
+sealed class ManualSyncUi {
+    data object Idle : ManualSyncUi
+    data object Syncing : ManualSyncUi
+    data class AuthExpired(val pendingRetry: Boolean) : ManualSyncUi
+    data class Updated(val changeCount: Int) : ManualSyncUi
+    data class FailedOther(val error: SyncError) : ManualSyncUi
+}
+class ManualSyncController(private val engine: SyncEngine, private val scope: CoroutineScope) {
+    val ui: StateFlow<ManualSyncUi>
+    fun start()                    // engine.syncCurrentAcademicSemester()；AuthExpired → AuthExpired(pendingRetry=true)
+    fun onReloginSuccess()         // AuthExpired 状态下重登成功 → 自动 start() 续跑（SPEC §5.5）
+    fun onCancel()                 // 回 Idle，不重试
+}
+```
+- 步骤：
+- [ ] 1. 写 failing test（fake engine 返回预设结果）：`auth_expired_shows_dialog_keeps_data`、`relogin_success_resumes_sync`（`onReloginSuccess()` 后 engine 被再次调用且 ui 回 Idle/Updated）、`cancel_keeps_state_quiet`（取消后不再调 engine）、`no_change_is_silent`（NoChange → Idle，无 Updated）、`success_with_changes_shows_inline_summary`（Success(2 条) → Updated(2)）、`sync_button_hidden_when_viewed_not_academic_current`（VM：`isAcademicCurrentViewed=false` → 不渲染 ↻）。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.ManualSyncFlowTest"`。
+- [ ] 3. 最小实现：`TimetableScreen` 接 `↻`（显示条件 SPEC §5.1）；AuthExpiredDialog 文案固定「登录状态已失效\n已有课表不会受到影响」，按钮 [取消] [重新登录]；重新登录走 E2 `WebViewLoginActivity` contract，RESULT_OK → `onReloginSuccess()`。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.ManualSyncFlowTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.*" --tests "com.ustc.timetable.timetable.ui.*"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseG3: manual sync ux with reauth resume"`。
+
+---
+
+## Task H2 — SyncNotification + POST_NOTIFICATIONS 权限控制
+
+- SPEC §8.3、§8.5。
+- 文件：`app/src/main/java/com/ustc/timetable/notification/SyncNotification.kt`、`app/src/main/java/com/ustc/timetable/notification/NotificationPermissionController.kt`；测试 `app/src/test/java/com/ustc/timetable/notification/SyncNotificationTest.kt`（Robolectric）。
+
+接口与关键代码：
+```kotlin
+object SyncNotification {
+    const val CHANNEL_SYNC = "sync_updates"
+    fun ensureChannel(context: Context)
+    fun postChanges(context: Context, changes: List<ScheduleChange>) {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return   // §8.5-4：未授权 no-op
+        val lines = changes.flatMap { ChangeFormatter.notificationLines(it) }
+        val text = lines.take(5).joinToString("\n")
+        NotificationCompat.Builder(context, CHANNEL_SYNC)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle("课表已更新").setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
+            .setAutoCancel(true).build()
+            .let { NotificationManagerCompat.from(context).notify(1001, it) }
+    }
+    fun postReauthNeeded(context: Context)   // 同样先查 areNotificationsEnabled
+}
+class NotificationPermissionController(private val settings: SettingsStore) {
+    fun shouldRequestNow(areNotificationsEnabled: Boolean, requested: Boolean): Boolean =
+        Build.VERSION.SDK_INT >= 33 && !areNotificationsEnabled && !requested
+    suspend fun markRequested() = settings.markNotificationRequestShown()
+}
+```
+- 步骤：
+- [ ] 1. 写 failing test（Robolectric `ShadowNotificationManager`）：`changes_post_notification_with_diff_lines`（title=="课表已更新"、text 含 "TH-B301 → TH-C204"）、`no_change_posts_nothing`（空 changes → 不发）、`notifications_disabled_posts_nothing`（shadow 设 denied → 无通知、无异常）、`shouldRequestOnce_33plus`（API 33、未授权、未请求过 → true；已请求过 → false）、`below_33_never_requests`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.SyncNotificationTest"`。
+- [ ] 3. 最小实现（如上；权限 UI 触发点在 I3/H3 接线：开启每周同步开关时、首次进入设置同步分区时调用 `shouldRequestNow` → `requestPermissions(arrayOf(POST_NOTIFICATIONS))` → 无论结果 `markRequested()`）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.SyncNotificationTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.*" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseH2: change and reauth notifications with once-only permission policy"`。
+
+---
+
+## Task H3 — WeeklySyncWorker + SyncScheduler
+
+- SPEC §8.1、§8.2、§8.5、§7.4。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/WeeklySyncWorker.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncScheduler.kt`；修改 `app/src/main/java/com/ustc/timetable/TimetableApp.kt`（`Configuration.Provider` + 自定义 `WorkerFactory`）；测试 `app/src/test/java/com/ustc/timetable/sync/WeeklySyncWorkerTest.kt`（Robolectric `TestListenableWorkerBuilder`）。
+
+接口与关键代码：
+```kotlin
+class WeeklySyncWorker(
+    context: Context, params: WorkerParameters,
+    private val engine: SyncEngine,
+    private val settings: SettingsStore,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        if (!settings.weeklySyncEnabled.first()) return Result.success()
+        return when (val r = engine.syncCurrentAcademicSemester()) {
+            is SyncResult.NoChange -> Result.success()                       // 完全静默（含纯手动学期空转）
+            is SyncResult.Success ->
+                if (r.changes.isEmpty()) Result.success()
+                else { SyncNotification.postChanges(applicationContext, r.changes); Result.success() }
+            is SyncResult.Failed -> when (r.error) {
+                SyncError.AuthenticationExpired -> {
+                    settings.setNeedReauth(true)
+                    SyncNotification.postReauthNeeded(applicationContext)    // 受 areNotificationsEnabled 约束
+                    Result.success()
+                }
+                else -> Result.success()                                     // 网络/解析失败：静默保留，等下周期
+            }
+        }
+    }
+}
+object SyncScheduler {
+    const val UNIQUE_NAME = "ustc_weekly_sync"
+    fun enqueue(context: Context) {
+        val req = PeriodicWorkRequestBuilder<WeeklySyncWorker>(7, TimeUnit.DAYS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, req)
+    }
+    fun cancel(context: Context) { WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME) }
+}
+```
+- 步骤：
+- 测试契约：gate 权威在 `SyncEngine.syncCurrentAcademicSemester()`（自读 academic-current && portalLinked；纯手动学期 NoChange 且零 portal 调用）；Worker 只调用 engine，**不把 semester gate 逻辑复制进 Worker**。
+- 步骤：
+- [ ] 1. 写 failing test（fake engine + TestListenableWorkerBuilder + `WorkManagerTestInitHelper`；fake engine 可配置内部再持有 fake `SchoolPortalSource` 计数器）：`no_change_is_silent`、`changes_notify`、`auth_expired_sets_needReauth_and_notifies`（settings.needReauth 翻 true）、`other_failures_are_silent_keep_old_data`（NetworkFailed → Result.success、needReauth 不变）、`manual_only_semester_makes_zero_portal_source_calls_and_no_notification`（库中仅纯手动学期 → engine 走 NoChange 路径，fake `SchoolPortalSource` 调用计数 == 0、无任何通知、Result.success）、`toggle_off_cancels_work_toggle_on_enqueues_unique`。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.WeeklySyncWorkerTest"`。
+- [ ] 3. 最小实现（如上；`TimetableApp` 实现 `Configuration.Provider`，`workerFactory` 从 `AppContainer` 取依赖构造 `WeeklySyncWorker`；App 启动时若 `weeklySyncEnabled==true` 则 `SyncScheduler.enqueue`）。
+- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.WeeklySyncWorkerTest"`。
+- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseH3: weekly silent sync worker gated on academic-current portal-linked semester"`。
+
+---
+
+## 证据状态（F1 后维护）
+
+| 证据项（SPEC §13） | 状态 |
+|---|---|
+| 1 两页登录后 URL | pending |
+| 2 两页脱敏 HTML | pending |
+| 3 登录方式/SSO/成功跳转 | pending |
+| 4 XHR 响应样例 | pending |
+| 5 源代码是否含数据 | pending |
+| 6 周次控件行为 | pending |
+| 7 登录失效页 HTML | pending |
+| 8 会话有效期/互踢 | pending |
+| 9 probeUrl 建议 | pending |
+
+## 本子计划完成判定
+
+- 证据未交付时：E/F1/F5/H1/G2(fake)/G3/H2/H3 全绿——同步核心 evidence-free。
+- 证据交付后：gated 分支 F2→F3→F4→F6→G1 产出注入实现；G1 合入后只替换注入实现并重跑 G1 步骤 5 的定向回归。
+- `./gradlew :app:testDebugUnitTest` 全绿；`./gradlew :app:lintDebug` 无 error。
