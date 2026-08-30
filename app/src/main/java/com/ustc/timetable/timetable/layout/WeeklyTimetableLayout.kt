@@ -15,7 +15,6 @@ interface TimedBlock {
     val weeks: com.ustc.timetable.timetable.domain.WeekPattern
     val title: String
     val location: String
-    val teacherNames: List<String>
 }
 
 /** 布局结果：authority 固定为 block.weekday（不另存独立可变 weekday）。 */
