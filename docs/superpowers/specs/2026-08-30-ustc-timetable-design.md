@@ -324,7 +324,7 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 - 周标题行：`‹` / `›` 箭头切周；点击“第 N 周”弹出 WeekSwitcherSheet 快速选择；副标题显示该周日期范围（如 `9.7 - 9.13`）。
 - 列头：`一 7` 格式（星期字符 + 当日号）；今天列高亮。
 - 左右滑动整张课表切换周次（HorizontalPager，页 = 周次 1..totalWeeks）。
-- 启动时定位到 viewed 学期的当前自然教学周（历史学期 clamp 到 1，未来学期 clamp 到 totalWeeks）；查看周不持久化。
+- 启动时定位到 viewed 学期的默认教学周：当前日期在教学周内 → 自然周；早于教学周（未来学期）→ 第 1 周；晚于教学周（历史学期）→ totalWeeks；查看周不持久化。（C1 修正：原文历史/未来 clamp 方向写反）
 
 ### 5.2 周切换汇总
 
@@ -332,7 +332,7 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 
 ### 5.3 学期切换（只动 viewed，永不动 academic-current）
 
-SemesterSwitcherSheet：本地学期按 startDate 倒序；academic-current 学期与 portalLinked 状态有视觉标注；点击仅写 `viewedSemesterId`，绝不发 Web 请求、绝不修改 `isCurrentAcademicSemester`、绝不触发任何同步；切换后查看周重置为该学期的当前自然周（历史学期 clamp 到 1）。`viewedSemesterId` 持久化（DataStore），App 重启恢复。
+SemesterSwitcherSheet：本地学期按 startDate 倒序；academic-current 学期与 portalLinked 状态有视觉标注；点击仅写 `viewedSemesterId`，绝不发 Web 请求、绝不修改 `isCurrentAcademicSemester`、绝不触发任何同步；切换后查看周重置为该学期默认周（未来学期第 1 周；历史学期 totalWeeks；教学周内为自然周）。`viewedSemesterId` 持久化（DataStore），App 重启恢复。
 
 ### 5.4 设置入口与页面
 
@@ -751,4 +751,5 @@ sealed class SyncResult {
 - r2（2026-08-30）：corrective pass——① academic-current 与 viewed semester 严格分离，历史浏览不改 `isCurrentAcademicSemester`，同步恒指 academic-current；② `Semester.profileId` 不可变克隆绑定 + profile clone-on-write（§3.5.1）；③ `Course.credits` 改 nullable；④ 稳定 identity（sourceCourseKey）与 fingerprint 排除清单（§8.3.1/8.3.2）；⑤ meeting diff 配对重写（TimeChanged 真实产生，新增 MeetingAdded/Removed）（§8.3.3）；⑥ 登录检测输入闭合 + 自动完成检测（§7.1/7.2）；⑦ 学校行替换与 semester 指纹/lastSyncedAt 合并为单个 database-level 事务 `applySchoolSnapshot`（§8.2）；⑧ 手动时间限定为绑定 profile day window 内任意分钟（§3.4）；⑨ `portalLinked` 状态与纯手动学期同步豁免（§3.2/§8.1）；⑩ Android 13+ POST_NOTIFICATIONS 权限策略（§8.5）。
 - r3（2026-08-30）：final corrective pass——① Session 模型改为 URL-aware raw Cookie header（`SessionCookieHeader/SessionBlob`，禁止 `Map<name,value>`；三目标 URL 分别收集、去重、`pickFor` 选择；多 host/重复 cookie-name 语义不破坏，收敛需证据）（§7.2）；② meeting 配对改为多阶段确定性（Stage 1 恒等保持 + Stage 2 最小代价），删除按位 zip（§8.3.3）；③ 导入事务纳入 boundProfile 克隆并固定顺序、失败无孤儿 profile（§8.2）；④ 三 parser 明确为接口、实现类 `Ustc` 前缀，SyncEngine 只依赖接口（evidence-free）（§6.3）；⑤ 构建采用 AGP 9.3 Built-in Kotlin（见 roadmap A0），同步布局/依赖图/子计划机械整改。
 - r3.1（2026-08-30）：docs-only hotfix——① Compose BOM 固定 **2026.06.00**（ui 1.11.4 / material3 1.4.0）：core ≤1.11.x 的最后 stable BOM，匹配 compileSdk 36 与 Robolectric 4.16（SDK 36 上限）；1.12 需 compileSdk 37，不采用 Robolectric beta（§2.1）；② `SessionCookieHeader` scope 键 = 标准化 scheme+host+effectivePort+path，`pickFor` 仅精确匹配、找不到即 null，删除 same-host/cross-path fallback；新增 `CookieAwareFetcher` 手动重定向策略（逐跳重选头、禁止跨 origin 泄漏、≤5 跳）（§7.2）；③ SnapshotDiffer Stage 2 重定义为带虚拟 unmatched 节点的最小代价指派：`CONFIDENCE_THRESHOLD=2`、`UNMATCHED_PENALTY=3`，目标函数与 tie-break 完整写入（§8.3.3）；④ 全部文档修订元数据统一 r3.1；A0 git 基线步骤改为 init→status untracked 核对→commit docs→status clean 核对；⑤ H3 测试契约：gate 权威在 SyncEngine，`manual_only_semester_makes_zero_portal_source_calls_and_no_notification`。
+- C1 implementation clarification（2026-08-31）：corrected reversed past/future clamp wording——默认查看周：教学周内→自然周；早于教学周（未来学期）→第 1 周；晚于教学周（历史学期）→totalWeeks（§5.1/§5.3）。
 - Foundation implementation reconciliation（2026-08-30，A0–A6 实现期已批准修正，非设计变更）——workspace 迁移至 ASCII 路径 `X:\schedule`（Gradle 9.5 Windows 非 ASCII 路径缺陷，AGP 路径检查预言；compileSdk=37/targetSdk=36 经 AAR minCompileSdk 批准）；A1 strict parser（week 0/未知字符拒绝、odd/even IntRange 实现）；A2 startDate=2026-08-30 与 week1Start 语义分离；A3 asset 唯一权威 + 版本化 id `profile.bundled.ustc.2026-autumn` + 严格 JSON；A4 source/entity 一致与非空 WeekPattern 不变量；A5 courses.semesterId FK、applySchoolSnapshot 强类型 SemesterId + pre-delete 校验 + 安全 exclusive 切换、CourseId/MeetingId 不在事务内生成（G2 FreshLocalIds.assign，见本节注释）；A6 仓库/seed/working/rebind 以最终 GREEN 实现为准（见 subplan-01）。

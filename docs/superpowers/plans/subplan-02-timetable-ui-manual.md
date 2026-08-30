@@ -194,7 +194,7 @@ class TimetableViewModel(
   - `swipe_pager_changes_viewedWeek`：compose 测试对 pager 执行 `performTouchInput { swipeLeft() }` → state.viewedWeek+1。
   - `arrow_bounds_clamp_1_totalWeeks`：在第 1 周按 `‹` 不变；在第 20 周按 `›` 不变。
   - `week_sheet_marks_current_natural_week`：WeekSwitcherSheet 中自然周节点带 `testTag("natural_week")`，viewed 周带 `testTag("viewed_week")`。
-  - `semester_switch_resets_week_clamped`（VM 层）：切到历史学期 → viewedWeek = clamp(naturalWeek 或 1)。
+  - `semester_switch_resets_week_clamped`（VM 层）：切到其他学期 → viewedWeek = defaultViewedWeek（教学周内→自然周；未来学期→1；历史学期→totalWeeks；C1 修正原反向表述）。
 - [ ] 2. `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.WeekSwitchNavigationTest"` → RED。
 - [ ] 3. 最小实现：网格外套 `HorizontalPager(state = rememberPagerState(pageCount = { semester.totalWeeks }), pageCount 从 viewedWeek-1 初值)`，`pageCount` 为 totalWeeks，页 index=week-1；`LaunchedEffect(pagerState.currentPage)` 回写 VM `onWeekSelected(currentPage+1)`；`‹`/`›` 调 VM；点“第 N 周”弹 ModalBottomSheet：`totalWeeks` 网格按钮 + 自然周/viewed 标注。
 - [ ] 4. 同命令 → GREEN。
