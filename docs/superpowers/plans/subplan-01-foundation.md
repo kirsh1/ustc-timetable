@@ -139,7 +139,7 @@ plugins {
 
 android {
     namespace = "com.ustc.timetable"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.ustc.timetable"
         minSdk = 26
@@ -281,8 +281,8 @@ class SanityTest {
 - [ ] 5. 全量构建验证（必须证明**真实编译**，不是仅依赖解析）：
   `./gradlew :app:assembleDebug :app:testDebugUnitTest` → BUILD SUCCESSFUL，且 `ls app/build/outputs/apk/debug/app-debug.apk` 确认 APK 产物存在；
   `./gradlew :app:compileDebugKotlin` → built-in Kotlin 编译任务真实执行；
-  版本钉死核查：`./gradlew :app:dependencies --configuration debugRuntimeClasspath` 输出含 `androidx.compose.ui:ui:1.11.4`（BOM 2026.06.00 映射），且不含任何 compose 1.12.x；
-  `serializationPluginWired` 通过 = serialization 编译器插件生效；`MainActivity` 中 `setContent { Text(text = "USTC Timetable") }` 编译通过 = Compose 编译器插件生效；KSP 的真实验证在 A5 的 RED→GREEN（Room 注解处理）完成。任何一步失败按 roadmap A0 回退规则处理并记录（Compose 解析失败先报告，不得擅自换 Robolectric beta / compileSdk 37）。
+  版本钉死核查：`./gradlew :app:dependencies --configuration debugRuntimeClasspath` 实测解析 `androidx.compose.ui:ui:1.11.3`（BOM 2026.06.00），且不含任何 compose 1.12.x；
+  `serializationPluginWired` 通过 = serialization 编译器插件生效；`MainActivity` 中 `setContent { Text(text = "USTC Timetable") }` 编译通过 = Compose 编译器插件生效；KSP 的真实验证在 A5 的 RED→GREEN（Room 注解处理）完成。任何一步失败按 roadmap A0 回退规则处理并记录（Compose 解析失败先报告，不得擅自换 Robolectric beta / Compose 1.12）。
 - [ ] 6. commit：`git add -A && git commit -m "phaseA0: android scaffold on AGP 9.3.0 / Gradle 9.5.0 / Kotlin 2.4.10, builds green"`。
 
 ---

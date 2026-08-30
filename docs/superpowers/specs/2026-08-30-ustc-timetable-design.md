@@ -39,7 +39,7 @@
 | 用途 | 选型 |
 |---|---|
 | 语言 | Kotlin 2.4.10（K2；Compose 编译器用官方 `org.jetbrains.kotlin.plugin.compose`） |
-| UI | Jetpack Compose（BOM **2026.06.00** → ui/foundation/runtime 1.11.4、Material 3 1.4.0；取 core ≤ 1.11.x 的最后 stable BOM 以匹配 compileSdk 36——Compose 1.12 需 compileSdk 37、Robolectric 4.16 上限 SDK 36）（仅基础控件/Dialog/Sheet/Settings） |
+| UI | Jetpack Compose（BOM **2026.06.00** → 实测解析 ui/foundation/runtime **1.11.3**、Material 3 1.4.0；core ≤ 1.11.x 的 stable BOM；不升级 Compose 1.12、不采用 Robolectric 4.17 beta）（仅基础控件/Dialog/Sheet/Settings） |
 | 持久化 | Room 2.8.4（KSP 2.3.11） |
 | 后台任务 | WorkManager 2.11.2（每周一次静默同步） |
 | 网络 | OkHttp 5.5.0 |
@@ -51,7 +51,7 @@
 | 设置存储 | Jetpack DataStore (Preferences) 1.2.1 |
 
 - 依赖与构建的**精确固定版本组合**（AGP 9.3.0 / Gradle wrapper 9.5.0 / JDK 21 等）见 roadmap plan 的 A0 章节与 `gradle/libs.versions.toml`；执行时以该组合为准，不使用“最新稳定”作为规格。
-- minSdk = 26（原生 `java.time`）；compileSdk = targetSdk = 36（已装 platform android-36；AGP 9.3.0 支持）。
+- minSdk = 26（原生 `java.time`）；**compileSdk = 37、targetSdk = 36**（有意决策：37 仅作编译 API surface 以满足所选依赖的 AAR minCompileSdk——navigation 2.10.0 / core 1.19.0 / lifecycle 2.11.0 / okhttp-android 5.5.0；targetSdk 36 仍是 App runtime behavior authority；已装 platform android-37.0）。
 - 单 Gradle 模块 `:app`；包结构按职责隔离（见 2.2）。
 - Material 3 只用于基础控件、Dialog、Sheet、Settings 页；课表主体使用专用 Compose 布局（`BoxWithConstraints` + 按比例定位的 Compose children）。视觉要求：干净、原生、现代、信息优先；不要巨大圆角卡片、不要到处 elevation、不要底部导航、不要 Dashboard 化。不复刻旧本科课表的旧 Android 视觉。
 

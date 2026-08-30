@@ -35,9 +35,11 @@
 | Compose compiler 插件 | **org.jetbrains.kotlin.plugin.compose 2.4.10** | Built-in Kotlin 下**仍需在 plugins 块显式应用**（版本随 Kotlin；KGP 2.3.1+ 支持 built-in Kotlin） |
 | serialization 插件 | **org.jetbrains.kotlin.plugin.serialization 2.4.10** | 同上，显式应用 |
 | KSP | **2.3.11** | ≥ 2.3.1 支持 AGP 9.0 built-in Kotlin；自 2.3.0 起版本与 Kotlin 解耦 |
-| compileSdk / targetSdk | **36** | 已装 platform android-36；Robolectric 4.16 支持上限 |
+| compileSdk | **37** | A0 实测：navigation 2.10.0 / core 1.19.0 / lifecycle 2.11.0 / okhttp-android 5.5.0 的 AAR minCompileSdk=37（用户批准 Option B）；已装 platform android-37.0 |
+| targetSdk | **36** | 有意决策：App runtime behavior authority 保持 36；compileSdk 37 仅作为编译 API surface 满足 AAR minCompileSdk |
+| Robolectric 测试 SDK | **@Config(sdk=[36])** | Robolectric 4.16.1（stable，上限 SDK 36）；单测运行于 SDK 36，与 compileSdk 37 无关 |
 | minSdk | **26** | 原生 java.time，无需 desugaring |
-| Compose BOM | **2026.06.00**（ui/foundation/runtime **1.11.4**、material3 **1.4.0**） | BOM 官方映射表中 core Compose ≤ 1.11.x 的**最后一个 stable BOM**：Compose 1.12 要求 compileSdk 37，与本项目 compileSdk 36 / Robolectric 4.16（SDK 36 上限，4.17 仍 beta）冲突；稳定优先，不采用 Robolectric beta |
+| Compose BOM | **2026.06.00**（实测解析 ui/foundation/runtime **1.11.3**、material3 **1.4.0**） | core ≤ 1.11.x 的 stable BOM；**不升级 Compose 1.12、不采用 Robolectric 4.17 beta** |
 | Room | **2.8.4** | Google Maven 最新稳定 |
 | WorkManager | **2.11.2** | 最新稳定（2.12.0-rc01 不采用） |
 | navigation-compose | **2.10.0** | 最新稳定 |
@@ -53,7 +55,8 @@
 | androidx.test.ext:junit / test:runner | **1.3.0 / 1.7.0** | 最新稳定 |
 
 - **Built-in Kotlin 决策（A0 落地，依据官方 Migrate to built-in Kotlin 指南）**：AGP 9.3 默认启用 built-in Kotlin——新工程**不应用** `org.jetbrains.kotlin.android`（catalog、根 alias、app application 三处均无）；`kotlin { compilerOptions {} }` 仍为官方 DSL，`jvmTarget` 默认取 `android.compileOptions.targetCompatibility`，无需显式设置；**禁止**设置 `android.builtInKotlin=false` / `android.newDsl=false` 退回 legacy。
-- 回退规则（仅当 A0 构建/依赖解析失败时使用，须在 commit 信息注明）：KSP 在 2.3.x 内升 patch；**Compose BOM 2026.06.00 解析失败时不得擅自改用 Robolectric beta 或 compileSdk 37，先停下向用户报告**；若仍需整组降级，使用备选组合 **AGP 8.13.x + Gradle 8.14.x + Kotlin 2.2.20 + KSP 2.2.20-2.0.4 + Compose BOM 2025.06.01**，并**恢复 `org.jetbrains.kotlin.android` 插件**（AGP 8 无 built-in Kotlin），其余库版本不变。
+- 回退规则（仅当 A0 构建/依赖解析失败时使用，须在 commit 信息注明）：KSP 在 2.3.x 内升 patch；**Compose BOM 2026.06.00 解析失败时不得擅自改用 Robolectric beta 或 Compose 1.12，先停下向用户报告**；若仍需整组降级，使用备选组合 **AGP 8.13.x + Gradle 8.14.x + Kotlin 2.2.20 + KSP 2.2.20-2.0.4 + Compose BOM 2025.06.01**，并**恢复 `org.jetbrains.kotlin.android` 插件**（AGP 8 无 built-in Kotlin），其余库版本不变。
+- compileSdk=37 / targetSdk=36 决策来源：A0 实测 AAR minCompileSdk 冲突（navigation 2.10.0 / core 1.19.0 / lifecycle 2.11.0 / okhttp-android 5.5.0），用户批准 Option B——compileSdk 37 仅作编译 API surface，targetSdk 36 仍为 runtime behavior authority；已选依赖一律不降级；不升级 Compose 1.12、不采用 Robolectric 4.17 beta、不提高 targetSdk。
 - 本机 JDK 21 满足：AGP 9.3.0（需 ≥17）、Gradle 9.5（支持 17–21+）、Robolectric 4.16 SDK 36（需 21）。
 
 ## 任务索引
