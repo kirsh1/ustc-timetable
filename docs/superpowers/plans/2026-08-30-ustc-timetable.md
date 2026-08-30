@@ -21,7 +21,7 @@
 3. **证据门**：`school/ustc` 的真实 URL/selector/登录判定，在用户交付 SPEC §13 证据前一律不写；不凭截图猜测。
 4. **范围锁**：不做 SPEC §12 之外的功能；不引入 Hilt/多模块/跨平台框架；不改 SPEC r3.1 的任何不变量（§1）。
 5. **Commit**：信息格式 `phaseA1: weekpattern value type with parse/format/contains`；commit 前 Task 验证命令必须全绿；`local.properties`、`.idea/`、`build/` 不入库。
-6. **环境**：Windows + Git Bash；JDK 21（`JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot\`）；Android SDK 位于 `C:\Users\Forstargazing\AppData\Local\Android\Sdk`（A0 写入 `local.properties`）。
+6. **环境**：Windows + Git Bash；JDK 21（`JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot\`）；Android SDK 位于 `C:\Users\Forstargazing\AppData\Local\Android\Sdk`（A0 写入 `local.properties`）。**仓库根固定为 ASCII 路径 `X:\schedule`**（Gradle 9.5 在 Windows 非 ASCII 项目路径下 test worker 类加载失败，A0 实测后经批准迁移）。
 
 ## A0 固定版本组合（已核实，2026-08-30）
 

@@ -326,6 +326,9 @@ class WeekPatternTest {
     }
     @Test fun oddWithin_单周语义() { assertEquals(WeekPattern.of(1, 3, 5, 7), WeekPattern.oddWithin(1, 7)) }
     @Test fun evenWithin_双周语义() { assertEquals(WeekPattern.of(2, 4, 6), WeekPattern.evenWithin(1, 6)) }
+    @Test fun parse_zero_throws() { assertThrows(IllegalArgumentException::class.java) { WeekPattern.parse("0") } }
+    @Test fun parse_unknown_text_throws() { assertThrows(IllegalArgumentException::class.java) { WeekPattern.parse("2foo") } }
+    @Test fun of_duplicate_weeks_naturally_dedupe() { assertEquals(WeekPattern.of(2, 3), WeekPattern.of(2, 2, 3)) }
 }
 ```
 - [ ] 2. `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.WeekPatternTest"` → 预期 RED（`WeekPattern` 未定义，编译失败）。
@@ -371,16 +374,31 @@ value class WeekPattern(val mask: Long) {
             for (w in start..endInclusive) m = m or (1L shl (w - 1))
             return WeekPattern(m)
         }
-        fun oddWithin(start: Int, endInclusive: Int): WeekPattern =
-            (start..endInclusive).filter { it % 2 == 1 }.toTypedArray().let { if (it.isEmpty()) EMPTY else of(*it) }
-        fun evenWithin(start: Int, endInclusive: Int): WeekPattern =
-            (start..endInclusive).filter { it % 2 == 0 }.toTypedArray().let { if (it.isEmpty()) EMPTY else of(*it) }
+        fun oddWithin(start: Int, endInclusive: Int): WeekPattern = parityWithin(start, endInclusive, odd = true)
+        fun evenWithin(start: Int, endInclusive: Int): WeekPattern = parityWithin(start, endInclusive, odd = false)
+        private fun parityWithin(start: Int, endInclusive: Int, odd: Boolean): WeekPattern {
+            require(start in 1..63 && endInclusive in start..63) { "bad range $start-$endInclusive" }
+            var m = 0L
+            for (w in start..endInclusive) if ((w % 2 == 1) == odd) m = m or (1L shl (w - 1))
+            require(m != 0L) { "parity selection produced empty set: $start-$endInclusive" }
+            return WeekPattern(m)
+        }
 
         fun parse(raw: String): WeekPattern {
-            val cleaned = raw.replace("，", ",").replace("、", ",")
-                .replace("–", "-").replace("—", "-").replace("到", "-").replace("至", "-")
-                .filter { it.isDigit() || it == ',' || it == '-' }
-            require(cleaned.isNotEmpty()) { "empty week pattern: $raw" }
+            // 仅规范化明确允许的装饰；任何其他字符直接抛出（绝不静默过滤，防 "2foo"→"2"、"2a3"→"23"）
+            val cleaned = buildString {
+                for (ch in raw) when (ch) {
+                    '，', '、' -> append(',')
+                    '–', '—', '至', '到' -> append('-')
+                    '第', '周' -> { /* 允许的装饰：丢弃 */ }
+                    else -> {
+                        if (!(ch.isDigit() || ch == ',' || ch == '-'))
+                            throw IllegalArgumentException("unexpected character '$ch' in week pattern: $raw")
+                        append(ch)
+                    }
+                }
+            }
+            require(GRAMMAR.matches(cleaned)) { "not a week pattern: $raw" }  // 整串 grammar：\d+(-\d+)?(,\d+(-\d+)?)*
             var m = 0L
             for (token in cleaned.split(',')) {
                 require(token.isNotEmpty()) { "empty token in: $raw" }
@@ -415,9 +433,11 @@ value class WeekPattern(val mask: Long) {
 ```kotlin
 package com.ustc.timetable.timetable.domain
 
+import java.time.Instant
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class WeekCalculatorTest {
@@ -440,9 +460,45 @@ class WeekCalculatorTest {
         assertEquals(LocalDate.of(2026, 9, 7), r.start); assertEquals(LocalDate.of(2026, 9, 13), r.endInclusive)
     }
     @Test fun semesterTransition_noOverlap() {
-        val spring = sem.copy(id = "s2", term = Term.SPRING, week1Start = LocalDate.of(2027, 2, 22), totalWeeks = 18)
+        // 自洽 spring fixture（不宣称为学校官方日期）：week1Start=2027-02-22 Monday、18 周
+        val spring = Semester(
+            id = SemesterId("s2"), displayName = "2026-2027 春季", academicYear = "2026-2027", term = Term.SPRING,
+            week1Start = LocalDate.of(2027, 2, 22), totalWeeks = 18,
+            startDate = LocalDate.of(2027, 2, 20), endDate = LocalDate.of(2027, 6, 27),
+            importedAt = Instant.EPOCH, lastSyncedAt = null,
+            isCurrentAcademicSemester = false, portalLinked = true, profileId = ProfileId("p1"), sourceFingerprint = null,
+        )
         assertNull(WeekCalculator.weekNumberOn(LocalDate.of(2027, 1, 10), spring))
         assertNull(WeekCalculator.weekNumberOn(LocalDate.of(2027, 3, 1), sem))
+        assertEquals(1, WeekCalculator.weekNumberOn(LocalDate.of(2027, 2, 22), spring))
+    }
+    @Test fun autumn2026_official_dates_are_exact() {
+        assertEquals(LocalDate.of(2026, 8, 30), sem.startDate)   // 开学注册（≠ week1Start）
+        assertEquals(LocalDate.of(2026, 8, 31), sem.week1Start)
+        assertEquals(LocalDate.of(2027, 1, 15), sem.endDate)
+        assertEquals(20, sem.totalWeeks)
+    }
+    @Test fun semester_nonMonday_week1Start_throws() {
+        assertThrows(IllegalArgumentException::class.java) { sem.copy(week1Start = LocalDate.of(2026, 9, 1)) }
+    }
+    @Test fun semester_start_after_end_throws() {
+        assertThrows(IllegalArgumentException::class.java) { sem.copy(startDate = LocalDate.of(2027, 1, 16)) }
+    }
+    @Test fun semester_week1Start_outside_semester_dates_throws() {
+        assertThrows(IllegalArgumentException::class.java) { sem.copy(startDate = LocalDate.of(2026, 9, 5)) }
+    }
+    @Test fun semester_totalWeeks_zero_or_over63_throws() {
+        assertThrows(IllegalArgumentException::class.java) { sem.copy(totalWeeks = 0) }
+        assertThrows(IllegalArgumentException::class.java) { sem.copy(totalWeeks = 64) }
+    }
+    @Test fun localDateRange_inverted_throws() {
+        assertThrows(IllegalArgumentException::class.java) { LocalDateRange(LocalDate.of(2026, 9, 10), LocalDate.of(2026, 9, 1)) }
+    }
+    @Test fun weekStart_zero_throws() { assertThrows(IllegalArgumentException::class.java) { WeekCalculator.weekStart(sem, 0) } }
+    @Test fun weekStart_after_totalWeeks_throws() { assertThrows(IllegalArgumentException::class.java) { WeekCalculator.weekStart(sem, 21) } }
+    @Test fun naturalWeekToday_delegates_to_weekNumberOn() {
+        assertEquals(WeekCalculator.weekNumberOn(LocalDate.of(2026, 9, 7), sem), WeekCalculator.naturalWeekToday(sem, LocalDate.of(2026, 9, 7)))
+        assertNull(WeekCalculator.naturalWeekToday(sem, LocalDate.of(2026, 8, 30)))
     }
 }
 ```
@@ -486,7 +542,8 @@ object SemesterDefaults {
     fun AUTUMN_2026(id: String, profileId: String, now: java.time.Instant = java.time.Instant.now()): Semester = Semester(
         id = SemesterId(id), displayName = "2026-2027 秋季", academicYear = "2026-2027", term = Term.AUTUMN,
         week1Start = LocalDate.of(2026, 8, 31), totalWeeks = 20,
-        startDate = LocalDate.of(2026, 8, 31), endDate = LocalDate.of(2027, 1, 15),
+        startDate = LocalDate.of(2026, 8, 30),  // 开学注册（≠ week1Start 08-31 上课）
+        endDate = LocalDate.of(2027, 1, 15),
         importedAt = now, lastSyncedAt = null,
         isCurrentAcademicSemester = true, portalLinked = false, profileId = ProfileId(profileId), sourceFingerprint = null,
     )
@@ -621,7 +678,7 @@ data class ScheduleProfile(
     fun dayWindow(): LocalTimeRange = LocalTimeRange(periods.minOf { it.start }, periods.maxOf { it.end })
 }
 ```
-`OfficialProfileLoader.kt` 关键代码（资产经 kotlinx-serialization 解析；`bundledDefinition()` 提供无 Context 的纯函数基准供测试与常量使用）：
+`OfficialProfileLoader.kt` 关键代码（**官方时间表唯一 production source of truth 是 asset**；strict JSON 默认，无 ignoreUnknownKeys；版本化 bundled id）：
 ```kotlin
 package com.ustc.timetable.scheduleprofile
 
@@ -632,13 +689,11 @@ import kotlinx.serialization.json.Json
 
 object OfficialProfileLoader {
     const val ASSET_PATH = "profile/official_2026autumn.json"
-    const val BUNDLED_PROFILE_ID = "profile.bundled.official"
+    const val BUNDLED_PROFILE_ID = "profile.bundled.ustc.2026-autumn"
     private val json = Json { ignoreUnknownKeys = true }
 
     @Serializable private data class Dto(val name: String, val periods: List<PDto>)
     @Serializable private data class PDto(val number: Int, val start: String, val end: String)
-
-    fun bundledDefinition(): ScheduleProfile = fromDto(json.decodeFromString<Dto>(BUNDLED_JSON), ProfileId(BUNDLED_PROFILE_ID))
 
     fun load(context: Context): ScheduleProfile =
         fromDto(json.decodeFromString<Dto>(context.assets.open(ASSET_PATH).bufferedReader().readText()), ProfileId(BUNDLED_PROFILE_ID))
@@ -667,7 +722,7 @@ object OfficialProfileLoader {
     """
 }
 ```
-（`BUNDLED_JSON` 常量与 `app/src/main/assets/profile/official_2026autumn.json` 内容一致；`asset_parses_to_13_periods_monotonic` 用 Robolectric 读 assets 验证两者解析结果 `equals`，防止双份内容漂移。）
+（A3-local 修正：production/tests 不存在第二份官方时间常量——纯函数测试使用合成 13 节 fixture；官方表真实性由 Robolectric `OfficialProfileLoaderTest` 读取真实 APK asset 逐行 exact 断言，另验证 dayWindow 07:50–21:55 与第 2/7 节后 20 分钟间隔；strict JSON 使误拼字段显式失败。）
 - [ ] 4. 同命令 → GREEN。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.scheduleprofile.*"` → GREEN。
 - [ ] 6. `git add app/src && git commit -m "phaseA3: bundled official schedule profile with immutable definition and day window"`。
@@ -838,7 +893,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class TimetableDatabaseTest {
     private lateinit var db: TimetableDatabase
-    private val sem = SemesterDefaults.AUTUMN_2026(id = "s1", profileId = "profile.bundled.official")
+    private val sem = SemesterDefaults.AUTUMN_2026(id = "s1", profileId = "profile.bundled.ustc.2026-autumn")
 
     @Before fun setUp() {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
