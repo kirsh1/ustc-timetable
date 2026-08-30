@@ -1,27 +1,47 @@
 package com.ustc.timetable.timetable.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.timetable.layout.WeeklyTimetableGrid
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 /** Route：collect state → 无状态 Screen；Screen 不读 Room/DataStore。 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TimetableRoute(viewModel: TimetableViewModel) {
     val state by viewModel.state.collectAsState()
@@ -29,15 +49,17 @@ fun TimetableRoute(viewModel: TimetableViewModel) {
         state = state,
         onPrevWeek = viewModel::onPrevWeek,
         onNextWeek = viewModel::onNextWeek,
+        onWeekSelected = viewModel::onWeekSelected,
     )
 }
 
-/** 首页（frozen §5.1）：顶栏学期名 + （条件显示 ↻）+ ⚙；周标题行；B2 七列网格。无 Dashboard/底部导航。 */
+/** 首页（frozen §5.1 + C1）：顶栏 + 周标题行（箭头/选择器）+ HorizontalPager 逐页渲染该周 projection。 */
 @Composable
 fun TimetableScreen(
     state: TimetableUiState,
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
+    onWeekSelected: (Int) -> Unit,
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -45,11 +67,11 @@ fun TimetableScreen(
     }
     val semester = state.semester
     val profile = state.profile
-    val weekDates = state.weekDates
-    if (semester == null || profile == null || weekDates == null) {
+    if (semester == null || profile == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("暂无课表") }
         return
     }
+    var sheetOpen by remember { mutableStateOf(false) }
     val axis = WeeklyTimetableLayout.axisOf(profile)
     Column(Modifier.fillMaxSize()) {
         // 顶栏
@@ -63,7 +85,7 @@ fun TimetableScreen(
                 Text(
                     "↻",
                     style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),  // B3 尚未接线 → disabled 外观
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     modifier = Modifier.testTag("refresh").padding(horizontal = 8.dp),
                 )
             }
@@ -80,41 +102,174 @@ fun TimetableScreen(
                 Text(
                     "‹",
                     style = MaterialTheme.typography.headlineMedium,
+                    color = if (state.viewedWeek > 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     modifier = Modifier
                         .testTag("prev_week")
-                        .clickable { onPrevWeek() }
+                        .clickable(enabled = state.viewedWeek > 1) { onPrevWeek() }
                         .padding(horizontal = 20.dp, vertical = 4.dp),
                 )
-                Text("第 ${state.viewedWeek} 周", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("viewed_week"))
+                Text(
+                    "第 ${state.viewedWeek} 周",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .testTag("viewed_week")
+                        .clickable { sheetOpen = true },
+                )
                 Text(
                     "›",
                     style = MaterialTheme.typography.headlineMedium,
+                    color = if (state.viewedWeek < semester.totalWeeks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                     modifier = Modifier
                         .testTag("next_week")
-                        .clickable { onNextWeek() }
+                        .clickable(enabled = state.viewedWeek < semester.totalWeeks) { onNextWeek() }
                         .padding(horizontal = 20.dp, vertical = 4.dp),
                 )
             }
-            Text(
-                "${weekDates.start.monthValue}.${weekDates.start.dayOfMonth} - ${weekDates.endInclusive.monthValue}.${weekDates.endInclusive.dayOfMonth}",
-                style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.testTag("week_dates"),
-            )
+            state.weekDates?.let {
+                Text(
+                    "${it.start.monthValue}.${it.start.dayOfMonth} - ${it.endInclusive.monthValue}.${it.endInclusive.dayOfMonth}",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.testTag("week_dates"),
+                )
+            }
         }
-        // B2 网格：gutter 时刻权威 = 绑定 profile 节次开始
-        WeeklyTimetableGrid(
-            weekDates = weekDates,
-            axis = axis,
-            periodStarts = profile.periods.map { it.start },
-            placedSchool = state.placedSchool,
-            placedManual = state.placedManual,
-            showNonCurrentWeek = state.showNonCurrentWeek,
+        // C1 correction 5：每页渲染自己的 page projection；periodStarts/axis 来自绑定 profile
+        key(semester.id) {
+            val pagerState = rememberPagerState(initialPage = state.viewedWeek - 1, pageCount = { state.weekPages.size })
+            // C1 correction 6：仅真实用户 drag 完成 settle 后回写 VM
+            val isDragged by pagerState.interactionSource.collectIsDraggedAsState()
+            var userDragged by remember { mutableStateOf(false) }
+            LaunchedEffect(isDragged) { if (isDragged) userDragged = true }
+            LaunchedEffect(userDragged, pagerState.settledPage, pagerState.isScrollInProgress) {
+                if (userDragged && !pagerState.isScrollInProgress) {
+                    onWeekSelected(pagerState.settledPage + 1)
+                    userDragged = false
+                }
+            }
+            // 程序化同步：arrow/picker/natural 更新只驱动 pager，不标记为用户选择
+            LaunchedEffect(state.viewedWeek) {
+                if (!userDragged && pagerState.settledPage != state.viewedWeek - 1) {
+                    pagerState.animateScrollToPage(state.viewedWeek - 1)
+                }
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize().testTag("week_pager"),
+                key = { page -> page + 1 },
+            ) { pageIndex ->
+                val page = state.weekPages[pageIndex]
+                Box(Modifier.fillMaxSize().testTag("week_page_${page.week}")) {
+                    WeeklyTimetableGrid(
+                        weekDates = page.weekDates,
+                        axis = axis,
+                        periodStarts = profile.periods.map { it.start },
+                        placedSchool = page.placedSchool,
+                        placedManual = page.placedManual,
+                        showNonCurrentWeek = state.showNonCurrentWeek,
+                        viewedWeek = page.week,
+                        nowLine = page.nowLine,
+                        today = state.today,
+                        onSchoolBlockClick = {},   // C3
+                        onManualBlockClick = {},   // D3
+                        onEmptyLongPress = { _, _ -> },  // D1
+                    )
+                }
+            }
+        }
+    }
+    if (sheetOpen) {
+        WeekSwitcherSheet(
+            totalWeeks = semester.totalWeeks,
+            naturalWeek = state.naturalWeek,
             viewedWeek = state.viewedWeek,
-            nowLine = state.nowLine,
-            today = state.today,
-            onSchoolBlockClick = {},   // C3 课程详情
-            onManualBlockClick = {},   // D3 手动编辑
-            onEmptyLongPress = { _, _ -> },  // D1 LongPressResolver
+            onWeekSelected = { week ->
+                sheetOpen = false
+                onWeekSelected(week)
+            },
+            onDismiss = { sheetOpen = false },
         )
+    }
+}
+
+/** 周选择器（C1 correction 8/9）：1..totalWeeks 网格；natural/viewed 用独立 marker child，不共用 tag。 */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun WeekSwitcherSheet(
+    totalWeeks: Int,
+    naturalWeek: Int?,
+    viewedWeek: Int,
+    onWeekSelected: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        WeekSwitcherContent(totalWeeks, naturalWeek, viewedWeek, onWeekSelected)
+    }
+}
+
+/** 周网格本体（独立于 ModalBottomSheet 窗口，便于确定性测试）。 */
+@Composable
+internal fun WeekSwitcherContent(
+    totalWeeks: Int,
+    naturalWeek: Int?,
+    viewedWeek: Int,
+    onWeekSelected: (Int) -> Unit,
+) {
+    run {
+        Text(
+            "选择周次",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            items((1..totalWeeks).toList()) { week ->
+                val isNatural = naturalWeek == week
+                val isViewed = viewedWeek == week
+                Box(
+                    Modifier
+                        .padding(4.dp)
+                        .testTag("week_$week")
+                        .clickable { onWeekSelected(week) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = when {
+                            isViewed -> MaterialTheme.colorScheme.primaryContainer
+                            isNatural -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "$week",
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.semantics { contentDescription = "第${week}周" },
+                            )
+                        }
+                    }
+                    // 独立 marker child：同一周可同时 natural + viewed（correction 9）
+                    if (isNatural) {
+                        Text(
+                            "今",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("natural_week_$week").align(Alignment.TopStart).padding(2.dp),
+                        )
+                    }
+                    if (isViewed) {
+                        Text(
+                            "●",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("viewed_week_$week").align(Alignment.BottomEnd).padding(2.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

@@ -39,21 +39,50 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 
-/** B3 authoritative UI state（frozen §5.1 + B3 gate）。isAcademicCurrentViewed 与 canSyncViewed 语义分离。 */
+/** 单周 page projection（C1 correction 3）：每页自带 weekDates/两源 placed 块/nowLine。 */
+data class TimetableWeekPageUiState(
+    val week: Int,
+    val weekDates: LocalDateRange,
+    val placedSchool: List<PlacedBlock>,
+    val placedManual: List<PlacedBlock>,
+    val nowLine: LocalTime?,
+)
+
+/** B3/C1 authoritative UI state。weekPages 是唯一 layout 真相；其余为 derived getters，无第二份 field。 */
 data class TimetableUiState(
     val semester: Semester? = null,
     val viewedWeek: Int = 1,
-    val weekDates: LocalDateRange? = null,
+    val naturalWeek: Int? = null,
     val profile: ScheduleProfile? = null,
-    val placedSchool: List<PlacedBlock> = emptyList(),
-    val placedManual: List<PlacedBlock> = emptyList(),
+    val weekPages: List<TimetableWeekPageUiState> = emptyList(),
     val showNonCurrentWeek: Boolean = false,
     val today: LocalDate? = null,
-    val nowLine: LocalTime? = null,
     val isAcademicCurrentViewed: Boolean = false,
     val canSyncViewed: Boolean = false,
     val isLoading: Boolean = true,
+) {
+    val viewedPage: TimetableWeekPageUiState? get() = weekPages.getOrNull(viewedWeek - 1)
+    val weekDates: LocalDateRange? get() = viewedPage?.weekDates
+    val placedSchool: List<PlacedBlock> get() = viewedPage?.placedSchool.orEmpty()
+    val placedManual: List<PlacedBlock> get() = viewedPage?.placedManual.orEmpty()
+    val nowLine: LocalTime? get() = viewedPage?.nowLine
+}
+
+/** 显式选周带学期身份（C1 correction 2）：学期切换后旧 selection 自动失效。 */
+internal data class RequestedWeek(
+    val semesterId: SemesterId,
+    val week: Int,
 )
+
+/**
+ * 越界默认周（C1 correction 1，修正冻结文字的反向 clamp）：
+ * 教学周内 → 自然周；早于教学周（未来学期）→ 1；晚于教学周（历史学期）→ totalWeeks。
+ * authority 仅 week1Start + totalWeeks（经 weekNumberOn），不用 startDate/endDate。
+ */
+internal fun defaultViewedWeek(today: LocalDate, semester: Semester): Int {
+    WeekCalculator.weekNumberOn(today, semester)?.let { return it }
+    return if (today < semester.week1Start) 1 else semester.totalWeeks
+}
 
 /** viewed semester 选择优先级（A6 语义）：valid viewedId → academic-current → latest startDate → null。只读。 */
 internal fun selectViewedSemester(semesters: List<Semester>, viewedId: String?): Semester? {
@@ -144,8 +173,8 @@ internal fun minuteTicks(clock: Clock): Flow<Instant> = flow {
 }
 
 /**
- * 首页 VM（frozen §5.1）：viewedSemesterId + observeSemesters() 响应式选择；
- * school+manual 合流后一次联合 place；nowTicks 驱动 today/nowLine。
+ * 首页 VM（frozen §5.1 + C1）：响应式 viewed semester；school+manual 原始映射一次、
+ * 每周独立 page projection（每周内两源联合 place 恰一次）；周导航纯内存不持久化。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimetableViewModel(
@@ -158,8 +187,7 @@ class TimetableViewModel(
     nowTicks: Flow<Instant>,
 ) : ViewModel() {
 
-    /** null = 用户尚未显式选周 → 用自然周。 */
-    private val requestedWeek = MutableStateFlow<Int?>(null)
+    private val requestedWeek = MutableStateFlow<RequestedWeek?>(null)
 
     private data class SemesterData(
         val semester: Semester?,
@@ -201,7 +229,7 @@ class TimetableViewModel(
         buildState(data, showNonCurrent, reqWeek, tick)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimetableUiState())
 
-    private fun buildState(data: SemesterData, showNonCurrentWeek: Boolean, reqWeek: Int?, tick: Instant): TimetableUiState {
+    private fun buildState(data: SemesterData, showNonCurrentWeek: Boolean, reqWeek: RequestedWeek?, tick: Instant): TimetableUiState {
         val zoned = tick.atZone(clock.zone)
         val today = zoned.toLocalDate()
         val now = zoned.toLocalTime()
@@ -209,36 +237,41 @@ class TimetableViewModel(
         if (semester == null || data.profile == null) {
             return TimetableUiState(showNonCurrentWeek = showNonCurrentWeek, today = today, isLoading = false)
         }
-        val natural = WeekCalculator.weekNumberOn(today, semester)
-        val viewedWeek = (reqWeek ?: natural ?: 1).coerceIn(1, semester.totalWeeks)
-        val weekDates = WeekCalculator.weekRange(semester, viewedWeek)
+        val naturalWeek = WeekCalculator.weekNumberOn(today, semester)
+        val viewedWeek = (reqWeek?.takeIf { it.semesterId == semester.id }?.week)
+            ?: defaultViewedWeek(today, semester)
 
+        // 原始映射只做一次（每周 page 共享同一 raw 集合）
         val coursesById = data.school.first.associateBy { it.id }
-        val schoolBlocks = data.school.second.mapNotNull { m ->
+        val rawSchool = data.school.second.mapNotNull { m ->
             coursesById[m.courseId]?.let { schoolTimedBlock(semester.id, it, m, data.profile) }
         }
-        val manualBlocks = data.manual.map(::manualTimedBlock)
+        val rawManual = data.manual.map(::manualTimedBlock)
+        val axis = WeeklyTimetableLayout.axisOf(data.profile)
 
-        // 唯一联合布局：过滤 → 合并 → 单次 place → 按 identity 拆分（frozen §4.2 重叠并排不覆盖）
-        val profile = data.profile
-        val axis = WeeklyTimetableLayout.axisOf(profile)
-        val placed = WeeklyTimetableLayout.place(
-            weekFilter(schoolBlocks + manualBlocks, viewedWeek, showNonCurrentWeek),
-            axis,
-        )
-        val placedSchool = placed.filter { it.block.meetingId != null }
-        val placedManual = placed.filter { it.block.manualItemId != null }
+        // 每周独立 projection：weekFilter → 单次联合 place → 按 identity 拆分
+        val weekPages = (1..semester.totalWeeks).map { week ->
+            val placed = WeeklyTimetableLayout.place(
+                weekFilter(rawSchool + rawManual, week, showNonCurrentWeek),
+                axis,
+            )
+            TimetableWeekPageUiState(
+                week = week,
+                weekDates = WeekCalculator.weekRange(semester, week),
+                placedSchool = placed.filter { it.block.meetingId != null },
+                placedManual = placed.filter { it.block.manualItemId != null },
+                nowLine = NowLinePolicy.line(semester, week, WeekCalculator.weekRange(semester, week), today, now),
+            )
+        }
 
         return TimetableUiState(
             semester = semester,
             viewedWeek = viewedWeek,
-            weekDates = weekDates,
-            profile = profile,
-            placedSchool = placedSchool,
-            placedManual = placedManual,
+            naturalWeek = naturalWeek,
+            profile = data.profile,
+            weekPages = weekPages,
             showNonCurrentWeek = showNonCurrentWeek,
             today = today,
-            nowLine = NowLinePolicy.line(semester, viewedWeek, weekDates, today, now),
             isAcademicCurrentViewed = semester.isCurrentAcademicSemester,
             canSyncViewed = semester.isCurrentAcademicSemester && semester.portalLinked,
             isLoading = false,
@@ -247,7 +280,7 @@ class TimetableViewModel(
 
     fun onWeekSelected(week: Int) {
         val semester = state.value.semester ?: return
-        requestedWeek.value = week.coerceIn(1, semester.totalWeeks)
+        requestedWeek.value = RequestedWeek(semester.id, week.coerceIn(1, semester.totalWeeks))
     }
 
     fun onNextWeek() = shiftWeek(1)
@@ -257,6 +290,6 @@ class TimetableViewModel(
     private fun shiftWeek(delta: Int) {
         val semester = state.value.semester ?: return
         val target = (state.value.viewedWeek + delta).coerceIn(1, semester.totalWeeks)
-        requestedWeek.value = target
+        requestedWeek.value = RequestedWeek(semester.id, target)
     }
 }
