@@ -10,6 +10,7 @@ import java.time.LocalDate
 
 enum class Term { AUTUMN, SPRING, SUMMER }
 
+
 data class LocalDateRange(
     override val start: LocalDate,
     override val endInclusive: LocalDate,
