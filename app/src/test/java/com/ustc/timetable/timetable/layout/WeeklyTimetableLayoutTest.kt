@@ -25,6 +25,7 @@ class WeeklyTimetableLayoutTest {
         override val weeks: WeekPattern = WeekPattern.range(1, 1),
         override val title: String = "课",
         override val location: String = "TH-B",
+        override val teacherNames: List<String> = emptyList(),
     ) : TimedBlock
 
     private fun fb(
