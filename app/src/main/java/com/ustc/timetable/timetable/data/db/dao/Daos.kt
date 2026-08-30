@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Update
 import com.ustc.timetable.timetable.data.db.entity.CourseEntity
 import com.ustc.timetable.timetable.data.db.entity.CourseMeetingEntity
 import com.ustc.timetable.timetable.data.db.entity.ManualItemEntity
@@ -23,6 +24,14 @@ interface SemesterDao {
 
     @Query("SELECT * FROM semesters WHERE isCurrentAcademicSemester = 1 AND portalLinked = 1 LIMIT 1")
     suspend fun academicCurrentPortalLinked(): SemesterEntity?
+
+    /** academic-current 学期（无论 portalLinked）；viewed 回退与 rebind 窄入口使用。 */
+    @Query("SELECT * FROM semesters WHERE isCurrentAcademicSemester = 1 LIMIT 1")
+    suspend fun academicCurrent(): SemesterEntity?
+
+    /** SPEC §3.5.1 唯一重绑入口：SQL 仅命中 academic-current 学期；返回受影响行数（调用方校验 ==1）。 */
+    @Query("UPDATE semesters SET profileId = :profileId WHERE isCurrentAcademicSemester = 1")
+    suspend fun rebindAcademicCurrentProfile(profileId: String): Int
 
     @Query("UPDATE semesters SET isCurrentAcademicSemester = 0")
     suspend fun clearAcademicCurrentFlags()
@@ -72,17 +81,12 @@ interface CourseDao {
 interface ManualItemDao {
     @Insert suspend fun insert(item: ManualItemEntity)
 
-    @Query(
-        "UPDATE manual_items SET title = :title, location = :location, note = :note, weekday = :weekday, " +
-            "startMinutes = :startMinutes, endMinutes = :endMinutes, weekPatternMask = :mask, " +
-            "updatedAtEpochMilli = :updatedAt WHERE id = :id",
-    )
-    suspend fun update(
-        id: String, title: String, location: String?, note: String?, weekday: Int,
-        startMinutes: Int, endMinutes: Int, mask: Long, updatedAt: Long,
-    )
+    @Query("SELECT * FROM manual_items WHERE id = :id") suspend fun byId(id: String): ManualItemEntity?
 
-    @Query("DELETE FROM manual_items WHERE id = :id") suspend fun delete(id: String)
+    /** 返回受影响行数；仓库层对 0 行显式失败（A6 correction 8）。 */
+    @Update suspend fun updateEntity(item: ManualItemEntity): Int
+
+    @Query("DELETE FROM manual_items WHERE id = :id") suspend fun delete(id: String): Int
 
     @Query("SELECT * FROM manual_items WHERE semesterId = :semesterId")
     suspend fun itemsForSemester(semesterId: String): List<ManualItemEntity>
@@ -96,6 +100,8 @@ interface ScheduleProfileDao {
     @Insert suspend fun insert(profile: ScheduleProfileEntity)
 
     @Query("SELECT * FROM schedule_profiles WHERE id = :id") suspend fun byId(id: String): ScheduleProfileEntity?
+
+    @Query("SELECT * FROM schedule_profiles") suspend fun all(): List<ScheduleProfileEntity>
 
     @Query("SELECT * FROM schedule_profiles WHERE id = :id")
     fun observe(id: String): Flow<ScheduleProfileEntity?>
