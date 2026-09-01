@@ -118,8 +118,8 @@ interface SessionStorage { fun read(): ByteArray?; fun write(data: ByteArray?) }
 ## Task E2 — PortalDescriptor + WebView 登录外壳 + captureAndVerify 探测闭环
 
 - SPEC §6.3、§7.1、§7.2。真实 URL 均由 `PortalDescriptor` 注入；**本任务不写任何真实 USTC URL**。
-- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/portal/PortalDescriptor.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/portal/CookieAwareFetcher.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/LoginPageDetector.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/UstcSessionManager.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/auth/WebViewLoginActivity.kt`；测试 `app/src/test/java/com/ustc/timetable/school/ustc/auth/UstcSessionManagerTest.kt`、`app/src/test/java/com/ustc/timetable/school/ustc/portal/CookieAwareFetcherTest.kt`。
-- OkHttp 客户端约定：portal 专用 client 由 `AppContainer` 以 `followRedirects(false)` + `followSslRedirects(false)` 构造（重定向由 `CookieAwareFetcher` 手动处理，保证 raw header 不跨 origin 泄漏）。
+- 文件：`portal/PortalDescriptor.kt`、`portal/CookieAwareFetcher.kt`、`portal/PortalHttpClientFactory.kt`、`dto/UstcPortalPage.kt`、`auth/LoginPageDetector.kt`、`auth/UstcSessionManager.kt`、`auth/LoginCompletionCoordinator.kt`、`auth/WebViewLoginActivity.kt`、`sync/SyncError.kt`；对应 auth/portal tests 分职覆盖。
+- OkHttp 客户端约定：`PortalHttpClientFactory` 以 `followRedirects(false)` + `followSslRedirects(false)` + `CookieJar.NO_COOKIES` 构造 portal 专用 client。E2 不接 `AppContainer`；等 concrete descriptor/detector 经证据 gate 确定后再组装。
 
 接口与关键代码：
 ```kotlin
@@ -132,30 +132,32 @@ interface PortalDescriptor {
     val sessionHosts: List<String> // 已登录门户域（用于判断 WebView 已离开登录域）
 }
 
+// dto/UstcPortalPage.kt —— ownership 前移至 E2，F1 不再重复创建
+data class UstcPortalPage(val html: String, val finalUrl: String)
+
 // auth/LoginPageDetector.kt —— 输入闭合：任何判定都基于一个真实响应的 (url, html)
 interface LoginPageDetector { fun isLoginPage(url: String, html: String): Boolean }
 
 // portal/CookieAwareFetcher.kt —— 手动重定向：逐跳按目标 URL 重新 pickFor；手工 raw header 绝不跨 origin 泄漏
-class CookieAwareFetcher(private val http: OkHttpClient, private val maxHops: Int = 5) {
+class CookieAwareFetcher(private val http: OkHttpClient, private val maxRedirects: Int = 5) {
     suspend fun fetch(url: String, headers: List<SessionCookieHeader>): UstcPortalPage {
         var current = url
-        var hops = 0
+        var redirectCount = 0
         while (true) {
-            if (++hops > maxHops) throw SyncError.NetworkFailed.asIllegalState()
             val h = SessionCookieHeader.pickFor(current, headers)   // 每跳重新 pick；新 scope 无 header 则该跳不带 Cookie
             val request = Request.Builder().url(current).apply { if (h != null) header("Cookie", h.cookieHeader) }.build()
-            val page = withContext(Dispatchers.IO) {
-                http.newCall(request).execute().use { resp ->
-                    val location = resp.header("Location")
-                    if (resp.isRedirect && location != null) {
-                        current = resp.request.url.resolve(location)!!.toString()
-                        null                                         // 3xx：不返回本页，继续下一跳
-                    } else {
-                        UstcPortalPage(html = resp.body.string(), finalUrl = resp.request.url.toString())
-                    }
+            val call = http.newCall(request)
+            val response = call.awaitCancellable()                 // coroutine cancel → Call.cancel()
+            response.use { resp ->
+                if (resp.code in setOf(301, 302, 303, 307, 308)) {
+                    if (redirectCount >= maxRedirects) throw SyncError.NetworkFailed.asFailure()
+                    current = validateHttpRedirect(resp.request.url.resolve(requireNotNull(resp.header("Location"))))
+                    redirectCount++                                // initial request + 最多 5 次被跟随 redirect
+                    continue
                 }
-            } ?: continue
-            return page
+                if (!resp.isSuccessful) throw SyncError.NetworkFailed.asFailure()
+                return UstcPortalPage(html = resp.body.string(), finalUrl = current)
+            }
         }
     }
 }
@@ -177,22 +179,24 @@ class UstcSessionManager(
     suspend fun captureAndVerify(): SessionBlob {
         val targets = listOf(descriptor.probeUrl, descriptor.selectionUrl, descriptor.timetableUrl).distinct()
         val headers = targets.mapNotNull { url ->
-            cookies.cookieHeaderFor(url)?.let { SessionCookieHeader(url, it) }
+            cookies.cookieHeaderFor(url)?.takeUnless(String::isBlank)?.let { SessionCookieHeader(url, it) }
         }.distinct()
-        if (headers.isEmpty()) throw SyncError.AuthenticationExpired.asIllegalState()
+        if (SessionCookieHeader.pickFor(descriptor.probeUrl, headers) == null)
+            throw SyncError.AuthenticationExpired.asFailure()      // 无/冲突 probe scope：零 HTTP、零写入
         val page = fetcher.fetch(descriptor.probeUrl, headers)
-        if (detector.isLoginPage(page.finalUrl, page.html)) throw SyncError.AuthenticationExpired.asIllegalState()
+        if (page.html.isBlank()) throw SyncError.NetworkFailed.asFailure()
+        if (detector.isLoginPage(page.finalUrl, page.html)) throw SyncError.AuthenticationExpired.asFailure()
         val blob = SessionBlob(headers, clock.instant())
-        store.save(blob)
+        store.save(blob)                                           // 只在 probe + detector 通过后覆盖旧 session
         return blob
     }
     suspend fun clear() = store.clear()
 }
 ```
 - `WebViewLoginActivity` 行为（自动完成检测为最终主路径）：
-  1. `onCreate` 加载 `descriptor.loginUrl`；
-  2. `WebViewClient.onPageFinished`：若 `Uri.parse(url).host ∈ descriptor.sessionHosts` → 后台调 `captureAndVerify()`；成功 → `setResult(RESULT_OK)` + `finish()`；失败（仍在登录页）→ 忽略等待下一次 onPageFinished；
-  3. 连续 3 次探测未通过时显示 fallback 按钮「我已完成登录」，点击手动触发一次 `captureAndVerify()`；
+  1. `application as? WebViewLoginDependenciesProvider` 未配置时 `RESULT_CANCELED` 并安全关闭；不伪造 placeholder descriptor/detector；
+  2. 有配置时加载 `descriptor.loginUrl`；`LoginCompletionCoordinator` 对 exact session-host 的 `onPageFinished` 执行 single-flight 自动 probe，in-flight 重复事件忽略且不计失败；
+  3. 成功 → `setResult(RESULT_OK)` + `finish()`；第 3 次真实自动失败后显示 fallback 按钮「我已完成登录」，手动 probe 不依赖当前 page host；
   4. 结果经 `ActivityResultContract` 返回调用方（G3/I2 使用）。
 - 步骤：
 - [ ] 1. 写 failing test（fake `PortalDescriptor`（`https://fixture.example/login` 等，probe/selection/timetable 跨两个 host 以覆盖多 host 路径）、fake `LoginPageDetector`、fake `CookieRetriever` 按返回 URL 派发不同 header、MockWebServer 作 probe 目标、followRedirects(false) 的 OkHttp）：
@@ -207,8 +211,8 @@ class UstcSessionManager(
 - [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.UstcSessionManagerTest" --tests "com.ustc.timetable.school.ustc.portal.CookieAwareFetcherTest"`。
 - [ ] 3. 最小实现（如上；`sealed class SyncError` 本任务在 `app/src/main/java/com/ustc/timetable/sync/SyncError.kt` 先落，G2 只增不挪。同文件一并定义异常包装与解包助手：
 ```kotlin
-class SyncFailure(val error: SyncError) : IllegalStateException(error.toString())
-fun SyncError.asIllegalState(): SyncFailure = SyncFailure(this)
+class SyncFailure(val error: SyncError, cause: Throwable? = null) : Exception("Sync failed: ${error::class.simpleName}", cause)
+fun SyncError.asFailure(cause: Throwable? = null): SyncFailure = SyncFailure(this, cause)
 fun Throwable.syncErrorOrNull(): SyncError? = (this as? SyncFailure)?.error
 ```）。
 - [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.auth.UstcSessionManagerTest" --tests "com.ustc.timetable.school.ustc.portal.CookieAwareFetcherTest"`。
@@ -239,8 +243,8 @@ data class UstcSemesterMetaPartial(
     val week1Start: java.time.LocalDate?, val totalWeeks: Int?,
     val startDate: java.time.LocalDate?, val endDate: java.time.LocalDate?,
 )
-data class UstcPortalPage(val html: String, finalUrl: String)
 ```
+- `UstcPortalPage` 已由 E2 落在 `dto/UstcPortalPage.kt`；F1 仅新增其余 DTO，不重复声明该类型。
 - `ParserInterfaces.kt`（**接口**；G2/SyncEngine 只依赖它们，因此 evidence-free）：
 ```kotlin
 package com.ustc.timetable.school.ustc.parser
