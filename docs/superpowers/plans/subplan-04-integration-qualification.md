@@ -9,25 +9,33 @@
 ## Task I1 — FirstLaunchScreen + 稍后手动创建
 
 - SPEC §5.7、§3.2、§3.5.1。
-- 文件：`app/src/main/java/com/ustc/timetable/timetable/ui/FirstLaunchScreen.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/FirstLaunchViewModel.kt`；修改 `app/src/main/java/com/ustc/timetable/MainActivity.kt`（库空 → FirstLaunchScreen，否则 TimetableScreen）；测试 `app/src/test/java/com/ustc/timetable/timetable/ui/FirstLaunchViewModelTest.kt`。
+- 文件：`app/src/main/java/com/ustc/timetable/timetable/ui/FirstLaunchScreen.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/FirstLaunchViewModel.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/AppRoot.kt`；修改 `app/src/main/java/com/ustc/timetable/MainActivity.kt`；测试覆盖 ViewModel、Screen、AppRoot 与 atomic repository claim。
 
 接口：
 ```kotlin
+sealed interface FirstLaunchGate { data object Loading; data object Empty; data object Ready }
+
 class FirstLaunchViewModel(
-    private val semesters: SemesterRepository, private val profiles: ScheduleProfileRepository,
-    private val settings: SettingsStore, private val clock: Clock,
+    private val semesters: SemesterRepository,
+    private val settings: SettingsStore,
+    private val bundledOfficial: ScheduleProfile,
+    private val clock: Clock,
 ) : ViewModel() {
-    fun onSkipManualCreation()      // 事务内：克隆 bundled working 为学期 profile → createLocalSemester(AUTUMN_2026, portalLinked=false, isCurrentAcademicSemester=true) → setViewedSemesterId
-    val importedSemesterCreated: StateFlow<Boolean?>
+    val state: StateFlow<FirstLaunchUiState> // observeSemesters(): first emission 前 Loading；empty → Empty；non-empty → Ready
+    fun onSkipManualCreation()               // atomic Room create 成功后才写 viewedSemesterId
 }
 ```
+- First-launch gate 的唯一 authority 是反应式 Room semester emptiness；`Loading` 防止已有数据用户冷启动闪出首启页。Empty → Ready 后同一 `AppRoot` 回到 Timetable，I3 Settings/ProfileEditor destination 不复制。
+- 本地 fallback 固定使用 `AppContainer.bundledOfficial`，不读取 working pointer；`SemesterRepository.createInitialLocalSemesterIfEmpty()` 在一个 transaction 内重新检查空库、clone bundled 为 private profile、插入 forced-manual AUTUMN_2026、exclusive academic-current。Room commit 成功后才写 viewed DataStore。
+- DebugSeed 与 manual fallback 共享同一个 atomic empty-database claim；Debug/Release 使用相同 first-launch gate，debug 异步 seed 可自然触发 Empty → Ready。
+- 当前真实 portal evidence 未满足，import runtime 是 nullable/unavailable seam；按钮保持可见并提示“导入功能将在门户接入后可用”，不得 composition fake portal。
 - 步骤：
 - [ ] 1. 写 failing test `app/src/test/java/com/ustc/timetable/timetable/ui/FirstLaunchViewModelTest.kt`（in-memory Room + fake settings）：`skip_creates_local_autumn_2026_semester`（断言 `displayName=="2026-2027 秋季"`、`week1Start==2026-08-31`、`totalWeeks==20`、`portalLinked==false`、`isCurrentAcademicSemester==true`、`sourceFingerprint==null`、`profileId` 指向新建克隆行）、`skip_sets_viewed_to_new_semester`、`first_launch_shown_only_when_no_semesters`、`skip_twice_is_idempotent`。
 - [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.FirstLaunchViewModelTest"`。
-- [ ] 3. 最小实现：界面文案与两个按钮严格按 SPEC §5.7；`[登录并导入]` 经 `AppContainer.portalReady: Boolean` 判断（gated 分支 G1 完成前置 true）决定可用性，未接入时点击提示"导入功能将在门户接入后可用"。
+- [ ] 3. 最小实现：界面文案与两个按钮严格按 SPEC §5.7；`[登录并导入]` 使用 nullable real-runtime launcher，未接入时点击提示“导入功能将在门户接入后可用”，不读取 `portalReady` 作为 first-launch gate。
 - [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.FirstLaunchViewModelTest"`。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.*"` → GREEN。
-- [ ] 6. commit：`git add -A && git commit -m "phaseI1: first launch screen with local manual-fallback semester"`。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseI1: database-driven first launch and atomic manual fallback"`。
 
 ---
 
