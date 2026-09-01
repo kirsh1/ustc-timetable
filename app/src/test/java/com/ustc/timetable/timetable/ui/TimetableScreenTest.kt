@@ -115,8 +115,8 @@ class TimetableScreenTest {
         rule.onAllNodesWithTag("refresh").assertCountEquals(0)
     }
 
-    @Test fun portal_current_shows_disabled_refresh() {
-        rule.setContent { TimetableScreen(state = fullState(isAcademicCurrentViewed = true, canSyncViewed = true), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+    @Test fun portal_current_with_runtime_shows_refresh() {
+        rule.setContent { TimetableScreen(state = fullState(isAcademicCurrentViewed = true, canSyncViewed = true), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}, manualSyncAvailable = true) }
         rule.onAllNodesWithTag("refresh").assertCountEquals(1)
     }
 

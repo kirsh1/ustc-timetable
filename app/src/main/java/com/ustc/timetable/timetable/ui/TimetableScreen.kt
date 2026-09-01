@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +38,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.ustc.timetable.school.ustc.auth.WebViewLoginContract
+import com.ustc.timetable.sync.ManualSyncController
+import com.ustc.timetable.sync.ManualSyncEvent
+import com.ustc.timetable.sync.ManualSyncState
+import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.data.ManualItemRepository
@@ -62,26 +71,49 @@ fun TimetableRoute(
     viewModel: TimetableViewModel,
     manualRepository: ManualItemRepository,
     clock: Clock,
+    manualSyncController: ManualSyncController? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val manualSyncState = if (manualSyncController == null) {
+        ManualSyncState.Idle
+    } else {
+        manualSyncController.state.collectAsState().value
+    }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val reloginLauncher = rememberLauncherForActivityResult(WebViewLoginContract()) { successful ->
+        manualSyncController?.let { handleManualSyncLoginResult(it, successful) }
+    }
+    LaunchedEffect(manualSyncController) {
+        manualSyncController?.events?.collect { event ->
+            snackbarHostState.showSnackbar(manualSyncEventMessage(event))
+        }
+    }
     var semesterSheetOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val overlays = remember(state.semester?.id) { ManualOverlayState() }
-    TimetableScreen(
-        state = state,
-        onPrevWeek = viewModel::onPrevWeek,
-        onNextWeek = viewModel::onNextWeek,
-        onWeekSelected = viewModel::onWeekSelected,
-        onSemesterTitleClick = { semesterSheetOpen = true },
-        onSchoolBlockClick = overlays::openSchool,
-        onManualBlockClick = { id, pageWeek ->
-            val target = createEditManualEditorTarget(state, id, pageWeek)
-            if (target == null) overlays.dismissManual() else overlays.openManual(target)
-        },
-        onEmptyLongPress = { pageWeek, columnFraction, yFraction ->
-            val target = createNewManualEditorTarget(state, pageWeek, columnFraction, yFraction)
-            if (target == null) overlays.dismissManual() else overlays.openManual(target)
-        },
-    )
+    Box(Modifier.fillMaxSize()) {
+        TimetableScreen(
+            state = state,
+            onPrevWeek = viewModel::onPrevWeek,
+            onNextWeek = viewModel::onNextWeek,
+            onWeekSelected = viewModel::onWeekSelected,
+            onSemesterTitleClick = { semesterSheetOpen = true },
+            onSchoolBlockClick = overlays::openSchool,
+            onManualBlockClick = { id, pageWeek ->
+                val target = createEditManualEditorTarget(state, id, pageWeek)
+                if (target == null) overlays.dismissManual() else overlays.openManual(target)
+            },
+            onEmptyLongPress = { pageWeek, columnFraction, yFraction ->
+                val target = createNewManualEditorTarget(state, pageWeek, columnFraction, yFraction)
+                if (target == null) overlays.dismissManual() else overlays.openManual(target)
+            },
+            manualSyncAvailable = manualSyncController != null,
+            manualSyncState = manualSyncState,
+            onRefreshClick = { manualSyncController?.start() },
+            onReloginClick = { reloginLauncher.launch(Unit) },
+            onCancelAuthExpired = { manualSyncController?.onCancelAuthExpired() },
+        )
+        SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
+    }
     if (semesterSheetOpen && state.semester != null) {
         com.ustc.timetable.semester.SemesterSwitcherSheet(
             semesters = state.availableSemesters,
@@ -131,6 +163,11 @@ fun TimetableScreen(
     onSchoolBlockClick: (MeetingId) -> Unit = {},
     onManualBlockClick: (ManualItemId, pageWeek: Int) -> Unit = { _, _ -> },
     onEmptyLongPress: (pageWeek: Int, columnFraction: Float, yFraction: Float) -> Unit = { _, _, _ -> },
+    manualSyncAvailable: Boolean = false,
+    manualSyncState: ManualSyncState = ManualSyncState.Idle,
+    onRefreshClick: () -> Unit = {},
+    onReloginClick: () -> Unit = {},
+    onCancelAuthExpired: () -> Unit = {},
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -156,13 +193,29 @@ fun TimetableScreen(
                 modifier = Modifier.testTag("semester_name").clickable { onSemesterTitleClick() },
             )
             Spacer(Modifier.weight(1f))
-            if (state.canSyncViewed) {
-                Text(
-                    "↻",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    modifier = Modifier.testTag("refresh").padding(horizontal = 8.dp),
-                )
+            if (state.canSyncViewed && manualSyncAvailable) {
+                val refreshEnabled = manualSyncState == ManualSyncState.Idle
+                Box(
+                    modifier = Modifier
+                        .testTag("refresh")
+                        .clickable(enabled = refreshEnabled, onClick = onRefreshClick)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (manualSyncState == ManualSyncState.Syncing) {
+                        CircularProgressIndicator(Modifier.size(20.dp).testTag("refresh_progress"), strokeWidth = 2.dp)
+                    } else {
+                        Text(
+                            "↻",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = if (refreshEnabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            },
+                        )
+                    }
+                }
             }
             Text(
                 "⚙",
@@ -264,6 +317,25 @@ fun TimetableScreen(
             onDismiss = { sheetOpen = false },
         )
     }
+    if (manualSyncState == ManualSyncState.AwaitingReauth) {
+        AuthExpiredDialog(onCancel = onCancelAuthExpired, onRelogin = onReloginClick)
+    }
+}
+
+internal fun handleManualSyncLoginResult(controller: ManualSyncController, successful: Boolean) {
+    if (successful) controller.onReloginSuccess() else controller.onReloginCanceled()
+}
+
+internal fun manualSyncEventMessage(event: ManualSyncEvent): String = when (event) {
+    is ManualSyncEvent.Updated -> "课表已更新：${event.changeCount} 处变化"
+    is ManualSyncEvent.FailedOther -> manualSyncFailureMessage(event.error)
+}
+
+internal fun manualSyncFailureMessage(error: SyncError): String = when (error) {
+    SyncError.NetworkFailed -> "同步失败，请检查网络后重试"
+    SyncError.ParseFailed -> "无法解析学校课表，已保留本地课表"
+    SyncError.ValidationFailed -> "学校课表数据校验失败，已保留本地课表"
+    SyncError.AuthenticationExpired -> "登录状态已失效"
 }
 
 /** 周选择器（C1 correction 8/9）：1..totalWeeks 网格；natural/viewed 用独立 marker child，不共用 tag。 */
