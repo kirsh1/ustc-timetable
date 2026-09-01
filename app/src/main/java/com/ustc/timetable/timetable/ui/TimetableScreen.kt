@@ -72,6 +72,7 @@ fun TimetableRoute(
     manualRepository: ManualItemRepository,
     clock: Clock,
     manualSyncController: ManualSyncController? = null,
+    onSettingsClick: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val manualSyncState = if (manualSyncController == null) {
@@ -111,6 +112,7 @@ fun TimetableRoute(
             onRefreshClick = { manualSyncController?.start() },
             onReloginClick = { reloginLauncher.launch(Unit) },
             onCancelAuthExpired = { manualSyncController?.onCancelAuthExpired() },
+            onSettingsClick = onSettingsClick,
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
@@ -168,6 +170,7 @@ fun TimetableScreen(
     onRefreshClick: () -> Unit = {},
     onReloginClick: () -> Unit = {},
     onCancelAuthExpired: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -220,8 +223,8 @@ fun TimetableScreen(
             Text(
                 "⚙",
                 style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                modifier = Modifier.testTag("settings").padding(start = 8.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.testTag("settings").clickable(onClick = onSettingsClick).padding(start = 8.dp),
             )
         }
         // 周标题行

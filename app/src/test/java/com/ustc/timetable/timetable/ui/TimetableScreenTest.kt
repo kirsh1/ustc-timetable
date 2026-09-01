@@ -120,9 +120,13 @@ class TimetableScreenTest {
         rule.onAllNodesWithTag("refresh").assertCountEquals(1)
     }
 
-    @Test fun settings_control_present_but_disabled() {
-        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+    @Test fun timetable_gear_opens_settings() {
+        var calls = 0
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}, onSettingsClick = { calls++ }) }
         rule.onAllNodesWithTag("settings").assertCountEquals(1)
+        rule.onNodeWithTag("settings").performClick()
+        rule.waitForIdle()
+        assertEquals(1, calls)
     }
 
     @Test fun screen_school_block_click_forwards_exact_meeting_id() {

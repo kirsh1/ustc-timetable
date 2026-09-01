@@ -131,6 +131,25 @@ class ScheduleProfileRepositoryTest {
         assertEquals(syntheticPeriods(), editedAgain.periods)
     }
 
+    @Test fun restore_default_keeps_old_custom_row() = runBlocking {
+        val edited = repo.saveWorkingEdited(bundledOfficial, syntheticPeriods())
+        repo.restoreWorkingToBundled()
+        assertEquals(edited.toEntity(), db.scheduleProfileDao().byId(edited.id))
+    }
+
+    @Test fun restore_default_does_not_change_semester_bindings() = runBlocking {
+        repo.ensureBundledSeeded()
+        val bound = repo.cloneForSemester(bundledOfficial)
+        db.semesterDao().insert(
+            com.ustc.timetable.timetable.data.db.Mappers.toEntity(
+                com.ustc.timetable.timetable.domain.SemesterDefaults.AUTUMN_2026("bound", bound.id, java.time.Instant.EPOCH),
+            ),
+        )
+        repo.saveWorkingEdited(bundledOfficial, syntheticPeriods())
+        repo.restoreWorkingToBundled()
+        assertEquals(bound.id, db.semesterDao().byId("bound")!!.profileId)
+    }
+
     @Test fun saveWorkingEdited_rejects_stale_base() = runBlocking {
         val first = repo.saveWorkingEdited(bundledOfficial, syntheticPeriods())
         assertThrows(IllegalArgumentException::class.java) {
