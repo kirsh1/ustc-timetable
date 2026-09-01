@@ -311,16 +311,18 @@ class ManualItemEditorViewModel(
     private val manual: ManualItemRepository,
     private val semester: Semester,            // viewed 学期；决定周次上界与 day window
     private val profile: ScheduleProfile,      // 学期绑定 profile；day window 校验依据
-    private val existing: ManualScheduleItem?,
+    private val initial: ManualEditorInitial,   // New/Edit session 在创建时冻结 viewedWeek
     private val clock: Clock,
 ) : ViewModel() {
     val draft: StateFlow<EditorDraft>
     fun update(transform: (EditorDraft) -> EditorDraft)
     fun validationError(): String?             // null=可保存
-    fun buildItem(viewedWeek: Int): ManualScheduleItem
-    suspend fun save(viewedWeek: Int); suspend fun delete()
+    fun buildItem(): ManualScheduleItem
+    suspend fun save(); suspend fun delete()
 }
 ```
+- `ManualEditorInitial` 在 editor session 创建时冻结 `viewedWeek`，`buildItem()` / `save()` 不再接受调用方传入的周次。
+- Edit 初始化必须无损推断 week mode：单周且等于 frozen viewedWeek → CURRENT_ONLY；连续多周 → CONTINUOUS；其余 → CUSTOM。特别地，single non-viewed week 必须是 CUSTOM singleton，避免无改动保存时被替换成当前查看周。
 - 校验顺序（`validationError`）：标题空 → "请填写标题"；`endTime <= startTime` → "结束需晚于开始"；`!profile.dayWindow().contains(startTime) || !contains(endTime)` → "时间需在作息窗口内"（SPEC §3.4，轴外拒绝）；CUSTOM 且 `customWeeks.isEmpty()` → "请选择周次"。
 - 周次构建：CURRENT_ONLY → `WeekPattern.of(viewedWeek)`；CONTINUOUS → `WeekPattern.range(clamp(start,1,totalWeeks), clamp(end,start..totalWeeks))`；CUSTOM → `WeekPattern.of(*customWeeks.sorted().toIntArray())`。
 - 步骤：
