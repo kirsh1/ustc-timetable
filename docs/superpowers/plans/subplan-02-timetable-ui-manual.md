@@ -47,7 +47,7 @@ object CoursePalette {
 }
 ```
 
-块渲染规则（SPEC §4.3/§4.7）：名称（粗体、ellipsis）+ 地点必显；块高超过 60dp 且列宽超过 52dp 时追加教师行；块高超过 90dp 再追加时间行。4dp 圆角、无 elevation。当前周由 `block.weeks.contains(viewedWeek)` 判定；非当前周且 `showNonCurrentWeek==true` 时 `alpha=0.35`，`showNonCurrentWeek==false` 时不参与布局输入（上层过滤）。取色用 `block.colorKey`（学校块 = `"$semesterId:$sourceCourseKey"`，与本地 meeting UUID 无关，替换重建不影响颜色；手动块 = `"manual:$manualItemId"`）。
+块渲染规则（SPEC §4.3/§4.7）：名称（粗体）与地点必显，均为单行 ellipsis；块高超过 60dp 且实际卡片宽 `groupW` 超过 52dp 时追加教师行，块高超过 90dp 且同一 `groupW` 超过 52dp 时追加时间行。`groupW` 是 overlap 分列后的有效宽度，不是完整 weekday column；所有文字单行 ellipsis，卡片按 4dp 圆角边界 clip，无 elevation。当前周由 `block.weeks.contains(viewedWeek)` 判定；非当前周且 `showNonCurrentWeek==true` 时 `alpha=0.35`，`showNonCurrentWeek==false` 时不参与布局输入（上层过滤）。取色用 `block.colorKey`（学校块 = `"$semesterId:$sourceCourseKey"`，与本地 meeting UUID 无关，替换重建不影响颜色；手动块 = `"manual:$manualItemId"`）。
 
 步骤：
 - [ ] 1. 写 failing test（Robolectric compose；`TimedBlock` 用测试内 fake 实现 `FakeBlock`）：
@@ -101,6 +101,7 @@ fun WeeklyTimetableGrid(
                     val colW = gridW / 7f
                     val dayX = (pb.block.weekday - 1) * colW
                     val groupW = colW / pb.columnsInGroup
+                    val hasTextWidth = groupW > 52.dp
                     val x = dayX + pb.column * groupW
                     val y = gridH * pb.topFraction
                     val h = gridH * pb.heightFraction
@@ -111,12 +112,19 @@ fun WeeklyTimetableGrid(
                             .offset(x = x, y = y)
                             .size(width = groupW, height = h)
                             .graphicsLayer { this.alpha = alpha }
+                            .clip(RoundedCornerShape(4.dp))
                             .background(CoursePalette.containerColor(colorIdx), RoundedCornerShape(4.dp))
                             .clickable {
                                 if (isManual) onManualBlockClick(pb.block.manualItemId!!) else onSchoolBlockClick(pb.block.meetingId!!)
                             }
                             .semantics { contentDescription = BlockTexts.a11y(pb.block, viewedWeek) },
-                    ) { BlockTexts.Content(pb.block, showTeacher = h > 60.dp, showTime = h > 90.dp) }
+                    ) {
+                        BlockTexts.Content(
+                            pb.block,
+                            showTeacher = h > 60.dp && hasTextWidth,
+                            showTime = h > 90.dp && hasTextWidth,
+                        )
+                    }
                 }
                 placedSchool.forEach { place(it, isManual = false) }
                 placedManual.forEach { place(it, isManual = true) }
