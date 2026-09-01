@@ -91,25 +91,35 @@ Settings 结构（严格按 SPEC §8.4；**禁止出现**：一周第一天、�
 ```kotlin
 class SettingsViewModel(
     private val settings: SettingsStore, private val profiles: ScheduleProfileRepository,
-    private val semesters: SemesterRepository, private val syncScheduler: SyncSchedulerApi,
+    private val semesters: SemesterRepository,
     private val permission: NotificationPermissionController,
-    private val notificationsEnabled: Boolean,
+    private val notifications: NotificationsEnabledChecker,
+    private val weeklyScheduling: WeeklySyncScheduling?,
+    private val manualSync: SettingsManualSync?,
+    private val session: SettingsSessionAccess?,
 ) : ViewModel() {
-    val ui: StateFlow<SettingsUiState>   // lastSyncTime、weeklySyncEnabled、loginState(未登录/已登录/已失效)、通知权限提示行
-    fun onToggleWeeklySync(v: Boolean)   // v=true：SyncScheduler.enqueue + shouldRequestNow→requestPermissions(POST_NOTIFICATIONS)→markRequested()；v=false：cancel
-    fun onSyncNow()                      // ManualSyncController.start()（无 portalLinked 学期时按钮禁用）
+    val state: StateFlow<SettingsUiState>
+    val events: Flow<SettingsEvent>      // permission/settings/relogin one-shot UI events
+    fun onToggleWeeklySync(v: Boolean)   // 总是持久化 intent；仅 runtime seam 非 null 时调 scheduler
+    fun onSyncSectionEntered()           // 与首次 enable 二者取先，经 H2 policy 发一次 permission event
+    fun onNotificationPermissionRequestLaunched() // Route 实际 launch 后才 markRequested
+    fun onSyncNow()                      // eligible target + runtime seam 同时存在才 start
     fun onRelogin(); fun onClearLogin()
     fun onApplyWorkingProfileToCurrentSemester()  // profiles.rebindAcademicCurrentSemester()；仅 academic-current 场景存在该入口
 }
 ```
-- ProfileEditor：13 行（节次号 + 开始/结束 TimePicker），保存校验：全部 `end > start` 且 `periods[i+1].start > periods[i].end` → `profiles.saveWorkingEdited(base, periods)`（clone-on-write 新行）；「恢复学校默认」→ `restoreWorkingToBundled()`。
+- notification enabled 每次在 screen entry、permission result/resume 边界通过 checker 刷新；Android `RequestPermission` launcher 与 app-notification settings Intent 只存在于 Route/Composable，ViewModel 不调用 Android launcher。API 33+ denied + request-shown 才展示提示，拒绝通知不改变 weekly sync preference。
+- H3 WorkerFactory/真实 portal runtime 尚未 composition，因此当前 APK 注入 `weeklyScheduling=null`、`manualSync=null`、relogin unavailable：用户 intent 仍持久化，但不 enqueue broken Worker；立即同步/重新登录保持可见且 disabled。真实 runtime 完成后 startup 再按 persisted intent reconciliation。
+- `SettingsStore.lastSyncFinishedAt` 定义为最后一次实际 portal sync attempt 完成时间；I3 只读并以 `yyyy-MM-dd HH:mm` 展示，`null` 显示 `—`，本轮写入次数为 0。target-aware producer 留给真实 runtime composition。
+- ProfileEditor：13 行（节次号 + 可编辑开始/结束时间），初值只来自 working profile；保存校验：全部 `end > start` 且 `periods[i+1].start > periods[i].end` → `profiles.saveWorkingEdited(base, periods)`（clone-on-write 新行）。「恢复学校默认」只清 working pointer，旧 custom row 可保留且任何 semester binding 不变；显式 apply 仍只调用 `rebindAcademicCurrentSemester()`。
+- portal-dependent Settings actions 使用 nullable runtime seam；不得为 Settings 安装 fake portal/session。登录清除经 session seam 清密文并复位 needReauth，不删除任何本地课表数据。
 - 步骤：
 - [ ] 1. 写 failing test：`all_required_entries_present`（语义树断言 SPEC §8.4 每项文案存在）、`forbidden_entries_absent`（"第一天""周末""日视图""五日""七日"不出现）、`editor_rejects_overlapping_periods`、`editor_save_creates_new_profile_and_working_pointer_moves`（学期绑定行内容不变）、`restore_default_removes_working_customization`、`apply_to_current_semester_rebinds_only_academic_current`、`weekly_sync_toggle_requests_permission_once`、`notification_denied_hint_row_shown`、`sync_now_disabled_without_portal_linked_semester`。
 - [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.SettingsScreenTest" --tests "com.ustc.timetable.scheduleprofile.ProfileEditorTest"`。
-- [ ] 3. 最小实现：按上；`onRelogin`/`onClearLogin` 走 E2 会话管理；「关于」区显示 `BuildConfig.VERSION_NAME`。
+- [ ] 3. 最小实现：按上述 runtime/settings boundary；首页 gear 用 MainActivity 本地 destination state 接 Settings/ProfileEditor，不引入 Navigation Compose，不启动 I1；「关于」区显示 `BuildConfig.VERSION_NAME`。
 - [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.SettingsScreenTest" --tests "com.ustc.timetable.scheduleprofile.ProfileEditorTest"`。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.*" --tests "com.ustc.timetable.scheduleprofile.*" --tests "com.ustc.timetable.notification.*"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseI3: settings with clone-on-write profile editor and permission policy"`。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseI3: settings and clone-on-write profile editor"`。
 
 ---
 
