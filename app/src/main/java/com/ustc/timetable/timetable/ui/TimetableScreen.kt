@@ -36,8 +36,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.timetable.domain.MeetingId
+import com.ustc.timetable.timetable.domain.ManualItemId
+import com.ustc.timetable.timetable.data.ManualItemRepository
+import com.ustc.timetable.manual.ManualEditorHost
+import com.ustc.timetable.manual.ManualOverlayState
+import com.ustc.timetable.manual.createEditManualEditorTarget
+import com.ustc.timetable.manual.createNewManualEditorTarget
+import com.ustc.timetable.manual.resolveManualEditorInitial
 import com.ustc.timetable.timetable.layout.WeeklyTimetableGrid
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import java.time.Clock
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 
@@ -50,21 +58,29 @@ internal fun resolveSchoolCourseDetail(
 /** Route：collect state → 无状态 Screen；Screen 不读 Room/DataStore。 */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun TimetableRoute(viewModel: TimetableViewModel) {
+fun TimetableRoute(
+    viewModel: TimetableViewModel,
+    manualRepository: ManualItemRepository,
+    clock: Clock,
+) {
     val state by viewModel.state.collectAsState()
     var semesterSheetOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
-    // C3 correction 13：只保存 ephemeral MeetingId（不保存 detail model）；
-    // 切学期经 remember(semester.id) 丢弃旧选择；stale id → lookup null → 不渲染旧详情。
-    var selectedSchoolMeetingId by androidx.compose.runtime.remember(state.semester?.id) {
-        androidx.compose.runtime.mutableStateOf<MeetingId?>(null)
-    }
+    val overlays = remember(state.semester?.id) { ManualOverlayState() }
     TimetableScreen(
         state = state,
         onPrevWeek = viewModel::onPrevWeek,
         onNextWeek = viewModel::onNextWeek,
         onWeekSelected = viewModel::onWeekSelected,
         onSemesterTitleClick = { semesterSheetOpen = true },
-        onSchoolBlockClick = { selectedSchoolMeetingId = it },
+        onSchoolBlockClick = overlays::openSchool,
+        onManualBlockClick = { id, pageWeek ->
+            val target = createEditManualEditorTarget(state, id, pageWeek)
+            if (target == null) overlays.dismissManual() else overlays.openManual(target)
+        },
+        onEmptyLongPress = { pageWeek, columnFraction, yFraction ->
+            val target = createNewManualEditorTarget(state, pageWeek, columnFraction, yFraction)
+            if (target == null) overlays.dismissManual() else overlays.openManual(target)
+        },
     )
     if (semesterSheetOpen && state.semester != null) {
         com.ustc.timetable.semester.SemesterSwitcherSheet(
@@ -77,13 +93,29 @@ fun TimetableRoute(viewModel: TimetableViewModel) {
             onDismiss = { semesterSheetOpen = false },
         )
     }
-    val selectedDetail = resolveSchoolCourseDetail(selectedSchoolMeetingId, state.courseDetailsByMeetingId)
+    val target = overlays.manualTarget
+    val editorInitial = target?.let { resolveManualEditorInitial(it, state) }
+    LaunchedEffect(target, state.semester?.id, state.profile?.id, state.manualItemsById.keys) {
+        if (target != null && editorInitial == null) overlays.dismissManual()
+    }
+    if (target != null && editorInitial != null) {
+        ManualEditorHost(
+            target = target,
+            semester = state.semester!!,
+            profile = state.profile!!,
+            existingItem = (editorInitial as? com.ustc.timetable.manual.ManualEditorInitial.Edit)?.item,
+            manual = manualRepository,
+            clock = clock,
+            onDismiss = overlays::dismissManual,
+        )
+    }
+    val selectedDetail = resolveSchoolCourseDetail(overlays.selectedSchoolMeetingId, state.courseDetailsByMeetingId)
     val selectedProfile = state.profile
     if (selectedDetail != null && selectedProfile != null) {
         CourseDetailSheet(
             detail = selectedDetail,
             profile = selectedProfile,
-            onDismiss = { selectedSchoolMeetingId = null },
+            onDismiss = overlays::dismissSchool,
         )
     }
 }
@@ -97,6 +129,8 @@ fun TimetableScreen(
     onWeekSelected: (Int) -> Unit,
     onSemesterTitleClick: () -> Unit = {},
     onSchoolBlockClick: (MeetingId) -> Unit = {},
+    onManualBlockClick: (ManualItemId, pageWeek: Int) -> Unit = { _, _ -> },
+    onEmptyLongPress: (pageWeek: Int, columnFraction: Float, yFraction: Float) -> Unit = { _, _, _ -> },
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -211,8 +245,8 @@ fun TimetableScreen(
                         nowLine = page.nowLine,
                         today = state.today,
                         onSchoolBlockClick = onSchoolBlockClick,
-                        onManualBlockClick = {},   // D3
-                        onEmptyLongPress = { _, _ -> },  // D1
+                        onManualBlockClick = { id -> onManualBlockClick(id, page.week) },
+                        onEmptyLongPress = { x, y -> onEmptyLongPress(page.week, x, y) },
                     )
                 }
             }

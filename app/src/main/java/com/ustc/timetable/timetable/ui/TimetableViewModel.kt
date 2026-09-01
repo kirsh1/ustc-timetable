@@ -92,6 +92,7 @@ data class TimetableUiState(
     val profile: ScheduleProfile? = null,
     val weekPages: List<TimetableWeekPageUiState> = emptyList(),
     val courseDetailsByMeetingId: Map<MeetingId, CourseDetailUiModel> = emptyMap(),
+    val manualItemsById: Map<ManualItemId, ManualScheduleItem> = emptyMap(),
     val availableSemesters: List<Semester> = emptyList(),
     val showNonCurrentWeek: Boolean = false,
     val today: LocalDate? = null,
@@ -312,6 +313,7 @@ class TimetableViewModel(
 
         // C3 correction 6：detail map 由未过滤 school snapshot 构造（不受 viewed week/showNonCurrentWeek 影响）
         val courseDetails = buildCourseDetailsByMeetingId(data.school.first, data.school.second)
+        val manualItemsById = data.manual.associateBy { it.id }
 
         // 每周独立 projection：weekFilter → 单次联合 place → 按 identity 拆分
         val weekPages = (1..semester.totalWeeks).map { week ->
@@ -335,6 +337,7 @@ class TimetableViewModel(
             profile = data.profile,
             weekPages = weekPages,
             courseDetailsByMeetingId = courseDetails,
+            manualItemsById = manualItemsById,
             availableSemesters = data.available,
             showNonCurrentWeek = showNonCurrentWeek,
             today = today,

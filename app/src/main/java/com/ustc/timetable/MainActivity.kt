@@ -25,7 +25,11 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             MaterialTheme {
-                TimetableRoute(viewModel)
+                TimetableRoute(
+                    viewModel = viewModel,
+                    manualRepository = container.manual,
+                    clock = clock,
+                )
             }
         }
     }
