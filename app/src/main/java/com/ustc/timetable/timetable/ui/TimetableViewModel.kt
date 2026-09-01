@@ -361,6 +361,14 @@ class TimetableViewModel(
         viewModelScope.launch { settings.setViewedSemesterId(id.value) }
     }
 
+    /**
+     * C4：唯一 authority 是 SettingsStore Flow；这里只发起持久化写，
+     * 不做 optimistic local override，state 仅在 DataStore 真正 emit 后重投影。
+     */
+    fun onToggleShowNonCurrentWeek(value: Boolean) {
+        viewModelScope.launch { settings.setShowNonCurrentWeek(value) }
+    }
+
     fun onNextWeek() = shiftWeek(1)
 
     fun onPrevWeek() = shiftWeek(-1)
