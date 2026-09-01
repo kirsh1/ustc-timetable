@@ -75,6 +75,7 @@ class ImportFlowViewModel(
     val step: StateFlow<ImportStep>
     fun onLoginResultOk()
     fun onMetaConfirmed(meta: ConfirmedSemesterMeta)
+    fun onMetaCancelled()
 }
 ```
 - fake 导入主路径（`onLoginResultOk`）：生成一次 provisional `SemesterId` → 抓两页 → 三 parser 接口 → `normalizer.normalize(..., provisionalId)` → destructive-write validation。只有 `isConfident=true` 且七个 academic fields 完整、语义合法时可直接提交；否则进入 `ConfirmMeta`，已识别值原样保留、缺失值保持 `null`，**不得回退或预填 2026 秋季基准**。
@@ -134,14 +135,18 @@ class SettingsViewModel(
 ## Task I4 — SemesterConfirmSheet 完整化
 
 - SPEC §3.2、§5.7。
-- 文件：完善 `app/src/main/java/com/ustc/timetable/semester/SemesterConfirmSheet.kt`；测试并入 `app/src/test/java/com/ustc/timetable/semester/ImportFlowTest.kt`。
+- 文件：`app/src/main/java/com/ustc/timetable/semester/SemesterConfirmEditor.kt`、`SemesterConfirmSheet.kt`；测试为 `SemesterConfirmEditorTest.kt`、`SemesterConfirmSheetTest.kt`，并向 `ImportFlowTest.kt` 增加确认/取消集成回归。
+- Sheet 只编辑七个 academic metadata 字段：displayName、academicYear、term、startDate、week1Start、totalWeeks、endDate。parser 已识别的 partial metadata 逐字段原样预填，缺失项保持 blank/null；导入确认 UI 不使用 2026 秋季 fallback。
+- 三个日期字段使用 Material3 `DatePicker`，`selectedDateMillis` 按 UTC 日开始时刻与 `LocalDate` 往返；term 使用秋季/春季/夏季三选一 SegmentedButton，缺失 term 不默认选中。
+- Sheet 只输出经共享纯 validator 验证的 `ConfirmedSemesterMeta`。I2 继续拥有 system fields、原子 Room 提交、DB 成功后的 `viewedSemesterId` 写入与状态切换；Sheet 不把 callback 当作成功 dismiss。取消按钮与 sheet dismiss 均转发 `onMetaCancelled()`，且不写 DB/DataStore。
+- 真实 login/import runtime 仍受 F2/F3/F4/F6/G1 evidence gate 阻塞；I4 不向当前 APK 组合 fake portal runtime。
 - 步骤：
-- [ ] 1. 写 failing test（补 UI 层用例）：`confirm_sheet_prefills_partial_meta`、`confirm_sheet_allows_editing_all_six_fields`（displayName/academicYear/term/week1Start/totalWeeks/startDate/endDate）、`week1start_must_be_monday_ui_block`、`confirm_writes_viewed_and_dismisses`。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.ImportFlowTest"`。
-- [ ] 3. 最小实现：日期用 Material3 `DatePicker`；term 用三选一 SegmentedButton。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.ImportFlowTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseI4: semester confirmation sheet finalized"`。
+- [ ] 1. 写 failing test：锁定七字段/partial prefill/no-fallback、共享 semantic validation、UTC date conversion、Material DatePicker、term 三选一、saveable editor state、精确 confirm callback 与 cancel/dismiss 零写。
+- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.SemesterConfirmEditorTest" --tests "com.ustc.timetable.semester.SemesterConfirmSheetTest" --tests "com.ustc.timetable.semester.ImportFlowTest"`。
+- [ ] 3. 最小实现：纯 editor/validator + 可直接测试的 content + ModalBottomSheet/DatePicker wrapper；I2 复用同一 validator 并实现 cancel state transition。
+- [ ] 4. 运行上述三个 test class 确认 GREEN。
+- [ ] 5. 定向回归：semester/UI/sync/DB-profile 后运行全量 `./gradlew :app:testDebugUnitTest --rerun-tasks` → GREEN，并 assemble Debug/Release。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseI4: validated semester metadata confirmation sheet"`。
 
 ---
 
