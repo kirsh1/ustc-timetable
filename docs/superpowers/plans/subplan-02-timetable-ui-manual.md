@@ -338,15 +338,18 @@ class ManualItemEditorViewModel(
 ## Task D3 — 编辑/删除接线
 
 - SPEC §5.6。
-- 文件：修改 `TimetableScreen.kt`（长按空白→D2 编辑器、手动块点击→编辑器含删除、学校块点击→C3 详情）；测试 `app/src/test/java/com/ustc/timetable/manual/ManualItemFlowTest.kt`（compose + fake 仓库）。
+- 文件：修改 `TimetableScreen.kt`（长按空白→D2 编辑器、手动块点击→编辑器含删除、学校块点击→C3 详情）；新增 `ManualEditorHost.kt`；测试 `app/src/test/java/com/ustc/timetable/manual/ManualItemFlowTest.kt`（compose + in-memory repository）。
+- 路由目标只保存 identity/context：`semesterId`、`profileId`、触发时的 `viewedWeek`，以及 New 的坐标解析结果或 Edit 的 `ManualItemId`；不得保存完整 draft/item。`ManualEditorInitial` 只在创建全新 editor session 的边界，从当前未过滤 `manualItemsById` projection 重新解析。
+- `manualItemsById` 必须来自同一 repository Flow 的未过滤原始 snapshot。保存/删除成功后只由 repository emission 重投影并关闭；失败保持编辑器打开，不命令式 patch `TimetableUiState`。
+- 学期/profile 改变、目标条目外部删除或跨学期 identity 均视为 stale target 并关闭。学校详情和手动编辑器互斥；每次关闭后重开必须创建 fresh session。
 
 步骤：
 - [ ] 1. 写 failing test：`empty_longpress_opens_editor_prefilled`（长按周六下午区域 → 编辑器星期=周六、开始=吸附值）、`manual_block_click_opens_editor_with_existing`、`delete_requires_confirmation_then_removes`（点删除→确认对话框→确认后块消失）、`school_block_click_opens_readonly_detail_not_editor`。
 - [ ] 2. `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.manual.ManualItemFlowTest"` → RED。
-- [ ] 3. 最小实现：`TimetableScreen` 持 `var editorTarget by remember { mutableStateOf<EditorTarget?>(null) }`（`EditorTarget.New(draft)` / `EditorTarget.Edit(item)`），网格回调填充。
+- [ ] 3. 最小实现：Route 持 identity/context-only `ManualEditorTarget`；空白长按用 D1 resolver + 当前 page week 创建 New target，手动块点击用 id + 当前 page week 创建 Edit target；Host 在 session 边界解析当前 item。
 - [ ] 4. 同命令 → GREEN。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN（子计划 02 全量）。
-- [ ] 6. `git add app/src && git commit -m "phaseD3: manual item create/edit/delete wired into timetable grid"`。
+- [ ] 5. 定向 manual/UI/semester/layout 回归与 `./gradlew :app:testDebugUnitTest :app:assembleDebug` → GREEN。
+- [ ] 6. `git add app/src && git commit -m "phaseD3: wire manual create edit delete into timetable grid"`。
 
 ---
 
