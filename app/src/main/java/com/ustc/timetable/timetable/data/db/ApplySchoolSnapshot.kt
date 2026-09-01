@@ -1,6 +1,8 @@
 package com.ustc.timetable.timetable.data.db
 
 import androidx.room.withTransaction
+import com.ustc.timetable.timetable.data.db.entity.ScheduleProfileEntity
+import com.ustc.timetable.timetable.data.db.entity.SemesterEntity
 import com.ustc.timetable.timetable.domain.Course
 import com.ustc.timetable.timetable.domain.CourseMeeting
 import com.ustc.timetable.timetable.domain.ItemSource
@@ -39,4 +41,43 @@ suspend fun TimetableDatabase.applySchoolSnapshot(
     courseDao().insertCourses(courses.map { Mappers.toEntity(it, semesterId.value) })
     courseDao().insertMeetings(meetings.map { Mappers.toEntity(it) })
     semesterDao().updateSyncMeta(semesterId.value, fingerprint, syncedAt.toEpochMilli())
+}
+
+/**
+ * Atomic persistence primitive for a later import flow. It owns storage ordering only; no UI,
+ * portal, viewed-semester, or confirmation behavior belongs here.
+ */
+suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
+    boundProfile: ScheduleProfileEntity,
+    semester: SemesterEntity,
+    courses: List<Course>,
+    meetings: List<CourseMeeting>,
+    fingerprint: String,
+    syncedAt: Instant,
+) {
+    require(!boundProfile.isBundledOfficial) { "imported semester profile must be a private clone" }
+    require(semester.profileId == boundProfile.id) { "semester must bind the supplied profile" }
+    require(semester.portalLinked) { "imported school semester must be portal-linked" }
+    courses.forEach { course ->
+        require(course.semesterId.value == semester.id) { "course ${course.id.value} belongs outside imported semester" }
+        require(course.source == ItemSource.SCHOOL) { "course ${course.id.value} source must be SCHOOL" }
+    }
+    require(courses.map { it.id }.toSet().size == courses.size) { "course ids must be unique" }
+
+    withTransaction {
+        scheduleProfileDao().insert(boundProfile)
+        semesterDao().insert(semester)
+        semesterDao().setExclusiveAcademicCurrent(semester.id)
+        courseDao().insertCourses(courses.map { Mappers.toEntity(it, semester.id) })
+
+        val courseIds = courses.map { it.id }.toSet()
+        meetings.forEach { meeting ->
+            require(meeting.courseId in courseIds) {
+                "meeting ${meeting.id.value} references course outside imported snapshot"
+            }
+            require(meeting.source == ItemSource.SCHOOL) { "meeting ${meeting.id.value} source must be SCHOOL" }
+        }
+        courseDao().insertMeetings(meetings.map(Mappers::toEntity))
+        semesterDao().updateSyncMeta(semester.id, fingerprint, syncedAt.toEpochMilli())
+    }
 }
