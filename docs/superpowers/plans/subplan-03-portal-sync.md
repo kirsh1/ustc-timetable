@@ -28,14 +28,18 @@ data class SessionCookieHeader(val requestUrl: String, val cookieHeader: String)
             }
         }
     }
-    val scope: Scope by lazy { Scope.of(requestUrl) }
+    val scope: Scope = Scope.of(requestUrl)
 
     companion object {
         /** 只允许精确 scope 匹配；找不到返回 null——绝不借用兄弟 path / 其他 host / 其他 port 的 raw header
          *  （CookieManager.getCookie(url) 已按具体 URL 做 scope 过滤，二次放宽只会扩大作用域）。
-         *  cookieHeader 原样返回：不重排、不拆解、不按 cookie-name 去重。 */
-        fun pickFor(requestUrl: String, headers: List<SessionCookieHeader>): SessionCookieHeader? =
-            headers.firstOrNull { it.scope == Scope.of(requestUrl) }
+         *  cookieHeader 原样返回：不重排、不拆解、不按 cookie-name 去重。
+         *  同 scope 多条仅在 header 逐字节一致时可返回其一；冲突时 fail closed 返回 null。 */
+        fun pickFor(requestUrl: String, headers: List<SessionCookieHeader>): SessionCookieHeader? {
+            val matches = headers.filter { it.scope == Scope.of(requestUrl) }
+            if (matches.isEmpty()) return null
+            return matches.first().takeIf { first -> matches.all { it.cookieHeader == first.cookieHeader } }
+        }
     }
 }
 
@@ -60,24 +64,37 @@ class AndroidKeystoreKeyProvider : SecretKeyProvider {
 @Serializable private data class SessionBlobDto(val headers: List<HeaderDto>, val capturedAtEpochMilli: Long)
 @Serializable private data class HeaderDto(val requestUrl: String, val cookieHeader: String)
 
-class SessionStore(private val keys: SecretKeyProvider, private val storage: SessionStorage, private val random: Random = SecureRandom()) {
-    fun save(blob: SessionBlob) {
+class SessionStore(
+    private val keys: SecretKeyProvider,
+    private val storage: SessionStorage,
+    private val random: SecureRandom = SecureRandom(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
+    suspend fun save(blob: SessionBlob) = withContext(ioDispatcher) {
         val iv = ByteArray(12); random.nextBytes(iv)
+        val aad = "USTCSES1".toByteArray(Charsets.US_ASCII) + byteArrayOf(1)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, keys.getOrCreateKey(), GCMParameterSpec(128, iv))
+        cipher.updateAAD(aad)
         val ct = cipher.doFinal(Json.encodeToString(SessionBlobDto.from(blob)).toByteArray())
-        storage.write(iv + ct)
+        storage.write(aad + iv + ct)
     }
-    fun load(): SessionBlob? {
-        val raw = storage.read() ?: return null
+    suspend fun load(): SessionBlob? = withContext(ioDispatcher) {
+        val raw = storage.read() ?: return@withContext null
+        val magic = "USTCSES1".toByteArray(Charsets.US_ASCII)
+        if (raw.size < 8 + 1 + 12 + 16 ||
+            !raw.copyOfRange(0, 8).contentEquals(magic) || raw[8] != 1.toByte()
+        ) throw SessionStoreCorruptedException()
+        val aad = raw.copyOfRange(0, 9)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, keys.getOrCreateKey(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
-        val plain = cipher.doFinal(raw.copyOfRange(12, raw.size))
-        return Json.decodeFromString<SessionBlobDto>(plain.decodeToString()).toDomain()
+        cipher.init(Cipher.DECRYPT_MODE, keys.getOrCreateKey(), GCMParameterSpec(128, raw.copyOfRange(9, 21)))
+        cipher.updateAAD(aad)
+        val plain = cipher.doFinal(raw.copyOfRange(21, raw.size))
+        Json.decodeFromString<SessionBlobDto>(plain.decodeToString()).toDomain()
     }
-    fun clear() { storage.write(null) }
+    suspend fun clear() = withContext(ioDispatcher) { storage.write(null) }
 }
-interface SessionStorage { fun read(): ByteArray?; fun write(data: ByteArray?) }  // 生产：app 私有文件；测试：内存
+interface SessionStorage { fun read(): ByteArray?; fun write(data: ByteArray?) }  // 生产：AtomicFile(context.filesDir/session.bin)；测试：内存
 ```
 - 步骤：
 - [ ] 1. 写 failing test（`InMemorySessionStorage` + 测试用 `SecretKeySpec` provider；blob 样例含多条不同 scope 的 header，其中一条 cookieHeader 为 `"A=1; A=2; B=3"` 以覆盖重复 cookie-name）：
@@ -154,7 +171,7 @@ class UstcSessionManager(
     private val detector: LoginPageDetector,
     private val clock: Clock = Clock.systemUTC(),
 ) {
-    fun hasSession(): Boolean = store.load() != null
+    suspend fun hasSession(): Boolean = store.load() != null
 
     /** 探测闭环：对三个目标 URL 分别收集 raw header（去重）→ fetcher 按 scope 选头抓 probeUrl → detector((finalUrl, html)) → 保存或抛失效 */
     suspend fun captureAndVerify(): SessionBlob {
@@ -169,7 +186,7 @@ class UstcSessionManager(
         store.save(blob)
         return blob
     }
-    fun clear() = store.clear()
+    suspend fun clear() = store.clear()
 }
 ```
 - `WebViewLoginActivity` 行为（自动完成检测为最终主路径）：
