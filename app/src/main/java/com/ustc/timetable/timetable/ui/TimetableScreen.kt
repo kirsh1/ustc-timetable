@@ -45,12 +45,25 @@ import kotlinx.coroutines.flow.filter
 @Composable
 fun TimetableRoute(viewModel: TimetableViewModel) {
     val state by viewModel.state.collectAsState()
+    var semesterSheetOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     TimetableScreen(
         state = state,
         onPrevWeek = viewModel::onPrevWeek,
         onNextWeek = viewModel::onNextWeek,
         onWeekSelected = viewModel::onWeekSelected,
+        onSemesterTitleClick = { semesterSheetOpen = true },
     )
+    if (semesterSheetOpen && state.semester != null) {
+        com.ustc.timetable.semester.SemesterSwitcherSheet(
+            semesters = state.availableSemesters,
+            viewedSemesterId = state.semester!!.id,
+            onSelect = {
+                semesterSheetOpen = false
+                viewModel.onSemesterSelected(it)
+            },
+            onDismiss = { semesterSheetOpen = false },
+        )
+    }
 }
 
 /** 首页（frozen §5.1 + C1）：顶栏 + 周标题行（箭头/选择器）+ HorizontalPager 逐页渲染该周 projection。 */
@@ -60,6 +73,7 @@ fun TimetableScreen(
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
     onWeekSelected: (Int) -> Unit,
+    onSemesterTitleClick: () -> Unit = {},
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -79,7 +93,11 @@ fun TimetableScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("${semester.displayName} ▼", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("semester_name"))
+            Text(
+                "${semester.displayName} ▼",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.testTag("semester_name").clickable { onSemesterTitleClick() },
+            )
             Spacer(Modifier.weight(1f))
             if (state.canSyncViewed) {
                 Text(

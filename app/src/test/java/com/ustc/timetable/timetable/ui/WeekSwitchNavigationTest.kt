@@ -188,19 +188,18 @@ class WeekSwitchNavigationTest {
 
     // ---- correction 2: RequestedWeek semester scoping ----
 
+    // C2 改写：每次真正切换 viewed semester → 新学期从 defaultViewedWeek 开始，切回不再恢复旧显式周；
+    // RequestedWeek 的 semester identity 保留意义 = 同学期内显式选周持续有效（tick/数据更新不清）。
+    // 跨学期切换的完整语义由 SemesterSwitcherTest 锁定。
     @Test fun explicit_week_is_scoped_to_semester() = runBlocking {
-        seedHistSemester("s-hist")
         seedSemester("s-cur", current = true)
-        settings.setViewedSemesterId("s-cur")
         val m = vm()
         awaitUntil { m.state.value.semester?.id?.value == "s-cur" }
         m.onWeekSelected(5)
         awaitUntil { m.state.value.viewedWeek == 5 }
-        // 切回 s1（hist 视为另一个学期）再回 s-cur：selection 仍按 semester 记忆
-        settings.setViewedSemesterId("s-hist")
-        awaitUntil { m.state.value.semester?.id?.value == "s-hist" }
-        settings.setViewedSemesterId("s-cur")
-        awaitUntil { m.state.value.semester?.id?.value == "s-cur" }
+        // 同学期内：requestedWeek 保持
+        nowFlow.value = t0.plusSeconds(1_800)
+        delay(150)
         assertEquals(5, m.state.value.viewedWeek)
     }
 

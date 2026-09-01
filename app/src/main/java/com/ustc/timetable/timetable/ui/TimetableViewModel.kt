@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /** 单周 page projection（C1 correction 3）：每页自带 weekDates/两源 placed 块/nowLine。 */
 data class TimetableWeekPageUiState(
@@ -55,6 +56,7 @@ data class TimetableUiState(
     val naturalWeek: Int? = null,
     val profile: ScheduleProfile? = null,
     val weekPages: List<TimetableWeekPageUiState> = emptyList(),
+    val availableSemesters: List<Semester> = emptyList(),
     val showNonCurrentWeek: Boolean = false,
     val today: LocalDate? = null,
     val isAcademicCurrentViewed: Boolean = false,
@@ -90,6 +92,14 @@ internal fun selectViewedSemester(semesters: List<Semester>, viewedId: String?):
     semesters.firstOrNull { it.isCurrentAcademicSemester }?.let { return it }
     return semesters.maxByOrNull { it.startDate }
 }
+
+/** 学期候选排序（C2 correction 4，product contract 仅第一条）：startDate desc；同级 week1Start desc、id asc 保证确定序。 */
+internal fun sortSemesterChoices(semesters: List<Semester>): List<Semester> =
+    semesters.sortedWith(
+        compareByDescending<Semester> { it.startDate }
+            .thenByDescending { it.week1Start }
+            .thenBy { it.id.value },
+    )
 
 /** 周过滤（frozen §4.5）：false → 只留 contains(viewedWeek)；true → 全保留（淡化交 B2）。 */
 internal fun weekFilter(blocks: List<TimedBlock>, viewedWeek: Int, showNonCurrentWeek: Boolean): List<TimedBlock> =
@@ -188,20 +198,23 @@ class TimetableViewModel(
 ) : ViewModel() {
 
     private val requestedWeek = MutableStateFlow<RequestedWeek?>(null)
+    private var lastViewedSemesterId: SemesterId? = null
 
     private data class SemesterData(
         val semester: Semester?,
         val school: Pair<List<Course>, List<CourseMeeting>>,
         val manual: List<ManualScheduleItem>,
         val profile: ScheduleProfile?,
+        val available: List<Semester>,
     )
 
-    private val viewedSemester: Flow<Semester?> =
+    /** viewed + 候选列表来自同一个 Room emission（C2 correction 4：不产生第二 viewed authority）。 */
+    private val selection: Flow<Pair<Semester?, List<Semester>>> =
         combine(settings.viewedSemesterId, semestersRepo.observeSemesters()) { id, list ->
-            selectViewedSemester(list, id)
+            selectViewedSemester(list, id) to sortSemesterChoices(list)
         }
 
-    private val semesterData: Flow<SemesterData> = viewedSemester.flatMapLatest { sem ->
+    private val semesterData: Flow<SemesterData> = selection.flatMapLatest { (sem, available) ->
         if (sem == null) {
             flowOf(
                 SemesterData(
@@ -209,6 +222,7 @@ class TimetableViewModel(
                     school = emptyList<Course>() to emptyList<CourseMeeting>(),
                     manual = emptyList(),
                     profile = null,
+                    available = available,
                 ),
             )
         } else {
@@ -216,7 +230,7 @@ class TimetableViewModel(
                 timetableRepo.observeSchool(sem.id),
                 manualRepo.observe(sem.id),
                 profilesRepo.observeForSemester(sem.id),
-            ) { school, manual, profile -> SemesterData(sem, school, manual, profile) }
+            ) { school, manual, profile -> SemesterData(sem, school, manual, profile, available) }
         }
     }
 
@@ -235,8 +249,19 @@ class TimetableViewModel(
         val now = zoned.toLocalTime()
         val semester = data.semester
         if (semester == null || data.profile == null) {
-            return TimetableUiState(showNonCurrentWeek = showNonCurrentWeek, today = today, isLoading = false)
+            return TimetableUiState(
+                availableSemesters = data.available,
+                showNonCurrentWeek = showNonCurrentWeek,
+                today = today,
+                isLoading = false,
+            )
         }
+        // C2 correction 1：viewed semester 真正变化（DataStore 写已生效并传播到 state）→ 清显式选周，
+        // 新学期从 defaultViewedWeek 开始；DataStore 写失败/未传播时 requestedWeek 保持，绝不提前跳周。
+        if (lastViewedSemesterId != null && lastViewedSemesterId != semester.id) {
+            requestedWeek.value = null
+        }
+        lastViewedSemesterId = semester.id
         val naturalWeek = WeekCalculator.weekNumberOn(today, semester)
         val viewedWeek = (reqWeek?.takeIf { it.semesterId == semester.id }?.week)
             ?: defaultViewedWeek(today, semester)
@@ -270,6 +295,7 @@ class TimetableViewModel(
             naturalWeek = naturalWeek,
             profile = data.profile,
             weekPages = weekPages,
+            availableSemesters = data.available,
             showNonCurrentWeek = showNonCurrentWeek,
             today = today,
             isAcademicCurrentViewed = semester.isCurrentAcademicSemester,
@@ -281,6 +307,18 @@ class TimetableViewModel(
     fun onWeekSelected(week: Int) {
         val semester = state.value.semester ?: return
         requestedWeek.value = RequestedWeek(semester.id, week.coerceIn(1, semester.totalWeeks))
+    }
+
+    /**
+     * 本地学期切换（C2）：唯一持久化写 = settings.setViewedSemesterId；
+     * 同 id/未知 id no-op（不写 dangling id、不重置周）。
+     * 显式选周的清空由 viewed-id 变化检测承担（见 buildState），DataStore 写失败时 request 保持。
+     */
+    fun onSemesterSelected(id: SemesterId) {
+        val current = state.value.semester ?: return
+        if (current.id == id) return
+        if (state.value.availableSemesters.none { it.id == id }) return
+        viewModelScope.launch { settings.setViewedSemesterId(id.value) }
     }
 
     fun onNextWeek() = shiftWeek(1)
