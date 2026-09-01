@@ -200,6 +200,37 @@ class ImportFlowTest {
         assertEquals(2, db.scheduleProfileDao().all().size)
     }
 
+    @Test fun confirm_forwards_to_import_flow() = runBlocking {
+        val fixture = fixture(meta = emptyPartial(), confident = false)
+        fixture.vm.onLoginResultOk()
+
+        fixture.vm.onMetaConfirmed(confirmed())
+
+        assertEquals(ImportStep.Done(SemesterId("new")), fixture.vm.step.value)
+        assertEquals("2026-2027 秋季（确认）", db.semesterDao().byId("new")?.displayName)
+    }
+
+    @Test fun cancel_confirmation_is_zero_write() = runBlocking {
+        val fixture = fixture(meta = emptyPartial(), confident = false)
+        fixture.vm.onLoginResultOk()
+        val before = snapshot()
+
+        fixture.vm.onMetaCancelled()
+
+        assertEquals(ImportStep.AwaitingLogin, fixture.vm.step.value)
+        assertEquals(before, snapshot())
+    }
+
+    @Test fun cancel_preserves_previous_academic_current_and_viewed_semester() = runBlocking {
+        val fixture = fixture(meta = emptyPartial(), confident = false)
+        fixture.vm.onLoginResultOk()
+
+        fixture.vm.onMetaCancelled()
+
+        assertTrue(requireNotNull(db.semesterDao().byId("old")).isCurrentAcademicSemester)
+        assertEquals("old", settings.viewedSemesterId.first())
+    }
+
     @Test fun successful_import_creates_portal_linked_semester() = runBlocking {
         val fixture = fixture()
 

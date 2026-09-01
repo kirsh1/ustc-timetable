@@ -27,7 +27,6 @@ import com.ustc.timetable.timetable.domain.Semester
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.Term
 import java.time.Clock
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,15 +117,21 @@ class ImportFlowViewModel(
         val current = mutableStep.value as? ImportStep.ConfirmMeta ?: return
         if (!mutableStep.compareAndSet(current, ImportStep.Fetching)) return
         try {
-            if (!meta.isSemanticallyValid()) throw SyncError.ValidationFailed.asFailure()
+            if (!meta.isValidSemesterConfirmation()) throw SyncError.ValidationFailed.asFailure()
             commit(meta)
         } catch (failure: SyncFailure) {
             mutableStep.value = ImportStep.Error(failure.error)
         }
     }
 
+    fun onMetaCancelled() {
+        val current = mutableStep.value as? ImportStep.ConfirmMeta ?: return
+        if (!mutableStep.compareAndSet(current, ImportStep.AwaitingLogin)) return
+        pending = null
+    }
+
     private suspend fun commit(meta: ConfirmedSemesterMeta) {
-        if (!meta.isSemanticallyValid()) throw SyncError.ValidationFailed.asFailure()
+        if (!meta.isValidSemesterConfirmation()) throw SyncError.ValidationFailed.asFailure()
         val candidate = pending ?: throw SyncError.ValidationFailed.asFailure()
         validateSnapshot(
             snapshot = candidate.snapshot,
@@ -228,16 +233,8 @@ class ImportFlowViewModel(
             startDate = startDate ?: return null,
             endDate = endDate ?: return null,
         )
-        return confirmed.takeIf { it.isSemanticallyValid() }
+        return confirmed.takeIf { it.isValidSemesterConfirmation() }
     }
-
-    private fun ConfirmedSemesterMeta.isSemanticallyValid(): Boolean =
-        displayName.isNotBlank() &&
-            academicYear.isNotBlank() &&
-            week1Start.dayOfWeek == DayOfWeek.MONDAY &&
-            totalWeeks in 1..63 &&
-            startDate <= endDate &&
-            week1Start in startDate..endDate
 
     private data class PendingImport(
         val semesterId: SemesterId,
