@@ -1,11 +1,12 @@
 package com.ustc.timetable.timetable.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.layout.TimedBlock
 import java.time.LocalTime
@@ -18,9 +19,6 @@ import java.time.format.DateTimeFormatter
 object BlockTexts {
 
     private val hhmm: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-    /** 教师/时间共同的最小块宽阈值（B2 correction 8）。 */
-    private val minWidthForExtras = 52.dp
 
     fun weekdayText(weekday: Int): String = when (weekday) {
         1 -> "周一"; 2 -> "周二"; 3 -> "周三"; 4 -> "周四"
@@ -44,32 +42,33 @@ object BlockTexts {
 
     /** 卡片内容：名称/地点必显；教师、时间仅在高度与宽度同时足够时出现。 */
     @Composable
-    fun Content(block: TimedBlock, showTeacher: Boolean, showTime: Boolean, blockWidth: Dp) {
-        val wide = blockWidth > minWidthForExtras
-        Text(
-            block.title,
-            fontWeight = FontWeight.Bold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            block.location,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (showTeacher && wide && block.teacherNames.isNotEmpty()) {
+    fun Content(block: TimedBlock, showTeacher: Boolean, showTime: Boolean) {
+        Column(Modifier.fillMaxSize()) {
             Text(
-                block.teacherNames.joinToString("、"),
+                block.title,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-        if (showTime && wide) {
             Text(
-                timeText(block.start, block.endInclusive),
+                block.location,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (showTeacher && block.teacherNames.isNotEmpty()) {
+                Text(
+                    block.teacherNames.joinToString("、"),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (showTime) {
+                Text(
+                    timeText(block.start, block.endInclusive),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

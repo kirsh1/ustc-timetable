@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
@@ -250,6 +252,79 @@ class WeeklyTimetableGridTest {
         )
         rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(1)
         rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test fun narrow_tall_block_hides_teacher_and_time() {
+        setContentGrid(
+            school = placed(
+                schoolBlock("narrow", 2, LocalTime.of(8, 0), LocalTime.of(20, 0)),
+                schoolBlock("overlap", 2, LocalTime.of(8, 30), LocalTime.of(20, 30), teacher = "王老师"),
+            ),
+            width = 600.dp,
+            height = 1000.dp,
+        )
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun wide_tall_block_can_show_teacher_and_time() {
+        setContentGrid(
+            school = placed(schoolBlock("wide", 2, LocalTime.of(8, 0), LocalTime.of(20, 0))),
+            width = 800.dp,
+            height = 1000.dp,
+        )
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test fun narrow_block_keeps_title_and_location() {
+        val title = "名字很长必须在窄卡中截断的课程"
+        val location = "很长的教学楼房间名称"
+        setContentGrid(
+            school = placed(
+                schoolBlock("content", 3, LocalTime.of(9, 0), LocalTime.of(12, 0), title = title, location = location),
+                schoolBlock("content-overlap", 3, LocalTime.of(9, 30), LocalTime.of(12, 30)),
+            ),
+            width = 600.dp,
+            height = 700.dp,
+        )
+
+        val card = rule.onNodeWithTag("school_block:content").fetchSemanticsNode().boundsInRoot
+        val titleBounds = rule.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val locationBounds = rule.onNodeWithText(location, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("title must remain one line: $titleBounds vs $locationBounds", titleBounds.height <= locationBounds.height + 1f)
+        assertTrue("title and location must not overlap: $titleBounds vs $locationBounds", titleBounds.bottom <= locationBounds.top)
+        assertTrue("title must stay inside card: $titleBounds vs $card", titleBounds.left >= card.left && titleBounds.right <= card.right)
+        assertTrue("location must stay inside card: $locationBounds vs $card", locationBounds.left >= card.left && locationBounds.right <= card.right)
+    }
+
+    @Test fun accessibility_still_contains_hidden_teacher_and_time() {
+        val block = schoolBlock("a11y-hidden", 4, LocalTime.of(8, 0), LocalTime.of(20, 0))
+        setContentGrid(
+            school = placed(
+                block,
+                schoolBlock("a11y-overlap", 4, LocalTime.of(8, 30), LocalTime.of(20, 30)),
+            ),
+            width = 600.dp,
+            height = 1000.dp,
+        )
+        rule.onNodeWithTag("school_block:a11y-hidden")
+            .assertContentDescriptionEquals("高等无机化学，周四 08:00–20:00，第1–20周，TH-B301，刘斯")
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun overlapped_half_width_block_hides_optional_text() {
+        setContentGrid(
+            school = placed(
+                schoolBlock("half-a", 5, LocalTime.of(8, 0), LocalTime.of(20, 0)),
+                schoolBlock("half-b", 5, LocalTime.of(8, 30), LocalTime.of(20, 30), teacher = "王老师"),
+            ),
+            width = 700.dp,
+            height = 1000.dp,
+        )
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(0)
     }
 
     // ---- a11y ----

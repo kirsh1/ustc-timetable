@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -41,6 +42,7 @@ private const val GUTTER_WIDTH_DP: Int = 44
 private const val HEADER_HEIGHT_DP: Int = 32
 private const val TEACHER_MIN_HEIGHT_DP: Int = 60
 private const val TIME_MIN_HEIGHT_DP: Int = 90
+private const val OPTIONAL_TEXT_MIN_WIDTH_DP: Int = 52
 
 /**
  * 每周七列课表网格（SPEC §4.1/§4.2/§5.1）。
@@ -165,14 +167,17 @@ private fun BoxScope.BlockNode(
     val x = columnWidth * (pb.block.weekday - 1) + groupWidth * pb.column
     val y = gridH * pb.topFraction
     val h = gridH * pb.heightFraction
+    val hasOptionalTextWidth = groupWidth > OPTIONAL_TEXT_MIN_WIDTH_DP.dp
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
+    val shape = RoundedCornerShape(4.dp)
     Box(
         Modifier
             .offset(x = x, y = y)
             .size(width = groupWidth, height = h)
             .graphicsLayer { this.alpha = alpha }
-            .background(CoursePalette.containerColor(paletteIndex), RoundedCornerShape(4.dp))
+            .clip(shape)
+            .background(CoursePalette.containerColor(paletteIndex), shape)
             .pointerInput(tag) {
                 detectTapGestures(
                     onTap = { onClick() },
@@ -184,9 +189,8 @@ private fun BoxScope.BlockNode(
     ) {
         BlockTexts.Content(
             block = pb.block,
-            showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp,
-            showTime = h > TIME_MIN_HEIGHT_DP.dp,
-            blockWidth = groupWidth,
+            showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
+            showTime = h > TIME_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
         )
     }
 }
