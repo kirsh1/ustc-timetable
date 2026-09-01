@@ -709,31 +709,37 @@ object SyncNotification {
     const val CHANNEL_SYNC = "sync_updates"
     fun ensureChannel(context: Context)
     fun postChanges(context: Context, changes: List<ScheduleChange>) {
+        if (changes.isEmpty()) return
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return   // §8.5-4：未授权 no-op
         val lines = changes.flatMap { ChangeFormatter.notificationLines(it) }
-        val text = lines.take(5).joinToString("\n")
+        if (lines.isEmpty()) return
         NotificationCompat.Builder(context, CHANNEL_SYNC)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
-            .setContentTitle("课表已更新").setContentText(text)
+            .setSmallIcon(R.drawable.ic_notification_timetable)
+            .setContentTitle("课表已更新").setContentText(lines.first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
             .setAutoCancel(true).build()
             .let { NotificationManagerCompat.from(context).notify(1001, it) }
     }
-    fun postReauthNeeded(context: Context)   // 同样先查 areNotificationsEnabled
+    fun postReauthNeeded(context: Context)   // 同样先查 areNotificationsEnabled；仅供 H3 后台认证失效路径消费
 }
 class NotificationPermissionController(private val settings: SettingsStore) {
-    fun shouldRequestNow(areNotificationsEnabled: Boolean, requested: Boolean): Boolean =
-        Build.VERSION.SDK_INT >= 33 && !areNotificationsEnabled && !requested
+    suspend fun shouldRequestNow(areNotificationsEnabled: Boolean): Boolean =
+        Build.VERSION.SDK_INT >= 33 &&
+            !areNotificationsEnabled &&
+            !settings.notificationRequestShown.first()
     suspend fun markRequested() = settings.markNotificationRequestShown()
 }
 ```
+- `postChanges(emptyList())` 与 formatter 产出空行都是真正 no-op；禁用通知时两个发送 API 都不建 channel、不发送、不重试。
+- H2 只提供 Android notification sink 与 permission policy/controller。`postReauthNeeded` 不写 `needReauth`；该状态及通知的组合属于 H3 后台 orchestration。
+- `shouldRequestNow` 只判断，`markRequested` 只持久化“已发起过”。H2 不调用 `requestPermissions`、不持有 ActivityResult launcher；真正前台请求触发点留给 I3/H3 wiring，并在实际发起后无论 grant/deny 调用 `markRequested()`。
 - 步骤：
-- [ ] 1. 写 failing test（Robolectric `ShadowNotificationManager`）：`changes_post_notification_with_diff_lines`（title=="课表已更新"、text 含 "TH-B301 → TH-C204"）、`no_change_posts_nothing`（空 changes → 不发）、`notifications_disabled_posts_nothing`（shadow 设 denied → 无通知、无异常）、`shouldRequestOnce_33plus`（API 33、未授权、未请求过 → true；已请求过 → false）、`below_33_never_requests`。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.SyncNotificationTest"`。
-- [ ] 3. 最小实现（如上；权限 UI 触发点在 I3/H3 接线：开启每周同步开关时、首次进入设置同步分区时调用 `shouldRequestNow` → `requestPermissions(arrayOf(POST_NOTIFICATIONS))` → 无论结果 `markRequested()`）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.SyncNotificationTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.notification.*" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseH2: change and reauth notifications with once-only permission policy"`。
+- [x] 1. tests-first：Robolectric 锁定 empty/disabled no-op、channel、formatter 顺序、双 ID/替换；真实 `SettingsStore` 锁定 API 32/33/36 policy、controller recreation 与 weekly-sync 隔离。
+- [x] 2. RED：production 未动时 `SyncNotification` / `NotificationPermissionController` unresolved，`exit 1`。
+- [x] 3. 最小实现：notification sink + permission policy/controller；无 UI、Worker、sync execution 或 Settings mutation 越界。
+- [x] 4. 定向 GREEN：notification **17/17**；H1 formatter **11/11**。
+- [x] 5. 回归：sync **45/45**、domain **120/120**、full **698/698**；debug/release 与 merged manifests GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseH2: gated sync and reauth notifications"`。
 
 ---
 
