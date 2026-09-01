@@ -123,7 +123,7 @@ interface SessionStorage { fun read(): ByteArray?; fun write(data: ByteArray?) }
 
 接口与关键代码：
 ```kotlin
-// portal/PortalDescriptor.kt —— 全部真实值在 gated 分支（F2–F6）由证据填入 UstcPortalDescriptor
+// portal/PortalDescriptor.kt —— G1 仅在证据门满足后，以证据支持的真实值实现 UstcPortalDescriptor
 interface PortalDescriptor {
     val loginUrl: String          // SSO 登录页
     val probeUrl: String          // 低成本已登录可达页（默认=选课结果页 URL；SPEC §13-9）
@@ -224,7 +224,7 @@ fun Throwable.syncErrorOrNull(): SyncError? = (this as? SyncFailure)?.error
 ## Task F1 — DTO + parser 接口 + fixture 机制 + 证据请求发出
 
 - SPEC §6.2、§6.3、§6.4、§13。
-- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/dto/Dtos.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/parser/ParserInterfaces.kt`、`app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcFixtureLoader.kt`、`app/src/test/resources/fixtures/ustc/README.md`、`app/src/test/resources/fixtures/ustc/sample_minimal.html`（自制教学样例，仅验证机制）。
+- 文件：`app/src/main/java/com/ustc/timetable/school/ustc/dto/Dtos.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/parser/ParserInterfaces.kt`、`app/src/main/java/com/ustc/timetable/school/ustc/portal/SchoolPortalSource.kt`、`app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcFixtureLoader.kt`、`app/src/test/resources/fixtures/ustc/README.md`、`app/src/test/resources/fixtures/ustc/sample_minimal.html`（自制教学样例，仅验证机制）。
 - DTO（完整）：
 ```kotlin
 package com.ustc.timetable.school.ustc.dto
@@ -245,7 +245,7 @@ data class UstcSemesterMetaPartial(
 )
 ```
 - `UstcPortalPage` 已由 E2 落在 `dto/UstcPortalPage.kt`；F1 仅新增其余 DTO，不重复声明该类型。
-- `ParserInterfaces.kt`（**接口**；G2/SyncEngine 只依赖它们，因此 evidence-free）：
+- `ParserInterfaces.kt` 与 `SchoolPortalSource.kt`（**接口**；G2/SyncEngine 只依赖这些 F1 边界，因此 evidence-free）：
 ```kotlin
 package com.ustc.timetable.school.ustc.parser
 
@@ -259,22 +259,31 @@ interface TimetablePageParser { fun parse(page: UstcPortalPage): List<UstcTimeta
 data class SemesterMetaResult(val meta: UstcSemesterMetaPartial, val isConfident: Boolean)
 interface SemesterMetaParser { fun parse(selection: UstcPortalPage, timetable: UstcPortalPage): SemesterMetaResult }
 ```
+- `SchoolPortalSource.kt` 只暴露两个原始页面获取边界：
+```kotlin
+interface SchoolPortalSource {
+    suspend fun fetchCourseSelectionPage(): UstcPortalPage
+    suspend fun fetchTimetablePage(): UstcPortalPage
+}
+```
 - `UstcFixtureLoader.kt`：
 ```kotlin
 object UstcFixtureLoader {
-    fun load(name: String): String =
-        checkNotNull(javaClass.getResourceAsStream("/fixtures/ustc/$name")) { "missing fixture $name" }
-            .readBytes().decodeToString()
+    fun load(name: String): String {
+        require(name.isNotBlank() && !name.contains("..") && !name.contains('/') && !name.contains('\\'))
+        return checkNotNull(javaClass.getResourceAsStream("/fixtures/ustc/$name")) { "missing fixture $name" }
+            .use { it.readBytes().decodeToString() }
+    }
 }
 ```
-- fixture README 内容：来源要求（登录后保存的完整 HTML）、脱敏规则（姓名→`学生A`、学号→`PB00000000`、其余个人字段→`X`）、文件命名（`course_selection.html`、`timetable.html`、`login_page.html`、`auth_expired.html`）。
+- fixture README 内容：来源要求（登录后保存的完整 HTML）、basename-only 读取、脱敏规则（姓名→`学生A`、教师→`教师A`、学号→`PB00000000`、其余个人字段→稳定 `X_*`）、URL 只遮盖 secret value 且保留结构证据、文件命名（`course_selection.html`、`timetable.html`、`login_page.html`、`auth_expired.html`）。四个真实 fixture 当前均未入库；`sample_minimal.html` 只验证 classpath 机制，不是 portal 证据。
 - 步骤：
-- [ ] 1. 写 failing test `app/src/test/java/com/ustc/timetable/school/ustc/parser/UstcFixtureLoaderTest.kt`：`fixtureLoader_reads_sanitized_html`（load `sample_minimal.html` 返回含 `<html` 的字符串）、`fixtureLoader_missing_file_throws`（不存在文件抛 `IllegalStateException`）。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcFixtureLoaderTest"`。
-- [ ] 3. 最小实现：落地 Dtos、ParserInterfaces、UstcFixtureLoader、README 与 `sample_minimal.html`（自制最小 HTML：`<html><body><table><tr><td>probe</td></tr></table></body></html>`）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcFixtureLoaderTest"`。
-- [ ] 5. **向用户发出 SPEC §13 证据请求**（9 项），并在本文件末尾「证据状态」小节记录 received/pending；定向回归：`./gradlew :app:testDebugUnitTest` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseF1: ustc dtos, parser interfaces, fixture harness, evidence request issued"`。
+- [x] 1. 先写 `ParserContractsTest` 与 `UstcFixtureLoaderTest`，覆盖 raw/nullable DTO、fake interface、双页面 source、basename-only loader、缺失资源与样例脱敏。
+- [x] 2. production 不动时运行两个测试类，观察 DTO/interfaces/loader 缺失导致的预期编译 RED；E2 `UstcPortalPage` 正常解析。
+- [x] 3. 最小实现 Dtos、ParserInterfaces、SchoolPortalSource、test-only UstcFixtureLoader、README 与 mechanism-only `sample_minimal.html`。
+- [x] 4. 两个 F1 测试类 targeted GREEN，并完成 `school.ustc.*` 与 full regression。
+- [x] 5. **向用户发出 SPEC §13 证据请求**（9 项），并在本文件末尾「证据状态」记录 PENDING。
+- [x] 6. commit：`git add app/src && git commit -m "phaseF1: ustc boundary contracts and sanitized fixture harness"`。
 
 ---
 
@@ -532,7 +541,7 @@ class UstcHttpPortalSource(
 - 步骤：
 - [ ] 1. 写 failing test（MockWebServer + fake detector + 内存 SessionStore + E2 的 `CookieAwareFetcher`；预置两条不同 host 的 header 覆盖多 host）：`fetch_returns_page`、`picks_matching_header_per_target_url`（selection 与 timetable 各带各自的 raw header，MockWebServer 记录值逐一断言）、`missing_header_for_url_omits_cookie_header`、`redirect_then_detector_runs_on_final_url`（302 → 新 URL → detector 收到最终页的 (finalUrl, html)）、`login_page_response_throws_AuthExpired`（detector 命中 → AuthenticationExpired 且不重试）、`network_error_throws_NetworkFailed`（`server.shutdown()` 后请求）。
 - [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.portal.UstcHttpPortalSourceTest"`。
-- [ ] 3. 最小实现（如上；`UstcPortalDescriptor` 在证据交付前以测试域常量实现（`https://fixture.example/login` 等，仅供 MockWebServer 测试构造），F2–F6 完成后由证据填入真实 URL 并加注释指向对应 fixture 文件与行号）。
+- [ ] 3. 最小实现（如上；本任务受证据门约束，production `UstcPortalDescriptor` 只使用已交付证据支持的真实值，并加注释指向对应 fixture/证据。MockWebServer 所需的 fixture descriptor 只定义在 test source，不以测试域常量创建 production descriptor）。
 - [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.portal.UstcHttpPortalSourceTest"`。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*" --tests "com.ustc.timetable.sync.*"` → GREEN（验证替换注入实现未破坏 SyncEngine）。
 - [ ] 6. commit：`git add app/src && git commit -m "phaseG1: http portal source with per-url cookie header selection and auth detection"`。
@@ -553,7 +562,7 @@ sealed class SyncResult {
 }
 
 class SyncEngine(
-    private val portal: SchoolPortalSource,                // 接口（F1/E2 已定义），测试注入 fake
+    private val portal: SchoolPortalSource,                // 接口（F1 定义），测试注入 fake
     private val selectionParser: CourseSelectionPageParser, // 接口
     private val timetableParser: TimetablePageParser,       // 接口
     private val metaParser: SemesterMetaParser,             // 接口
@@ -758,17 +767,19 @@ object SyncScheduler {
 
 ## 证据状态（F1 后维护）
 
+E2 测试中的 `fixture.example` URL、合成 HTML 和 fake detector 只证明通用登录/抓取机制，**不计为以下真实 portal 证据**。真实 fixture 必须按 `app/src/test/resources/fixtures/ustc/README.md` 脱敏并人工检查 staged diff。
+
 | 证据项（SPEC §13） | 状态 |
 |---|---|
-| 1 两页登录后 URL | pending |
-| 2 两页脱敏 HTML | pending |
-| 3 登录方式/SSO/成功跳转 | pending |
-| 4 XHR 响应样例 | pending |
-| 5 源代码是否含数据 | pending |
-| 6 周次控件行为 | pending |
-| 7 登录失效页 HTML | pending |
-| 8 会话有效期/互踢 | pending |
-| 9 probeUrl 建议 | pending |
+| 1 选课结果页与课表页登录后的完整最终 URL（含 scheme/host/port/path/query names 与非 secret functional values） | **PENDING** |
+| 2 两页完整、已脱敏 HTML：`course_selection.html` 与 `timetable.html` | **PENDING** |
+| 3 登录方式、登录页、SSO/重定向链特征与成功后跳转特征 | **PENDING** |
+| 4 两页是否由 XHR/fetch 填充；如有，提供已脱敏响应样例及请求触发关系 | **PENDING** |
+| 5 浏览器“查看网页源代码”（Ctrl+U）是否已经包含课程/课表数据 | **PENDING** |
+| 6 周次切换控件行为：是否请求新页面/参数、仅前端切换，及其真实字段/URL 变化 | **PENDING** |
+| 7 登录页与会话失效页的完整、已脱敏 HTML：`login_page.html`、`auth_expired.html` | **PENDING** |
+| 8 会话实际有效期、跨端/重复登录是否互踢，以及失效表现 | **PENDING** |
+| 9 建议的低成本 `probeUrl`（登录后可达、稳定、响应小） | **PENDING** |
 
 ## 本子计划完成判定
 
