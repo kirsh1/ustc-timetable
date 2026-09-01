@@ -558,7 +558,7 @@ class UstcHttpPortalSource(
 ## Task G2 — SyncEngine 管线 + 单事务写入（evidence-free，fake 注入）
 
 - SPEC §8.1、§8.2、§8.3、§10。只依赖 F1 的 parser/source **接口**与 F5 normalizer、H1 指纹/Differ；portal 用 fake 实现。
-- 文件：`app/src/main/java/com/ustc/timetable/sync/SyncResult.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncEngine.kt`（`SyncError.kt` 已在 E2 落）、`app/src/main/java/com/ustc/timetable/timetable/domain/FreshLocalIds.kt`、`app/src/main/java/com/ustc/timetable/timetable/data/db/ApplySchoolSnapshot.kt` 增补 `importNewSemesterWithSnapshot`；测试 `app/src/test/java/com/ustc/timetable/sync/SyncEngineTest.kt`。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/SyncResult.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncEngine.kt`（`SyncError.kt` 已在 E2 落）、`app/src/main/java/com/ustc/timetable/sync/FreshLocalIds.kt`、`app/src/main/java/com/ustc/timetable/timetable/data/db/ApplySchoolSnapshot.kt` 增补 `importNewSemesterWithSnapshot`；测试 `app/src/test/java/com/ustc/timetable/sync/SyncEngineTest.kt`、`FreshLocalIdsTest.kt` 与 `timetable/data/db/ImportSchoolSnapshotTest.kt`。
 
 接口与关键代码：
 ```kotlin
@@ -578,41 +578,44 @@ class SyncEngine(
     private val db: TimetableDatabase,
     private val clock: Clock,
 ) {
+    private val syncMutex = Mutex()
+
     /** 目标学期恒为 academic-current && portalLinked（SPEC §8.1）；viewedSemesterId 不参与。
      *  gate 权威在本方法：纯手动学期返回 NoChange 且绝不调用 SchoolPortalSource；
      *  WeeklySyncWorker 只调 engine，不复制 gate 逻辑（见 H3 测试契约）。 */
-    suspend fun syncCurrentAcademicSemester(): SyncResult {
+    suspend fun syncCurrentAcademicSemester(): SyncResult = syncMutex.withLock {
         val target = db.semesterDao().academicCurrentPortalLinked()?.let { Mappers.toDomain(it) }
             ?: return SyncResult.NoChange                       // 纯手动学期：静默空转，零 portal 调用
-        return sync(target)
+        syncLocked(target)
     }
 
-    private suspend fun sync(target: Semester): SyncResult = try {
+    private suspend fun syncLocked(target: Semester): SyncResult = try {
         val selectionPage = portal.fetchCourseSelectionPage()
         val timetablePage = portal.fetchTimetablePage()
         val selection = selectionParser.parse(selectionPage)
         val entries = timetableParser.parse(timetablePage)
         val metaResult = metaParser.parse(selectionPage, timetablePage)
-        val fresh = normalizer.normalize(selection, entries, metaResult.meta, target.id)
-        val ided = FreshLocalIds.assign(fresh)                  // 重生成 CourseId/MeetingId，保持 courseId 引用一致
-        val newContent = FingerprintedSchoolContent.of(target, ided.courses, ided.meetings)
+        val normalized = normalizer.normalize(selection, entries, metaResult.meta, target.id)
+        validateSnapshot(normalized, target)                    // empty/HARD/cross-snapshot guard
+        val newContent = FingerprintedSchoolContent.of(target, normalized.courses, normalized.meetings)
         val newFp = SchoolSnapshotFingerprint.compute(newContent)
         if (target.sourceFingerprint == newFp) return SyncResult.NoChange
         // G2 owns Room -> domain extraction; H1 never receives a database handle.
         val (oldCourses, oldMeetings) = loadSchoolDomainListsFromDb(target.id)
         val changes = if (target.sourceFingerprint == null) emptyList()
             else differ.diff(FingerprintedSchoolContent.of(target, oldCourses, oldMeetings), newContent)
-        db.applySchoolSnapshot(target.id.value, ided.courses, ided.meetings, newFp, clock.instant())
+        val ided = FreshLocalIds.assign(normalized)              // 仅确定需要写入后生成 persistence IDs
+        db.applySchoolSnapshot(target.id, ided.courses, ided.meetings, newFp, clock.instant())
         SyncResult.Success(changes)
-    } catch (e: Exception) {
-        when (val err = e.syncErrorOrNull()) {
-            null -> throw e
-            else -> SyncResult.Failed(err)
-        }
+    } catch (e: SyncFailure) {
+        SyncResult.Failed(e.error)
     }
 }
 ```
-- `FreshLocalIds.assign(fresh)`：遍历 courses 生成 `CourseId(UUID.randomUUID().toString())`，以旧 id→新 id 映射重写 meetings 的 `courseId`；纯函数，测试 `assign_keeps_referential_integrity`。
+- `FreshLocalIds.assign(normalized)` 是 sync/storage concern，不属于 H1 domain：遍历 courses 生成新 `CourseId`，以旧 id→新 id 映射重写 meetings 的 `courseId`，并生成新 `MeetingId`；NoChange 路径不调用它。
+- `SyncEngine` 是唯一 single-flight authority；mutex 覆盖 target lookup 与完整 pipeline。第二个调用可在第一个完成后重新查询 target 并执行，但不得并发读取旧 fingerprint/diff/replace。
+- G2 destructive-write guard 拒绝空课程 snapshot，直到真实 portal evidence 提供明确的“合法零课程”语义；9 项证据仍 PENDING 时不得猜测。
+- Room→domain 旧快照提取归 G2 所有，只读取目标 semester 的 SCHOOL rows；H1 始终只接收 `Semester + List<Course> + List<CourseMeeting>`。
 - 导入事务（SPEC §8.2 顺序：boundProfile → semester → academic switch → 学校行 → meta；I2 使用）：
 ```kotlin
 suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
@@ -629,8 +632,9 @@ suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
     semesterDao().updateSyncMeta(semester.id, fingerprint, syncedAt.toEpochMilli())
 }
 ```
+- `importNewSemesterWithSnapshot` 仅是后续 import flow 使用的 atomic transaction primitive；本任务不接 UI、登录、确认、viewed semester 或首次导入流程。
 - 步骤：
-- [ ] 1. 写 failing test（fake `SchoolPortalSource` + fake 三 parser 接口 + 真 normalizer + in-memory Room；旧学期数据由 `applySchoolSnapshot` 预置）：
+- [x] 1. 写 failing test（fake `SchoolPortalSource` + fake 三 parser 接口 + 真 normalizer + in-memory Room；旧学期数据由 `applySchoolSnapshot` 预置）：
   - `success_replaces_school_rows`；
   - `parse_failure_keeps_old_data`（fake parser 抛 → Failed(ParseFailed)，Room 数据与指纹不变）；
   - `network_failure_keeps_old_data`；
@@ -643,11 +647,11 @@ suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
   - `assign_keeps_referential_integrity`（FreshLocalIds 单测）；
   - `import_success_semester_points_to_private_profile_clone`（`importNewSemesterWithSnapshot` 后 semester.profileId == boundProfile.id，academic-current 已切换）；
   - `import_failure_leaves_no_orphan_profile`（meetings 引用不存在的 courseId 触发 FK 失败 → 回滚后 `schedule_profiles` 表无 boundProfile 行、semesters 表无新学期行）。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.SyncEngineTest"`。
-- [ ] 3. 最小实现（如上；两条事务函数按 SPEC §8.2 顺序）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.SyncEngineTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN（全量，覆盖 A5 事务与 H1 配对回归）。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseG2: evidence-free sync engine, single-db-transaction replacement and import with bound profile"`。
+- [x] 2. 运行并观察预期 RED：G2 targeted compile 因 `SyncResult`、`SyncEngine`、`FreshLocalIds`、`importNewSemesterWithSnapshot` 缺失而失败。
+- [x] 3. 最小实现（如上；两条事务函数按 SPEC §8.2 顺序）。
+- [x] 4. 运行确认 GREEN：G2 targeted **24/24 GREEN**；sync package **21/21 GREEN**。
+- [x] 5. 定向回归：domain **120/120**、school boundary **158/158**、DB **16/16**、full **657/657**，debug/release 均 GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseG2: atomic evidence-free school sync pipeline"`。
 
 ---
 
