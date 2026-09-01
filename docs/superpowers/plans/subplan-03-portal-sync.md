@@ -416,12 +416,11 @@ data class FingerprintedSchoolContent(
 ) {
     companion object {
         fun of(semester: Semester, courses: List<Course>, meetings: List<CourseMeeting>): FingerprintedSchoolContent
-        fun of(semester: Semester, db: TimetableDatabase): FingerprintedSchoolContent  // 旧内容从 Room 的学校行构建
     }
 }
 
 object SchoolSnapshotFingerprint {
-    private val json = Json { encodeDefaults = true }
+    private val json = Json { encodeDefaults = true; explicitNulls = true }
     fun compute(content: FingerprintedSchoolContent): String {
         val canonical = json.encodeToString(
             FingerprintedSchoolContent.serializer(),
@@ -431,11 +430,15 @@ object SchoolSnapshotFingerprint {
                     { it.startPeriod }, { it.endPeriod }, { it.weekPatternMask }, { it.location }, { it.teacherNames })),
             ),
         )
-        return java.security.MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray())
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(canonical.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
     }
 }
 ```
+
+H1 保持纯 domain：factory 只接收 `Semester + List<Course> + List<CourseMeeting>`，不依赖 Room、DAO 或
+`TimetableDatabase`。G2 负责从 Room 读取学校行并转换成上述 domain lists，再调用 H1 factory。
 
 Diff 多阶段配对（关键代码；SPEC §8.3.3）：
 ```kotlin
@@ -482,7 +485,8 @@ class SnapshotDiffer {
         // 目标函数（SPEC §8.3.3）：objective = Σ pairCost + UNMATCHED_PENALTY × 未匹配数，取全局最小。
         // CONFIDENCE_THRESHOLD = 2：仅 pairCost ≤ 2（共享 ≥2 字段）的候选允许配对；
         // UNMATCHED_PENALTY = 3：未匹配的 old/new 各计 3。因此空 pairing 不可能胜过任何允许配对（≤2 < 2×3），
-        // 低置信（3..4 差异）候选永不配对——算法不为提高匹配数量强迫低置信 pair，宁可 Removed + Added。
+        // 低置信候选永不配对：3 differences = cost 3，4 differences = cost 4；二者都 > 2，
+        // 算法不为提高匹配数量强迫低置信 pair，宁可 Removed + Added。
         data class Candidate(val o: FM, val n: FM, val cost: Int)
         val candidates = mutableListOf<Candidate>()
         for (o in os) for (n in ns) {
@@ -500,7 +504,7 @@ class SnapshotDiffer {
 （`stableKey(m) = (m.startPeriod, m.endPeriod, m.weekPatternMask, m.location, m.teacherNames)`；`diffCount` = 该配对将产生的 change 条数；实现说明：`bestDisjointSubset` 用递归穷举全部互不相交子集并按目标函数取最优，桶内元素个位数。）
 
 - 步骤：
-- [ ] 1. 写 failing test：
+- [x] 1. 写 failing test：
   - 指纹：`fingerprint_order_independent`、`fingerprint_excludes_local_ids_and_audit_fields`（courseId/meetingId/本地 semesterId/importedAt/lastSyncedAt/isCurrentAcademicSemester/portalLinked/profileId 变化 → 指纹不变）、`fingerprint_sensitive_to_every_school_field`（逐学校字段扰动 → 变化）、`fingerprint_excludes_manual_items`。
   - 配对：`insert_earlier_meeting_does_not_shift_existing_pairing`（旧 [A, B]，新 [C(更早), A, B] → 恰一条 MeetingAdded(C)，A/B 零 change）；
     `remove_middle_meeting_does_not_shift_existing_pairing`（旧 [A, B, C]，新 [A, C] → 恰一条 MeetingRemoved(B)）；
@@ -509,11 +513,11 @@ class SnapshotDiffer {
     `ambiguous_low_confidence_pair_prefers_remove_add`（仅 weekday 相同、节次/周次/地点/教师全不同 → pairCost=4 超 CONFIDENCE_THRESHOLD=2 → 不配对，MeetingRemoved + MeetingAdded，零伪造精确修改）；
     `diff_time_change_is_TimeChanged_not_remove_add`、`diff_exact_on_location_change`（TH-B301→TH-C204）、`diff_teacher_and_weekpattern_changes`、`diff_meeting_added_removed`、`diff_course_added_removed_by_sourceCourseKey`、`identical_snapshots_empty_diff`、`unpairable_leftovers_become_removed_and_added_not_forced_changes`（新旧完全无相似项 → Removed+Added，零伪造精确修改）。
   - 文案：`formatter_第10周教室格式`（单周 → "第10周教室：TH-B301 → TH-C204"；多周 → "第7–12周教室：…"）、`formatter_course_added_removed_lines`。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprintTest" --tests "com.ustc.timetable.timetable.domain.SnapshotDifferTest" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"`。
-- [ ] 3. 最小实现（如上；`ScheduleChange` 类型清单与 SPEC §8.3.3 一字不差；`MeetingSummary(courseName, weekday, periodsText, weeksText, location, teachersText)`）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprintTest" --tests "com.ustc.timetable.timetable.domain.SnapshotDifferTest" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.*"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseH1: school-content fingerprint, staged minimum-cost meeting pairing, formatter"`。
+- [x] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprintTest" --tests "com.ustc.timetable.timetable.domain.SnapshotDifferTest" --tests "com.ustc.timetable.timetable.domain.ChangeFormatterNotificationTest"`。
+- [x] 3. 最小实现（如上；`ScheduleChange` 类型清单与 SPEC §8.3.3 一字不差；`MeetingSummary` 保持 typed domain form：`weekday: Int`、`startPeriod: Int`、`endPeriod: Int`、`weeks: WeekPattern`、`location: String`、`teacherNames: List<String>`；本地化字符串只由 notification formatter 生成）。
+- [x] 4. 运行确认 GREEN：上述三组 H1 测试 **67/67 GREEN**。
+- [x] 5. 定向回归：domain **120/120**、school boundary **158/158**、full **633/633**，`assembleDebug` 与 `assembleRelease` 均 GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseH1: deterministic school fingerprint and snapshot diff"`。
 
 ---
 
@@ -594,8 +598,10 @@ class SyncEngine(
         val newContent = FingerprintedSchoolContent.of(target, ided.courses, ided.meetings)
         val newFp = SchoolSnapshotFingerprint.compute(newContent)
         if (target.sourceFingerprint == newFp) return SyncResult.NoChange
+        // G2 owns Room -> domain extraction; H1 never receives a database handle.
+        val (oldCourses, oldMeetings) = loadSchoolDomainListsFromDb(target.id)
         val changes = if (target.sourceFingerprint == null) emptyList()
-            else differ.diff(FingerprintedSchoolContent.of(target, db), newContent)
+            else differ.diff(FingerprintedSchoolContent.of(target, oldCourses, oldMeetings), newContent)
         db.applySchoolSnapshot(target.id.value, ided.courses, ided.meetings, newFp, clock.instant())
         SyncResult.Success(changes)
     } catch (e: Exception) {
