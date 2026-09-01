@@ -310,18 +310,21 @@ class UstcSnapshotNormalizer {
 }
 ```
 关键规则实现要点：
-- 教师-周次分段：`Regex("(\\S+?)\\s*([0-9,，、\\-–—单双周至到]+?)周")` 逐段匹配 `teacherText`；每段产出 `(teacher, weekText)`；`weekText` 含"单"→`WeekPattern.oddWithin(range)`、含"双"→`evenWithin`，否则 `WeekPattern.parse`；无段（教师不含周次）→ 整体一条，teacher 拆 `teacherNames`。
-- `(teacher, weekText)` 重复段合并去重；同一 `(weekday, startPeriod, endPeriod, weekPattern)` 且教室相同的多条输入合并 teacherNames。
+- 教师-周次分段：只有 slash 分隔后的**每一段**都完整匹配批准的 `teacher + numeric/parity week` grammar 时才拆 assignment；每段周集合必须是 entry `baseWeeks` 的子集，否则 `ValidationFailed`。任一段不匹配即把整个 `teacherText` 当普通教师列表，禁止部分猜测。
+- 普通教师列表接受 `/、,，;；`，trim、去 blank、去重、排序；不 lowercase、转写、拆姓或删除姓名内部空白。
+- canonical merge 两阶段：先按 course/day/period/week/location 合并 teacher names，再按 course/day/period/location/identical teacher set union week patterns；不同教师 assignment 不得错误 union。
 - `sourceCourseKey`：选课页有稳定编号列时用 `courseCode` 值；否则 `"name:" + name`（SPEC §8.3.1）。
 - `weekdayText` 映射：`星期X/周X/一..日 → 1..7`；`periodText`：`"第3-5节"/"3-5节"/"3-5"` → `3..5`。
-- 匹配：先 `courseCode` 精确，再 `name` 精确；都失败 → `NormalizationIssue(HARD, "unmatched timetable course: " + courseName)` 并抛 `SyncError.ValidationFailed.asIllegalState()`；缺 credits/courseType → WARNING 收集，`credits=null`。
+- 匹配 fail closed：entry 有 code 时只允许 exact trimmed code；没有 code 才允许 exact trimmed name fallback。unknown code、ambiguous name、duplicate code/source key、unmatched timetable course 均抛 `ValidationFailed`；缺 credits/courseType 只生成 deterministic WARNING。
+- 每个 Course/Meeting 使用完整 SHA-256 派生的 deterministic unique temporary normalized ID，meeting 精确引用 normalized course ID；不使用 UUID/Clock/DB。G2 `FreshLocalIds.assign()` 在 Room persistence 前替换为真正 local UUID，临时 ID 不参与 source identity/fingerprint。
+- location-by-week 在 F5 由多条 `UstcTimetableEntry` 表达；F3 证据到位前不猜测 `locationText` 内嵌 grammar。
 - 步骤：
-- [ ] 1. 写 failing test（手写 DTO 输入，SPEC §28 Parser 语义项全部在此覆盖）：`match_by_courseCode`、`match_by_name_fallback`、`split_teachers_by_week_three_segments`（"吴长征 2-6周/刘斯 7-12周/郭宇桥 13-18周" → 3 条 meeting 各含单教师）、`split_location_by_week`（同教师不同教室 → 2 条 meeting）、`odd_even_weeks`（"1-16周(单)" → oddWithin(1,16)；"双周" → evenWithin）、`custom_weekset_2_6_8_10_12`、`missing_credits_is_soft_issue`（issues 含 WARNING 且 `course.credits==null`）、`unmatched_timetable_course_is_hard_failure`（抛 ValidationFailed）、`malformed_period_text_throws_ParseFailed`（"第X节" → 抛 ParseFailed）。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcSnapshotNormalizerTest"`。
-- [ ] 3. 最小实现（按上述规则；Course/Meeting 的 id 统一取固定标记值 `"pending"`——本层不生成 UUID，也不参与指纹与 diff；G2 的 `FreshLocalIds.assign` 在入库前统一重生成并保持 `courseId` 引用一致）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.parser.UstcSnapshotNormalizerTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.school.ustc.*"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseF5: snapshot normalizer with teacher/location/week splitting"`。
+- [x] 1. 先写 40 个 DTO-only behavior tests，覆盖 matching、identity、strict grammar、teacher assignment、location split、canonical merge、warnings/errors 与 input permutation。
+- [x] 2. production 不动时运行 targeted test，观察 F5 snapshot model/normalizer unresolved 的 genuine RED。
+- [x] 3. 最小实现 snapshot model 与 evidence-free normalizer；无 HTML/DOM/network/DB/Clock/UUID 依赖。
+- [x] 4. targeted `UstcSnapshotNormalizerTest` 40/40 GREEN。
+- [x] 5. `school.ustc.*` 158/158、full 566/566、Debug/Release assemble GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseF5: deterministic ustc snapshot normalization"`。
 
 ---
 
