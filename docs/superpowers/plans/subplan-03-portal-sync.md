@@ -746,18 +746,18 @@ class NotificationPermissionController(private val settings: SettingsStore) {
 ## Task H3 — WeeklySyncWorker + SyncScheduler
 
 - SPEC §8.1、§8.2、§8.5、§7.4。
-- 文件：`app/src/main/java/com/ustc/timetable/sync/WeeklySyncWorker.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncScheduler.kt`；修改 `app/src/main/java/com/ustc/timetable/TimetableApp.kt`（`Configuration.Provider` + 自定义 `WorkerFactory`）；测试 `app/src/test/java/com/ustc/timetable/sync/WeeklySyncWorkerTest.kt`（Robolectric `TestListenableWorkerBuilder`）。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/WeeklySyncWorker.kt`、`app/src/main/java/com/ustc/timetable/sync/SyncScheduler.kt`、`app/src/main/java/com/ustc/timetable/sync/WeeklySyncWorkerFactory.kt`；测试使用 Robolectric `TestListenableWorkerBuilder` 与官方 WorkManager test harness。
 
 接口与关键代码：
 ```kotlin
 class WeeklySyncWorker(
     context: Context, params: WorkerParameters,
-    private val engine: SyncEngine,
+    private val runner: BackgroundSyncRunner,
     private val settings: SettingsStore,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         if (!settings.weeklySyncEnabled.first()) return Result.success()
-        return when (val r = engine.syncCurrentAcademicSemester()) {
+        return when (val r = runner.run()) {
             is SyncResult.NoChange -> Result.success()                       // 完全静默（含纯手动学期空转）
             is SyncResult.Success ->
                 if (r.changes.isEmpty()) Result.success()
@@ -777,6 +777,7 @@ object SyncScheduler {
     const val UNIQUE_NAME = "ustc_weekly_sync"
     fun enqueue(context: Context) {
         val req = PeriodicWorkRequestBuilder<WeeklySyncWorker>(7, TimeUnit.DAYS)
+            .setInitialDelay(7, TimeUnit.DAYS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, req)
@@ -784,15 +785,18 @@ object SyncScheduler {
     fun cancel(context: Context) { WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_NAME) }
 }
 ```
+- `BackgroundSyncRunner` 是 Worker 的中性 orchestration seam；`SyncEngineBackgroundRunner` 只转发到 `SyncEngine.syncCurrentAcademicSemester()`。semester gate 权威仍在 engine（自读 academic-current && portalLinked），Worker 不接受 semester id、不读 viewed semester、不查询 Room。
+- Worker 自己持有 `weeklySyncEnabled.first()` race gate；设置关闭后，即使旧 Worker 已开始，也在调用 runner 前静默成功。
+- H3 只交付 evidence-free Worker/Scheduler/WorkerFactory seam。真实 `SyncEngine` 尚不能在 9 项 portal evidence PENDING 时诚实组装，因此本轮不修改 `TimetableApp`/`AppContainer`，不安装 production WorkerFactory，也不在启动时 enqueue。runtime composition 与 scheduler reconciliation 等真实 portal stack 可用后一次接线。
+- 周期请求使用 7 天 interval、7 天 initial delay、CONNECTED constraint 与 unique KEEP；注册/重建调度不等于启动时立即联网。
+- `lastSyncFinishedAt` 的产品语义（最后成功、最后完成 attempt、manual/background 是否共享）仍待 Settings integration 明确；H3 不写该字段。
 - 步骤：
-- 测试契约：gate 权威在 `SyncEngine.syncCurrentAcademicSemester()`（自读 academic-current && portalLinked；纯手动学期 NoChange 且零 portal 调用）；Worker 只调用 engine，**不把 semester gate 逻辑复制进 Worker**。
-- 步骤：
-- [ ] 1. 写 failing test（fake engine + TestListenableWorkerBuilder + `WorkManagerTestInitHelper`；fake engine 可配置内部再持有 fake `SchoolPortalSource` 计数器）：`no_change_is_silent`、`changes_notify`、`auth_expired_sets_needReauth_and_notifies`（settings.needReauth 翻 true）、`other_failures_are_silent_keep_old_data`（NetworkFailed → Result.success、needReauth 不变）、`manual_only_semester_makes_zero_portal_source_calls_and_no_notification`（库中仅纯手动学期 → engine 走 NoChange 路径，fake `SchoolPortalSource` 调用计数 == 0、无任何通知、Result.success）、`toggle_off_cancels_work_toggle_on_enqueues_unique`。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.WeeklySyncWorkerTest"`。
-- [ ] 3. 最小实现（如上；`TimetableApp` 实现 `Configuration.Provider`，`workerFactory` 从 `AppContainer` 取依赖构造 `WeeklySyncWorker`；App 启动时若 `weeklySyncEnabled==true` 则 `SyncScheduler.enqueue`）。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.WeeklySyncWorkerTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseH3: weekly silent sync worker gated on academic-current portal-linked semester"`。
+- [x] 1. tests-first：Worker result mapping/race gate、真实 G2 manual-only NoChange、permission no-op、Scheduler interval/delay/constraint/KEEP/cancel/setEnabled、Factory create/null 共 **21** 个用例。
+- [x] 2. RED：production 未动时 H3 Worker/runner/Scheduler/Factory symbols unresolved；`setEnabled` 另行完成一次 focused RED→GREEN。
+- [x] 3. 最小实现仅新增 Worker/Scheduler/Factory；无 App runtime、fake portal、Settings/UI/Room 越界。
+- [x] 4. targeted **21/21 GREEN**。
+- [x] 5. 定向回归：notification **17/17**、sync **66/66**、domain **120/120**、full **719/719**；debug/release GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseH3: weekly silent sync worker and scheduler core"`。
 
 ---
 
