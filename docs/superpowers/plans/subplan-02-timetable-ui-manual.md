@@ -275,8 +275,9 @@ object CourseDetailFormatter {
 data class LongPressDraft(val weekday: Int, val snappedStart: LocalTime)
 object LongPressResolver {
     fun resolve(columnFraction: Float, yFraction: Float, axis: TimelineAxis): LongPressDraft
-    // weekday = floor(columnFraction * 7) + 1（columnFraction 已由网格 clamp 到 [0,0.999]）
-    // snappedStart = WeeklyTimetableLayout.snapDownTo5Minutes(axis.timeAt(yFraction))
+    // 两个 fraction 都必须 finite；X defensive clamp 到 [0,1)，再做七列映射
+    // Y clamp 到 [0,1] → axis.timeAt → floor5 → 最终 clamp 回 axis day window
+    // 默认 45 分钟 endTime 仍由 D2 负责，不属于 D1 geometry resolver
 }
 ```
 - 步骤：
