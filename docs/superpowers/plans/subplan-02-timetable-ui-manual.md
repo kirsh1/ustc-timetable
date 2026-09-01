@@ -225,20 +225,24 @@ class TimetableViewModel(
 ## Task C3 — 课程详情 Sheet + 格式化
 
 - SPEC §4.4。
-- 文件：`app/src/main/java/com/ustc/timetable/timetable/domain/ChangeFormatter.kt`（先落纯格式化函数）、`app/src/main/java/com/ustc/timetable/timetable/ui/CourseDetailSheet.kt`；测试 `app/src/test/java/com/ustc/timetable/timetable/domain/FormatTest.kt`、`app/src/test/java/com/ustc/timetable/timetable/ui/CourseDetailSheetTest.kt`。
+- 文件：`app/src/main/java/com/ustc/timetable/timetable/ui/CourseDetailFormatter.kt`（先落纯格式化函数）、`app/src/main/java/com/ustc/timetable/timetable/ui/CourseDetailSheet.kt`；测试 `app/src/test/java/com/ustc/timetable/timetable/ui/CourseDetailFormatterTest.kt`、`app/src/test/java/com/ustc/timetable/timetable/ui/CourseDetailSheetTest.kt`。
+- `ChangeFormatter` remains owned by H1 for `ScheduleChange` / notification prose；C3 不创建或复用它。
 
 接口：
 ```kotlin
-object ChangeFormatter {
-    fun formatWeeks(p: WeekPattern): String        // "第 7–12 周" / "第10周" / "第2,4,6周"（连续段用 –）
-    fun formatPeriods(start: Int, end: Int): String  // "第3–5节" / "第3节"
-    fun formatMeetingTime(m: CourseMeeting, profile: ScheduleProfile): String  // "周五 · 09:45–12:10"
-    fun weekdayName(weekday: Int): String          // 周一..周日
+object CourseDetailFormatter {
+    fun weekdayName(weekday: Int): String
+    fun formatWeeks(pattern: WeekPattern): String
+    fun formatMeetingTime(meeting: CourseMeeting, profile: ScheduleProfile): String
+    fun formatTeachers(names: List<String>): String
+    fun formatLocation(location: String): String
+    fun formatCourseCode(courseCode: String): String
+    fun formatCredits(credits: Double?): String
 }
 ```
 - 步骤：
 - [ ] 1. 写 failing test：`formatWeeks_range_single_set`（"2-6,8,10-12" → "第 2–6,8,10–12 周"）、`formatWeeks_singleWeek`（of(10) → "第10周"）、`formatMeetingTime_uses_profile_conversion`（周五 3–5 节 → "周五 · 09:45–12:10"）、`detail_lists_all_meetings`（三条教师-周次行全部出现）、`detail_has_no_edit_action`（语义树无"编辑"/"删除"节点）、`detail_shows_dash_when_credits_null`（学分 "—"）。
-- [ ] 2. `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.FormatTest" --tests "com.ustc.timetable.timetable.ui.CourseDetailSheetTest"` → RED。
+- [ ] 2. `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.CourseDetailFormatterTest" --tests "com.ustc.timetable.timetable.ui.CourseDetailSheetTest"` → RED。
 - [ ] 3. 最小实现：`formatWeeks` 复用 `WeekPattern.format()` 的段结构换中文；Sheet 内容顺序：名称、meeting 时间/周次/地点/教师、课程号、学分、完整安排列表。
 - [ ] 4. 同命令 → GREEN。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.domain.*"` → GREEN。
