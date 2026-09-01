@@ -2,28 +2,25 @@ package com.ustc.timetable
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationManagerCompat
 import com.ustc.timetable.notification.NotificationPermissionController
 import com.ustc.timetable.scheduleprofile.ProfileEditorScreen
 import com.ustc.timetable.settings.NotificationsEnabledChecker
 import com.ustc.timetable.settings.SettingsRoute
 import com.ustc.timetable.settings.SettingsViewModel
+import com.ustc.timetable.timetable.ui.AppRoot
+import com.ustc.timetable.timetable.ui.FirstLaunchRoute
+import com.ustc.timetable.timetable.ui.FirstLaunchViewModel
 import com.ustc.timetable.timetable.ui.TimetableRoute
 import com.ustc.timetable.timetable.ui.TimetableViewModel
 import com.ustc.timetable.timetable.ui.minuteTicks
 import java.time.Clock
 
 class MainActivity : ComponentActivity() {
-    private enum class Destination { TIMETABLE, SETTINGS, PROFILE_EDITOR }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as TimetableApp).container
@@ -36,6 +33,13 @@ class MainActivity : ComponentActivity() {
             settings = container.settings,
             clock = clock,
             nowTicks = minuteTicks(clock),
+        )
+        val firstLaunchViewModel = FirstLaunchViewModel(
+            semesters = container.semesters,
+            settings = container.settings,
+            bundledOfficial = container.bundledOfficial,
+            clock = clock,
+            loginImportLauncher = null,
         )
         val settingsViewModel = SettingsViewModel(
             settings = container.settings,
@@ -52,33 +56,32 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             MaterialTheme {
-                var destination by rememberSaveable { mutableStateOf(Destination.TIMETABLE) }
-                BackHandler(enabled = destination != Destination.TIMETABLE) {
-                    destination = if (destination == Destination.PROFILE_EDITOR) Destination.SETTINGS else Destination.TIMETABLE
-                }
-                when (destination) {
-                    Destination.TIMETABLE -> TimetableRoute(
+                val firstLaunchState by firstLaunchViewModel.state.collectAsState()
+                AppRoot(
+                    gate = firstLaunchState.gate,
+                    firstLaunchContent = { FirstLaunchRoute(firstLaunchViewModel) },
+                    timetableContent = { openSettings -> TimetableRoute(
                         viewModel = viewModel,
                         manualRepository = container.manual,
                         clock = clock,
-                        onSettingsClick = { destination = Destination.SETTINGS },
-                    )
-                    Destination.SETTINGS -> SettingsRoute(
+                        onSettingsClick = openSettings,
+                    ) },
+                    settingsContent = { back, openProfile -> SettingsRoute(
                         viewModel = settingsViewModel,
-                        onBack = { destination = Destination.TIMETABLE },
-                        onOpenProfile = { destination = Destination.PROFILE_EDITOR },
-                    )
-                    Destination.PROFILE_EDITOR -> {
+                        onBack = back,
+                        onOpenProfile = openProfile,
+                    ) },
+                    profileEditorContent = { back ->
                         val profile = settingsViewModel.state.collectAsState().value.workingProfile
                         if (profile != null) {
                             ProfileEditorScreen(
                                 profile = profile,
-                                onSave = { periods -> settingsViewModel.saveWorkingPeriods(periods); destination = Destination.SETTINGS },
-                                onBack = { destination = Destination.SETTINGS },
+                                onSave = { periods -> settingsViewModel.saveWorkingPeriods(periods); back() },
+                                onBack = back,
                             )
                         }
-                    }
-                }
+                    },
+                )
             }
         }
     }

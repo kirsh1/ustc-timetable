@@ -88,6 +88,27 @@ class DebugSeedTest {
         assertEquals(1, db.manualItemDao().itemsForSemester(semId).size)
     }
 
+    @Test fun debug_seed_after_existing_manual_semester_is_noop() = runBlocking {
+        val bundled = OfficialProfileLoader.load(RuntimeEnvironment.getApplication())
+        semesters.createInitialLocalSemesterIfEmpty(
+            com.ustc.timetable.timetable.domain.SemesterDefaults.AUTUMN_2026(
+                id = "manual-winner",
+                profileId = "replaced",
+                now = t0,
+            ),
+            bundled,
+        )
+        val beforeSemesters = db.semesterDao().allByStartDateDesc()
+        val beforeProfiles = db.scheduleProfileDao().all()
+
+        seed()
+
+        assertEquals(beforeSemesters, db.semesterDao().allByStartDateDesc())
+        assertEquals(beforeProfiles, db.scheduleProfileDao().all())
+        assertEquals(0, db.courseDao().coursesForSemester("manual-winner").size)
+        assertEquals(0, db.manualItemDao().itemsForSemester("manual-winner").size)
+    }
+
     @Test fun debug_seed_semester_is_portal_unlinked() = runBlocking {
         seed()
         val row = db.semesterDao().allByStartDateDesc().first()

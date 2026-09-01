@@ -53,15 +53,34 @@ class SemesterRepository(
      */
     suspend fun createLocalSemester(base: Semester, sourceProfile: ScheduleProfile): Semester =
         db.withTransaction {
-            val clone = profiles.cloneForSemester(sourceProfile)
-            val created = base.copy(
-                profileId = ProfileId(clone.id),
-                portalLinked = false,
-                sourceFingerprint = null,
-                isCurrentAcademicSemester = true,
-            )
-            db.semesterDao().insert(Mappers.toEntity(created))
-            db.semesterDao().setExclusiveAcademicCurrent(base.id.value)
-            created
+            createLocalSemesterInTransaction(base, sourceProfile)
         }
+
+    /**
+     * 首启空库窄入口：empty check 与 profile clone / semester insert / academic-current
+     * 切换共享同一个 Room transaction。并发调用至多一个成功；已有任意学期时严格零写入。
+     */
+    suspend fun createInitialLocalSemesterIfEmpty(
+        base: Semester,
+        sourceProfile: ScheduleProfile,
+    ): Semester? = db.withTransaction {
+        if (db.semesterDao().allByStartDateDesc().isNotEmpty()) return@withTransaction null
+        createLocalSemesterInTransaction(base, sourceProfile)
+    }
+
+    private suspend fun createLocalSemesterInTransaction(
+        base: Semester,
+        sourceProfile: ScheduleProfile,
+    ): Semester {
+        val clone = profiles.cloneForSemester(sourceProfile)
+        val created = base.copy(
+            profileId = ProfileId(clone.id),
+            portalLinked = false,
+            sourceFingerprint = null,
+            isCurrentAcademicSemester = true,
+        )
+        db.semesterDao().insert(Mappers.toEntity(created))
+        db.semesterDao().setExclusiveAcademicCurrent(base.id.value)
+        return created
+    }
 }

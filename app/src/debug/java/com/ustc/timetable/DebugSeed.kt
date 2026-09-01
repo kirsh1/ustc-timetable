@@ -33,11 +33,10 @@ object DebugSeed {
         bundledProfile: ScheduleProfile,
         now: Instant = Instant.now(),
     ) {
-        if (db.semesterDao().allByStartDateDesc().isNotEmpty()) return
-        val semester = semesters.createLocalSemester(
+        val semester = semesters.createInitialLocalSemesterIfEmpty(
             SemesterDefaults.AUTUMN_2026(id = SEMESTER_ID, profileId = "replaced-by-clone", now = now),
             bundledProfile,
-        )
+        ) ?: return
 
         val chem = CourseId("debug-c-chem")
         val math = CourseId("debug-c-math")
