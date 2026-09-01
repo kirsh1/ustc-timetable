@@ -658,31 +658,43 @@ suspend fun TimetableDatabase.importNewSemesterWithSnapshot(
 ## Task G3 — 手动同步 UX + 失效弹窗 + 重登续跑
 
 - SPEC §5.1、§5.5、§7.4。
-- 文件：`app/src/main/java/com/ustc/timetable/sync/ManualSyncController.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/AuthExpiredDialog.kt`；修改 `app/src/main/java/com/ustc/timetable/timetable/ui/TimetableViewModel.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/TimetableScreen.kt`；测试 `app/src/test/java/com/ustc/timetable/sync/ManualSyncFlowTest.kt`。
+- 文件：`app/src/main/java/com/ustc/timetable/sync/ManualSyncController.kt`、`app/src/main/java/com/ustc/timetable/timetable/ui/AuthExpiredDialog.kt`；修改 `app/src/main/java/com/ustc/timetable/timetable/ui/TimetableScreen.kt`；测试 `app/src/test/java/com/ustc/timetable/sync/ManualSyncFlowTest.kt` 与既有 `TimetableScreenTest.kt`。`TimetableViewModel` 不接 manual-sync runtime state。
 
 接口：
 ```kotlin
-sealed class ManualSyncUi {
-    data object Idle : ManualSyncUi
-    data object Syncing : ManualSyncUi
-    data class AuthExpired(val pendingRetry: Boolean) : ManualSyncUi
-    data class Updated(val changeCount: Int) : ManualSyncUi
-    data class FailedOther(val error: SyncError) : ManualSyncUi
+sealed interface ManualSyncState {
+    data object Idle : ManualSyncState
+    data object Syncing : ManualSyncState
+    data object AwaitingReauth : ManualSyncState
 }
-class ManualSyncController(private val engine: SyncEngine, private val scope: CoroutineScope) {
-    val ui: StateFlow<ManualSyncUi>
-    fun start()                    // engine.syncCurrentAcademicSemester()；AuthExpired → AuthExpired(pendingRetry=true)
-    fun onReloginSuccess()         // AuthExpired 状态下重登成功 → 自动 start() 续跑（SPEC §5.5）
-    fun onCancel()                 // 回 Idle，不重试
+
+sealed interface ManualSyncEvent {
+    data class Updated(val changeCount: Int) : ManualSyncEvent
+    data class FailedOther(val error: SyncError) : ManualSyncEvent
+}
+
+fun interface ManualSyncRunner { suspend fun sync(): SyncResult }
+
+class ManualSyncController(private val runner: ManualSyncRunner, private val scope: CoroutineScope) {
+    val state: StateFlow<ManualSyncState>      // durable：Idle / Syncing / AwaitingReauth
+    val events: SharedFlow<ManualSyncEvent>    // one-shot：Updated / FailedOther
+    fun start()                    // 非 Idle 时 no-op；runner adapter 最终只调用 SyncEngine
+    fun onReloginSuccess()         // AwaitingReauth 时清 pending → 恰好一次自动 retry
+    fun onReloginCanceled()        // 保持 AwaitingReauth，dialog 继续显示
+    fun onCancelAuthExpired()      // 回 Idle，不重试
 }
 ```
+- `SyncEngine.syncCurrentAcademicSemester()` 继续是同步 target 的唯一 authority；UI/controller 不传 viewed semester 或 semester id。
+- manual path 不读取或写入 `SettingsStore.needReauth`；该持久化状态属于后续 H3 background sync。
+- `TimetableRoute(manualSyncController = null)` 是当前 evidence-gated production 默认：真实 portal/parser/detector stack 未完成前 refresh 不可用；后续 composition 只注入 `ManualSyncRunner { syncEngine.syncCurrentAcademicSemester() }`，不重写 G3。
+- controller 构造和 Route composition 均不自动 `start()`；网络只来自明确 refresh 点击，或一次新的 E2 `RESULT_OK` 所授权的 retry。
 - 步骤：
-- [ ] 1. 写 failing test（fake engine 返回预设结果）：`auth_expired_shows_dialog_keeps_data`、`relogin_success_resumes_sync`（`onReloginSuccess()` 后 engine 被再次调用且 ui 回 Idle/Updated）、`cancel_keeps_state_quiet`（取消后不再调 engine）、`no_change_is_silent`（NoChange → Idle，无 Updated）、`success_with_changes_shows_inline_summary`（Success(2 条) → Updated(2)）、`sync_button_hidden_when_viewed_not_academic_current`（VM：`isAcademicCurrentViewed=false` → 不渲染 ↻）。
-- [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.ManualSyncFlowTest"`。
-- [ ] 3. 最小实现：`TimetableScreen` 接 `↻`（显示条件 SPEC §5.1）；AuthExpiredDialog 文案固定「登录状态已失效\n已有课表不会受到影响」，按钮 [取消] [重新登录]；重新登录走 E2 `WebViewLoginActivity` contract，RESULT_OK → `onReloginSuccess()`。
-- [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.ManualSyncFlowTest"`。
-- [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.sync.*" --tests "com.ustc.timetable.timetable.ui.*"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseG3: manual sync ux with reauth resume"`。
+- [x] 1. 写 failing test：result mapping/silence/safe failures、auth dialog、cancel/relogin/retry、double tap、refresh visibility/disabled、grid/loading 与 Settings 隔离，共 **24** 个 G3 tests。
+- [x] 2. 运行并观察预期 RED：targeted compile 因 `ManualSyncController/State/Event/Runner`、`AuthExpiredDialog`、manual-sync Screen callbacks 与 login-result wiring 缺失而失败。
+- [x] 3. 最小实现：`TimetableScreen` 接 `↻`（viewed current+portal + runtime dependency）；syncing 显示局部 progress 且 grid 保留；AuthExpiredDialog 固定文案与按钮；E2 contract false 保持 dialog，true 授权一次 retry。
+- [x] 4. 运行确认 GREEN：G3 targeted **24/24 GREEN**。
+- [x] 5. 定向回归：sync **45/45**、UI **110/110**、domain **120/120**、full **681/681**，debug/release 均 GREEN。
+- [x] 6. commit：`git add app/src && git commit -m "phaseG3: manual sync ux with reauth resume"`。
 
 ---
 
