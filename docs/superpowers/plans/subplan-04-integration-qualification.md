@@ -34,41 +34,51 @@ class FirstLaunchViewModel(
 ## Task I2 — 登录导入流（fake 路径先行；真实导入依赖 gated 分支）
 
 - SPEC §5.7、§3.2、§6.3、§8.2（含 boundProfile 的事务顺序）。
-- 文件：`app/src/main/java/com/ustc/timetable/semester/SemesterConfirmSheet.kt`、`app/src/main/java/com/ustc/timetable/semester/ImportFlowViewModel.kt`；测试 `app/src/test/java/com/ustc/timetable/semester/ImportFlowTest.kt`。
+- fake-path 文件：`app/src/main/java/com/ustc/timetable/semester/ImportFlowViewModel.kt`；测试 `app/src/test/java/com/ustc/timetable/semester/ImportFlowTest.kt`。`SemesterConfirmSheet` 与 runtime wiring 留给 I4/真实 portal composition。
 
 接口：
 ```kotlin
-sealed class ImportStep {
-    data object LoggingIn : ImportStep
-    data class Fetching(val message: String) : ImportStep
-    data class ConfirmMeta(val partial: UstcSemesterMetaPartial, val prefilled: Semester) : ImportStep   // isConfident=false 时
+sealed interface ImportStep {
+    data object AwaitingLogin : ImportStep
+    data object Fetching : ImportStep
+    data class ConfirmMeta(val draft: SemesterImportDraft) : ImportStep
     data class Done(val semesterId: SemesterId) : ImportStep
     data class Error(val error: SyncError) : ImportStep
 }
+data class SemesterImportDraft(                 // parser-owned academic fields；缺失值保持 null
+    val displayName: String?, val academicYear: String?, val term: Term?,
+    val week1Start: LocalDate?, val totalWeeks: Int?,
+    val startDate: LocalDate?, val endDate: LocalDate?,
+)
+data class ConfirmedSemesterMeta(               // UI 只能提交七个 academic fields
+    val displayName: String, val academicYear: String, val term: Term,
+    val week1Start: LocalDate, val totalWeeks: Int,
+    val startDate: LocalDate, val endDate: LocalDate,
+)
 class ImportFlowViewModel(
-    private val session: UstcSessionManager, private val portal: SchoolPortalSource,
+    private val portal: SchoolPortalSource,
     private val selectionParser: CourseSelectionPageParser,   // 接口
     private val timetableParser: TimetablePageParser,          // 接口
     private val metaParser: SemesterMetaParser,                // 接口
     private val normalizer: UstcSnapshotNormalizer,
-    private val fingerprint: SchoolSnapshotFingerprintObject,  // object 直用，无需注入
-    private val db: TimetableDatabase, private val profiles: ScheduleProfileRepository,
+    private val db: TimetableDatabase,
     private val settings: SettingsStore, private val clock: Clock,
 ) : ViewModel() {
     val step: StateFlow<ImportStep>
     fun onLoginResultOk()
-    fun onMetaConfirmed(edited: Semester)
-    fun onMetaCancelled()
+    fun onMetaConfirmed(meta: ConfirmedSemesterMeta)
 }
 ```
-- 导入主路径（`onLoginResultOk`）：抓两页 → 三 parser 接口 → `normalizer.normalize` → 以 meta 构造 `Semester`（`portalLinked=true`；`week1Start/totalWeeks` 缺失时回退 2026 秋季基准并在 ConfirmSheet 预填标注）→ `isConfident` ? 直接落库 : 进 `ConfirmMeta`；落库调用 `db.importNewSemesterWithSnapshot(boundProfile, semesterEntity, courses, meetings, fingerprint, syncedAt)`（SPEC §8.2 单事务，顺序：insert boundProfile → insert semester → setExclusiveAcademicCurrent → insert 学校行 → updateSyncMeta）→ `setViewedSemesterId` → `Done`。`boundProfile` 由 `profiles.bindProfileAtSemesterCreation(workingProfile)` 生成（克隆 working 为该学期私有行内容，id=新 UUID）。
+- fake 导入主路径（`onLoginResultOk`）：生成一次 provisional `SemesterId` → 抓两页 → 三 parser 接口 → `normalizer.normalize(..., provisionalId)` → destructive-write validation。只有 `isConfident=true` 且七个 academic fields 完整、语义合法时可直接提交；否则进入 `ConfirmMeta`，已识别值原样保留、缺失值保持 `null`，**不得回退或预填 2026 秋季基准**。
+- 提交路径由 VM 从 `ConfirmedSemesterMeta` 构建系统字段（provisional id、`portalLinked=true`、academic-current、`importedAt`、private profile id、fingerprint）；working profile 只在内存中克隆为 private entity，禁止调用任何会先插表的 profile clone API。先用 H1 canonical content 计算 fingerprint，再用 `FreshLocalIds.assign` 生成持久化 ID，唯一首个 Room mutation 是 `db.importNewSemesterWithSnapshot(...)`：insert boundProfile → insert semester → setExclusiveAcademicCurrent → insert 学校行 → updateSyncMeta，全在同一事务。事务成功后才写 `viewedSemesterId` 并进入 `Done`。
+- I2 fake-path 不依赖 `UstcSessionManager`，不接 `AppContainer`/Activity/Compose，也不安装 fake portal runtime；真实 login/import composition 继续等待 F2/F3/F4/F6/G1 evidence gate。
 - 步骤：
-- [ ] 1. 写 failing test（fake portal/parsers 接口；in-memory db）：`confident_meta_skips_confirm_sheet`、`unconfident_meta_shows_confirm_prefilled`、`import_persists_semester_snapshot_and_switches_academic_current_in_one_flow`（旧 academic-current 被置 false）、`import_failure_leaves_no_semester`（parser 抛错 → semesters 表数量不变、原 academic-current 不变）、`import_failure_leaves_no_orphan_profile`（落库中途失败 → `schedule_profiles` 无新行）、`import_success_semester_points_to_private_profile_clone`（semester.profileId == 新克隆行 id）、`import_sets_viewed_to_new_semester`、`confirm_saves_permanent_semester_record`、`week1start_must_be_monday`（非周一被拒）。
+- [ ] 1. 写 failing test（fake portal/parsers；in-memory db）：锁定单次 login pipeline、partial-null preservation、confident/incomplete confirmation gate、metadata semantic validation、H1 fingerprint、fresh IDs、原子 private-profile import、旧学期保留、DB commit 后 viewed 更新、已知失败/empty snapshot 零写、transaction rollback 与重复事件幂等。
 - [ ] 2. 运行并观察预期 RED：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.ImportFlowTest"`。
-- [ ] 3. 最小实现：按上；聚合 `data class UstcParsers(selection, timetable, meta)` 便于注入亦可，直接逐个注入三接口亦可（实现取其一并保持与测试一致）。
+- [ ] 3. 最小实现：按上述 evidence-free boundary；直接注入 fakeable source/parser interfaces，复用 F5 normalizer、H1 fingerprint、G2 `FreshLocalIds` 与唯一 import transaction primitive。
 - [ ] 4. 运行确认 GREEN：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.ImportFlowTest"`。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.semester.*" --tests "com.ustc.timetable.sync.SyncEngineTest"` → GREEN。
-- [ ] 6. commit：`git add app/src && git commit -m "phaseI2: login import flow with single-transaction semester and bound profile"`。
+- [ ] 6. commit：`git add app/src && git commit -m "phaseI2: evidence-free atomic school import flow"`。
 
 ---
 
