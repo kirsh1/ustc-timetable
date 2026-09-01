@@ -40,6 +40,41 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/** 学校课程详情 read-only projection（C3）：点击的 meeting + 该课程全部 meeting。 */
+data class CourseDetailUiModel(
+    val course: Course,
+    val selectedMeeting: CourseMeeting,
+    val allMeetings: List<CourseMeeting>,
+)
+
+/** 完整安排的确定序（C3 correction 7）：业务字段优先，本地随机 MeetingId 仅作最终 tiebreak。 */
+internal fun detailMeetingOrder(): Comparator<CourseMeeting> = compareBy(
+    { it.weekday },
+    { it.startPeriod },
+    { it.endPeriod },
+    { it.weekPattern.mask },
+    { it.location },
+    { it.teacherNames.joinToString("\u0000") },
+    { it.id.value },
+)
+
+/** 未过滤的学校快照 → read-only detail projection；orphan meeting 跳过，不构造 fake course。 */
+internal fun buildCourseDetailsByMeetingId(
+    courses: List<Course>,
+    meetings: List<CourseMeeting>,
+): Map<MeetingId, CourseDetailUiModel> {
+    val coursesById = courses.associateBy { it.id }
+    val meetingsByCourse = meetings.groupBy { it.courseId }
+    return meetings.mapNotNull { meeting ->
+        val course = coursesById[meeting.courseId] ?: return@mapNotNull null
+        meeting.id to CourseDetailUiModel(
+            course = course,
+            selectedMeeting = meeting,
+            allMeetings = meetingsByCourse.getValue(meeting.courseId).sortedWith(detailMeetingOrder()),
+        )
+    }.toMap()
+}
+
 /** 单周 page projection（C1 correction 3）：每页自带 weekDates/两源 placed 块/nowLine。 */
 data class TimetableWeekPageUiState(
     val week: Int,
@@ -56,6 +91,7 @@ data class TimetableUiState(
     val naturalWeek: Int? = null,
     val profile: ScheduleProfile? = null,
     val weekPages: List<TimetableWeekPageUiState> = emptyList(),
+    val courseDetailsByMeetingId: Map<MeetingId, CourseDetailUiModel> = emptyMap(),
     val availableSemesters: List<Semester> = emptyList(),
     val showNonCurrentWeek: Boolean = false,
     val today: LocalDate? = null,
@@ -274,6 +310,9 @@ class TimetableViewModel(
         val rawManual = data.manual.map(::manualTimedBlock)
         val axis = WeeklyTimetableLayout.axisOf(data.profile)
 
+        // C3 correction 6：detail map 由未过滤 school snapshot 构造（不受 viewed week/showNonCurrentWeek 影响）
+        val courseDetails = buildCourseDetailsByMeetingId(data.school.first, data.school.second)
+
         // 每周独立 projection：weekFilter → 单次联合 place → 按 identity 拆分
         val weekPages = (1..semester.totalWeeks).map { week ->
             val placed = WeeklyTimetableLayout.place(
@@ -295,6 +334,7 @@ class TimetableViewModel(
             naturalWeek = naturalWeek,
             profile = data.profile,
             weekPages = weekPages,
+            courseDetailsByMeetingId = courseDetails,
             availableSemesters = data.available,
             showNonCurrentWeek = showNonCurrentWeek,
             today = today,

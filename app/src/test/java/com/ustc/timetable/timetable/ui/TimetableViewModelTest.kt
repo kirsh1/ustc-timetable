@@ -409,6 +409,67 @@ class TimetableViewModelTest {
         assertNull(selectViewedSemester(emptyList(), "x"))
     }
 
+    // ---- C3 projection：detail map 由未过滤 school snapshot 构造 ----
+
+    @Test fun detail_map_resolves_every_school_meeting() = runBlocking {
+        seedSemester("s-cur", current = true)
+        val sem = db.semesterDao().byId("s-cur")!!.let(Mappers::toDomain)
+        val (courses, meetings) = schoolSnapshot(sem.id)
+        db.applySchoolSnapshot(sem.id, courses, meetings, "fp", t0)
+        val m = vm()
+        awaitUntil { !m.state.value.isLoading }
+        awaitUntil { m.state.value.courseDetailsByMeetingId.isNotEmpty() }
+        assertEquals(meetings.map { it.id }, m.state.value.courseDetailsByMeetingId.keys.toList())
+        meetings.forEach { mt ->
+            assertEquals(mt, m.state.value.courseDetailsByMeetingId[mt.id]!!.selectedMeeting)
+        }
+    }
+
+    @Test fun detail_map_includes_hidden_week_meetings() = runBlocking {
+        seedSemester("s-cur", current = true)
+        val sem = db.semesterDao().byId("s-cur")!!.let(Mappers::toDomain)
+        // 同一课程两条安排：当前周(2)可见 + 第 5 周隐藏；详情必须仍含两条。
+        val (courses, visible) = schoolSnapshot(sem.id, meetingId = "vis", weeks = WeekPattern.of(2))
+        val hidden = visible.single().copy(id = MeetingId("hid"), weekPattern = WeekPattern.of(5))
+        db.applySchoolSnapshot(sem.id, courses, visible + hidden, "fp", t0)
+        val m = vm()
+        awaitUntil { m.state.value.courseDetailsByMeetingId.size == 2 }   // 隐藏周 meeting 也在 detail map
+        assertEquals(1, m.state.value.placedSchool.size)                   // 但布局里只显示当前周
+        assertEquals(
+            listOf("vis", "hid"),
+            m.state.value.courseDetailsByMeetingId[MeetingId("vis")]!!.allMeetings.map { it.id.value },
+        )
+    }
+
+    @Test fun input_permutation_produces_same_detail_order() {
+        val semesterId = SemesterId("s")
+        val (courses, first) = schoolSnapshot(semesterId, meetingId = "m2", weeks = WeekPattern.range(7, 12))
+        val courseId = courses.single().id
+        val meetings = listOf(
+            first.single(),
+            first.single().copy(id = MeetingId("m1"), weekPattern = WeekPattern.range(2, 6)),
+            first.single().copy(id = MeetingId("m3"), weekPattern = WeekPattern.range(13, 18)),
+        )
+        val forward = buildCourseDetailsByMeetingId(courses, meetings)
+        val reversed = buildCourseDetailsByMeetingId(courses, meetings.reversed())
+        val expected = listOf("m1", "m2", "m3")
+        assertEquals(expected, forward[MeetingId("m2")]!!.allMeetings.map { it.id.value })
+        assertEquals(expected, reversed[MeetingId("m2")]!!.allMeetings.map { it.id.value })
+        assertEquals(courseId, reversed[MeetingId("m2")]!!.selectedMeeting.courseId)
+    }
+
+    @Test fun detail_map_never_contains_manual_items() = runBlocking {
+        seedSemester("s-cur", current = true)
+        val sem = db.semesterDao().byId("s-cur")!!.let(Mappers::toDomain)
+        val (courses, meetings) = schoolSnapshot(sem.id)
+        db.applySchoolSnapshot(sem.id, courses, meetings, "fp", t0)
+        manual.add(manualItem(sem.id))
+        val m = vm()
+        awaitUntil { m.state.value.placedManual.isNotEmpty() }
+        val detailIds = m.state.value.courseDetailsByMeetingId.keys.map { it.value }
+        assertTrue(!detailIds.contains("i1"))   // manual id 不出现在学校 detail map
+    }
+
     // ---- fixture ----
 
     /** 仅供 weekFilter 纯函数测试的最小 TimedBlock。 */

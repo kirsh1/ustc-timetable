@@ -35,10 +35,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.layout.WeeklyTimetableGrid
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+
+/** 详情选择只保存 MeetingId，并始终对当前 emission 重新查表；stale id 不保留旧 model。 */
+internal fun resolveSchoolCourseDetail(
+    selectedMeetingId: MeetingId?,
+    detailsByMeetingId: Map<MeetingId, CourseDetailUiModel>,
+): CourseDetailUiModel? = selectedMeetingId?.let(detailsByMeetingId::get)
 
 /** Route：collect state → 无状态 Screen；Screen 不读 Room/DataStore。 */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -46,12 +53,18 @@ import kotlinx.coroutines.flow.filter
 fun TimetableRoute(viewModel: TimetableViewModel) {
     val state by viewModel.state.collectAsState()
     var semesterSheetOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    // C3 correction 13：只保存 ephemeral MeetingId（不保存 detail model）；
+    // 切学期经 remember(semester.id) 丢弃旧选择；stale id → lookup null → 不渲染旧详情。
+    var selectedSchoolMeetingId by androidx.compose.runtime.remember(state.semester?.id) {
+        androidx.compose.runtime.mutableStateOf<MeetingId?>(null)
+    }
     TimetableScreen(
         state = state,
         onPrevWeek = viewModel::onPrevWeek,
         onNextWeek = viewModel::onNextWeek,
         onWeekSelected = viewModel::onWeekSelected,
         onSemesterTitleClick = { semesterSheetOpen = true },
+        onSchoolBlockClick = { selectedSchoolMeetingId = it },
     )
     if (semesterSheetOpen && state.semester != null) {
         com.ustc.timetable.semester.SemesterSwitcherSheet(
@@ -64,6 +77,15 @@ fun TimetableRoute(viewModel: TimetableViewModel) {
             onDismiss = { semesterSheetOpen = false },
         )
     }
+    val selectedDetail = resolveSchoolCourseDetail(selectedSchoolMeetingId, state.courseDetailsByMeetingId)
+    val selectedProfile = state.profile
+    if (selectedDetail != null && selectedProfile != null) {
+        CourseDetailSheet(
+            detail = selectedDetail,
+            profile = selectedProfile,
+            onDismiss = { selectedSchoolMeetingId = null },
+        )
+    }
 }
 
 /** 首页（frozen §5.1 + C1）：顶栏 + 周标题行（箭头/选择器）+ HorizontalPager 逐页渲染该周 projection。 */
@@ -74,6 +96,7 @@ fun TimetableScreen(
     onNextWeek: () -> Unit,
     onWeekSelected: (Int) -> Unit,
     onSemesterTitleClick: () -> Unit = {},
+    onSchoolBlockClick: (MeetingId) -> Unit = {},
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -187,7 +210,7 @@ fun TimetableScreen(
                         viewedWeek = page.week,
                         nowLine = page.nowLine,
                         today = state.today,
-                        onSchoolBlockClick = {},   // C3
+                        onSchoolBlockClick = onSchoolBlockClick,
                         onManualBlockClick = {},   // D3
                         onEmptyLongPress = { _, _ -> },  // D1
                     )

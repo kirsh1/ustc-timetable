@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.timetable.domain.LocalDateRange
+import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.domain.SemesterDefaults
 import com.ustc.timetable.timetable.domain.WeekPattern
@@ -16,6 +17,8 @@ import com.ustc.timetable.timetable.layout.PlacedBlock
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
 import java.time.LocalDate
 import java.time.LocalTime
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -37,6 +40,15 @@ class TimetableScreenTest {
             colorKey = "s1:CHEM5013P", meetingId = MeetingId(meetingId), manualItemId = null,
             weekday = 5, start = LocalTime.of(9, 0), endInclusive = LocalTime.of(10, 45),
             weeks = WeekPattern.range(1, 20), title = "高等无机化学", location = "TH-B301", teacherNames = listOf("刘斯"),
+        )
+        return WeeklyTimetableLayout.place(listOf(block), WeeklyTimetableLayout.axisOf(profile))
+    }
+
+    private fun placedManual(itemId: String = "i1"): List<PlacedBlock> {
+        val block = UiTimedBlock(
+            colorKey = "manual:$itemId", meetingId = null, manualItemId = ManualItemId(itemId),
+            weekday = 5, start = LocalTime.of(9, 0), endInclusive = LocalTime.of(10, 45),
+            weeks = WeekPattern.range(1, 20), title = "手动项", location = "", teacherNames = emptyList(),
         )
         return WeeklyTimetableLayout.place(listOf(block), WeeklyTimetableLayout.axisOf(profile))
     }
@@ -111,6 +123,35 @@ class TimetableScreenTest {
     @Test fun settings_control_present_but_disabled() {
         rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
         rule.onAllNodesWithTag("settings").assertCountEquals(1)
+    }
+
+    @Test fun screen_school_block_click_forwards_exact_meeting_id() {
+        var got: MeetingId? = null
+        rule.setContent {
+            TimetableScreen(
+                state = fullState(placedSchool = placedSchool("m9")),
+                onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
+                onSemesterTitleClick = {},
+                onSchoolBlockClick = { got = it },
+            )
+        }
+        rule.onNodeWithTag("school_block:m9").performClick()
+        rule.waitForIdle()
+        assertEquals(MeetingId("m9"), got)
+    }
+
+    @Test fun manual_block_does_not_open_school_course_detail() {
+        var schoolClick: MeetingId? = null
+        rule.setContent {
+            TimetableScreen(
+                state = fullState(placedManual = placedManual("i9")),
+                onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
+                onSchoolBlockClick = { schoolClick = it },
+            )
+        }
+        rule.onNodeWithTag("manual_block:i9").performClick()
+        rule.waitForIdle()
+        assertNull(schoolClick)
     }
 
     @Test fun empty_state_has_no_dashboard() {
