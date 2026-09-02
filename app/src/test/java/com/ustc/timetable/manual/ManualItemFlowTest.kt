@@ -10,6 +10,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import com.ustc.timetable.scheduleprofile.OfficialProfileLoader
 import com.ustc.timetable.scheduleprofile.ScheduleProfileRepository
@@ -42,12 +45,14 @@ import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -76,8 +81,9 @@ class ManualItemFlowTest {
     private val now = Instant.parse("2026-09-08T02:00:00Z")
     private val clock = Clock.fixed(now, zone)
     private val nowFlow = MutableStateFlow(now)
-    private val storeScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val collectorScopes = mutableListOf<CoroutineScope>()
+    private val storeJob = SupervisorJob()
+    private val storeScope = CoroutineScope(Dispatchers.IO + storeJob)
+    private val collectorJobs = mutableListOf<Job>()
 
     private lateinit var db: TimetableDatabase
     private lateinit var settings: SettingsStore
@@ -86,9 +92,12 @@ class ManualItemFlowTest {
     private lateinit var timetable: TimetableRepository
     private lateinit var manual: ManualItemRepository
     private lateinit var semester: Semester
+    private lateinit var mainDispatcher: TestDispatcher
+    private lateinit var viewModelStore: ViewModelStore
 
     @Before fun setUp() = runBlocking {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        mainDispatcher = UnconfinedTestDispatcher()
+        Dispatchers.setMain(mainDispatcher)
         val context = RuntimeEnvironment.getApplication()
         db = Room.inMemoryDatabaseBuilder(context, TimetableDatabase::class.java)
             .allowMainThreadQueries()
@@ -105,38 +114,53 @@ class ManualItemFlowTest {
         semesters = SemesterRepository(db, profiles)
         timetable = TimetableRepository(db)
         manual = ManualItemRepository(db, clock)
+        viewModelStore = ViewModelStore()
         semester = SemesterDefaults.AUTUMN_2026("viewed", OfficialProfileLoader.BUNDLED_PROFILE_ID, now)
         db.semesterDao().insert(Mappers.toEntity(semester))
     }
 
-    @After fun tearDown() {
-        collectorScopes.forEach { it.cancel() }
-        Dispatchers.resetMain()
+    @After fun tearDown() = runBlocking {
+        collectorJobs.forEach { it.cancelAndJoin() }
+        viewModelStore.clear()
+        storeJob.cancelAndJoin()
+        mainDispatcher.scheduler.advanceUntilIdle()
         db.close()
-        storeScope.cancel()
+        Dispatchers.resetMain()
     }
 
-    private fun newViewModel() = TimetableViewModel(
-        semestersRepo = semesters,
-        timetableRepo = timetable,
-        manualRepo = manual,
-        profilesRepo = profiles,
-        settings = settings,
-        clock = clock,
-        nowTicks = nowFlow,
-    )
+    private fun newViewModel(): TimetableViewModel = ViewModelProvider(
+        viewModelStore,
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass == TimetableViewModel::class.java)
+                @Suppress("UNCHECKED_CAST")
+                return TimetableViewModel(
+                    semestersRepo = semesters,
+                    timetableRepo = timetable,
+                    manualRepo = manual,
+                    profilesRepo = profiles,
+                    settings = settings,
+                    clock = clock,
+                    nowTicks = nowFlow,
+                ) as T
+            }
+        },
+    )[TimetableViewModel::class.java]
 
     private fun runningViewModel(): TimetableViewModel {
         val model = newViewModel()
-        val scope = CoroutineScope(Dispatchers.Unconfined)
-        scope.launch { model.state.collect {} }
-        collectorScopes += scope
+        val collectorJob = SupervisorJob()
+        CoroutineScope(Dispatchers.Unconfined + collectorJob).launch { model.state.collect {} }
+        collectorJobs += collectorJob
         return model
     }
 
     private suspend fun awaitUntil(condition: suspend () -> Boolean) {
         withTimeout(5_000) {
-            while (!condition()) delay(20)
+            while (!condition()) {
+                mainDispatcher.scheduler.runCurrent()
+                delay(20)
+            }
         }
     }
 
