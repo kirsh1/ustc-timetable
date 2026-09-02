@@ -295,6 +295,20 @@ class ShowNonCurrentWeekTest {
         assertEquals("school-ghost", model.state.value.placedSchool.single().block.meetingId!!.value)
     }
 
+    @Test fun toggle_true_does_not_add_ghosts_to_week_overview() = runBlocking {
+        val semester = seedSemester("A", current = true)
+        seedSchool(semester.id, meetingId = "school-ghost", weeks = WeekPattern.of(3))
+        val model = runningViewModel().model
+        awaitUsable(model)
+        assertTrue(model.state.value.weekOverviewPages[1].placedBlocks.isEmpty())
+
+        model.onToggleShowNonCurrentWeek(true)
+        awaitUntil { model.state.value.showNonCurrentWeek && model.state.value.placedSchool.isNotEmpty() }
+
+        assertTrue(model.state.value.weekOverviewPages[1].placedBlocks.isEmpty())
+        assertEquals("school-ghost", model.state.value.weekOverviewPages[2].placedBlocks.single().block.meetingId!!.value)
+    }
+
     @Test fun toggle_true_reveals_noncurrent_manual_block() = runBlocking {
         val semester = seedSemester("A", current = true)
         seedManual(semester.id, itemId = "manual-ghost", weeks = WeekPattern.of(3))

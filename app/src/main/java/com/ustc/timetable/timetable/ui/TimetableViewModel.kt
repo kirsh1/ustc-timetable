@@ -91,6 +91,7 @@ data class TimetableUiState(
     val naturalWeek: Int? = null,
     val profile: ScheduleProfile? = null,
     val weekPages: List<TimetableWeekPageUiState> = emptyList(),
+    val weekOverviewPages: List<WeekOverviewPageUiState> = emptyList(),
     val courseDetailsByMeetingId: Map<MeetingId, CourseDetailUiModel> = emptyMap(),
     val manualItemsById: Map<ManualItemId, ManualScheduleItem> = emptyMap(),
     val availableSemesters: List<Semester> = emptyList(),
@@ -329,6 +330,7 @@ class TimetableViewModel(
                 nowLine = NowLinePolicy.line(semester, week, WeekCalculator.weekRange(semester, week), today, now),
             )
         }
+        val weekOverviewPages = buildWeekOverviewPages(semester, rawSchool + rawManual, axis)
 
         return TimetableUiState(
             semester = semester,
@@ -336,6 +338,7 @@ class TimetableViewModel(
             naturalWeek = naturalWeek,
             profile = data.profile,
             weekPages = weekPages,
+            weekOverviewPages = weekOverviewPages,
             courseDetailsByMeetingId = courseDetails,
             manualItemsById = manualItemsById,
             availableSemesters = data.available,

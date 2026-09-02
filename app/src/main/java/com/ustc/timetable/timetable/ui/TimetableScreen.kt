@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -183,6 +184,7 @@ fun TimetableScreen(
         return
     }
     var sheetOpen by remember { mutableStateOf(false) }
+    var overviewExpanded by rememberSaveable(semester.id.value) { mutableStateOf(false) }
     val axis = WeeklyTimetableLayout.axisOf(profile)
     Column(Modifier.fillMaxSize()) {
         // 顶栏
@@ -250,6 +252,17 @@ fun TimetableScreen(
                         .clickable { sheetOpen = true },
                 )
                 Text(
+                    "▦",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .testTag("week_overview_toggle")
+                        .semantics {
+                            contentDescription = if (overviewExpanded) "收起周缩略图" else "展开周缩略图"
+                        }
+                        .clickable { overviewExpanded = !overviewExpanded }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+                Text(
                     "›",
                     style = MaterialTheme.typography.headlineMedium,
                     color = if (state.viewedWeek < semester.totalWeeks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
@@ -266,6 +279,15 @@ fun TimetableScreen(
                     modifier = Modifier.testTag("week_dates"),
                 )
             }
+        }
+        if (overviewExpanded) {
+            WeekOverviewStrip(
+                pages = state.weekOverviewPages,
+                viewedWeek = state.viewedWeek,
+                naturalWeek = state.naturalWeek,
+                onWeekSelected = onWeekSelected,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
         // C1 correction 5：每页渲染自己的 page projection；periodStarts/axis 来自绑定 profile
         key(semester.id) {
