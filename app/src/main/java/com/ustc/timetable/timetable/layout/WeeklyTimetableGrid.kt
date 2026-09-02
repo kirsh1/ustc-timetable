@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -30,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import java.time.LocalDate
 import java.time.LocalTime
 import com.ustc.timetable.timetable.domain.LocalDateRange
@@ -72,53 +74,68 @@ fun WeeklyTimetableGrid(
             Spacer(Modifier.width(gutterWidth))
             WeekHeaderCells(weekDates, today, Modifier.weight(1f))
         }
-        Row(Modifier.fillMaxSize()) {
-            TimeGutter(periodStarts, axis, Modifier.width(gutterWidth).fillMaxHeight())
-            BoxWithConstraints(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .testTag("timetable_grid")
-                    .pointerInput(Unit) {
-                        detectTapGestures(onLongPress = { press ->
-                            onEmptyLongPress(
-                                (press.x / size.width.toFloat()).coerceIn(0f, 0.999f),
-                                (press.y / size.height.toFloat()).coerceIn(0f, 0.999f),
-                            )
-                        })
-                    },
-            ) {
-                val gridW = maxWidth
-                val gridH = maxHeight
-                for (pb in placedSchool) {
-                    if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
-                    require(pb.block.meetingId != null) {
-                        "school list contains block without meetingId: ${pb.block.colorKey}"
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .testTag("timetable_body"),
+        ) {
+            val bodyHeight = maxHeight
+            val gridWidth = (maxWidth - gutterWidth).coerceAtLeast(0.dp)
+            Row(Modifier.fillMaxSize()) {
+                TimeGutter(
+                    periodStarts = periodStarts,
+                    axis = axis,
+                    bodyHeight = bodyHeight,
+                    modifier = Modifier
+                        .width(gutterWidth)
+                        .fillMaxHeight()
+                        .testTag("time_gutter"),
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .testTag("timetable_grid")
+                        .pointerInput(Unit) {
+                            detectTapGestures(onLongPress = { press ->
+                                onEmptyLongPress(
+                                    (press.x / size.width.toFloat()).coerceIn(0f, 0.999f),
+                                    (press.y / size.height.toFloat()).coerceIn(0f, 0.999f),
+                                )
+                            })
+                        },
+                ) {
+                    for (pb in placedSchool) {
+                        if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
+                        require(pb.block.meetingId != null) {
+                            "school list contains block without meetingId: ${pb.block.colorKey}"
+                        }
+                        require(pb.block.manualItemId == null) {
+                            "school list contains manual block: ${pb.block.colorKey}"
+                        }
+                        SchoolBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, onSchoolBlockClick)
                     }
-                    require(pb.block.manualItemId == null) {
-                        "school list contains manual block: ${pb.block.colorKey}"
+                    for (pb in placedManual) {
+                        if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
+                        require(pb.block.manualItemId != null) {
+                            "manual list contains block without manualItemId: ${pb.block.colorKey}"
+                        }
+                        require(pb.block.meetingId == null) {
+                            "manual list contains school block: ${pb.block.colorKey}"
+                        }
+                        ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, onManualBlockClick)
                     }
-                    SchoolBlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, onSchoolBlockClick)
-                }
-                for (pb in placedManual) {
-                    if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
-                    require(pb.block.manualItemId != null) {
-                        "manual list contains block without manualItemId: ${pb.block.colorKey}"
+                    if (nowLine != null) {
+                        Box(
+                            Modifier
+                                .offset(y = bodyHeight * axis.fractionOf(nowLine))
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(Color(0xFFB3261E))
+                                .testTag("now_line"),
+                        )
                     }
-                    require(pb.block.meetingId == null) {
-                        "manual list contains school block: ${pb.block.colorKey}"
-                    }
-                    ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, onManualBlockClick)
-                }
-                if (nowLine != null) {
-                    Box(
-                        Modifier
-                            .offset(y = maxHeight * axis.fractionOf(nowLine))
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(Color(0xFFB3261E))
-                            .testTag("now_line"),
-                    )
                 }
             }
         }
@@ -215,19 +232,34 @@ private fun WeekHeaderCells(weekDates: LocalDateRange, today: LocalDate?, modifi
 }
 
 @Composable
-private fun TimeGutter(periodStarts: List<LocalTime>, axis: TimelineAxis, modifier: Modifier) {
-    BoxWithConstraints(modifier) {
-        val height = maxHeight
+private fun TimeGutter(
+    periodStarts: List<LocalTime>,
+    axis: TimelineAxis,
+    bodyHeight: Dp,
+    modifier: Modifier,
+) {
+    Box(modifier) {
         val labels = (periodStarts + axis.start + axis.endInclusive).toSet().sorted()
-        Column {
-            for (time in labels) {
+        for (time in labels) {
+            Layout(
+                content = {
                 Text(
                     time.toString(),
-                    Modifier
-                        .offset(y = (height * axis.fractionOf(time)).coerceAtMost(height - 12.dp))
-                        .padding(start = 4.dp),
+                        Modifier.testTag("time_label:$time"),
                     style = MaterialTheme.typography.labelSmall,
                 )
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) { measurables, constraints ->
+                val label = measurables.single().measure(
+                    constraints.copy(minWidth = 0, minHeight = 0),
+                )
+                val anchor = (bodyHeight.roundToPx() * axis.fractionOf(time)).roundToInt()
+                val y = (anchor - label.height / 2)
+                    .coerceIn(0, (bodyHeight.roundToPx() - label.height).coerceAtLeast(0))
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    label.placeRelative(4.dp.roundToPx(), y)
+                }
             }
         }
     }

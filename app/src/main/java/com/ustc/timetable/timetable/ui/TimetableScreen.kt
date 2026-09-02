@@ -187,7 +187,10 @@ fun TimetableScreen(
     Column(Modifier.fillMaxSize()) {
         // 顶栏
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .testTag("timetable_top_header"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
