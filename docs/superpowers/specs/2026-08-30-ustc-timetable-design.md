@@ -258,6 +258,7 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 - `TimelineAxis(start, endInclusive)` 由**查看学期绑定的 profile** 推导：`dayWindow()`（bundled 时 = 07:50–21:55）。Y 坐标 = 分钟线性映射：`fraction(t) = minutesBetween(start, t) / minutesBetween(start, end)`。
 - 因此 5 分钟课间视觉短、20 分钟课间明显更长、午休/晚饭间隔真实体现。
 - 左侧独立时间刻度栏（gutter），在每个节次开始时刻显示小号时间标签，顶部与底部为窗口边界时间。
+- 网格背景用查看学期绑定 profile 的连续节次派生教学时段组；相邻节次之间间隔不足 20 分钟仍属同组，达到 20 分钟才形成新的休息带。不得硬编码 bundled profile 的上午/下午/晚间区间。
 - 轴外时刻不出现：手动项目校验禁止（§3.4）；当前时间线绘制时 clamp 到轴范围。
 
 ### 4.2 布局算法（纯逻辑，`WeeklyTimetableLayout`，全量单元测试）
@@ -273,9 +274,9 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 
 ### 4.3 课程卡信息优先级（七列很窄）
 
-1. 必显：课程名称（粗体、省略）、地点。
+1. 必显：课程名称（粗体，按实际卡高显示 1–3 行，末行省略）、地点（独立单行省略）。
 2. 空间允许（块高/列宽超阈值）再显示：教师、时间。
-3. 不得为展示完整长课程名破坏七列宽度（ellipsis，不换行列扩宽）。
+3. 不得为展示完整长课程名破坏七列宽度；多行只在卡片内部发生，达到行数上限后 ellipsis，所有文本受卡片 clip 约束。
 4. 无障碍/语义文案：`"高等无机化学，周五 09:45–12:10，第7–12周，TH-B301，刘斯"`。
 
 ### 4.4 课程详情（学校课程只读）
@@ -318,6 +319,7 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 ```
 
 - 无 Dashboard、无底部导航栏。
+- MainActivity 是顶层 `TimetableViewModel`、`FirstLaunchViewModel`、`SettingsViewModel` 的 `ViewModelStoreOwner`；Compose destination 切换复用同一实例，Activity 销毁统一触发 `onCleared`，不得用手工常驻 ViewModel 绕过 lifecycle。
 - 顶栏左侧：学期名（= viewed 学期名）+ ▼ → 点击弹出 SemesterSwitcherSheet（纯本地切换，只写 `viewedSemesterId`）。
 - 顶栏右侧：`↻` 手动同步 **academic-current 学期**；`⚙` 轻量圆形按钮进入设置（不用遮挡课程的右下 FAB）。
 - `↻` 显示条件：viewed 学期 == academic-current 学期 且 `portalLinked == true`。查看历史学期或纯手动学期时 `↻` 隐藏（避免暗示历史可同步）。
@@ -330,13 +332,17 @@ data class LocalTimeRange(val start: LocalTime, val endInclusive: LocalTime) {
 
 手动滑动、左右箭头、周次快速选择三种方式；全部只改本地查看周，无网络行为。
 
+主界面另提供默认收起的横向 WeekOverview：每周一张紧凑卡片，显示周号与该周实际生效的 SCHOOL/MANUAL 色条；点击周卡切换当前 Pager page 并保持概览展开。概览严格从 raw blocks 按目标周 `WeekPattern.contains(week)` 投影，不包含“显示非当前周课程”产生的 ghost；展开状态只保存在当前 Compose 会话，切换学期即收起且不持久化。
+
 ### 5.3 学期切换（只动 viewed，永不动 academic-current）
 
-SemesterSwitcherSheet：本地学期按 startDate 倒序；academic-current 学期与 portalLinked 状态有视觉标注；点击仅写 `viewedSemesterId`，绝不发 Web 请求、绝不修改 `isCurrentAcademicSemester`、绝不触发任何同步；切换后查看周重置为该学期默认周（未来学期第 1 周；历史学期 totalWeeks；教学周内为自然周）。`viewedSemesterId` 持久化（DataStore），App 重启恢复。
+SemesterSwitcherSheet：本地学期按 startDate 倒序；用可读标签“当前学期 / 学校课表 / 本地课表 / 正在查看”分别表达 academic-current、portal/local 与 viewed 状态，同时保留其独立语义；点击仅写 `viewedSemesterId`，绝不发 Web 请求、绝不修改 `isCurrentAcademicSemester`、绝不触发任何同步；切换后查看周重置为该学期默认周（未来学期第 1 周；历史学期 totalWeeks；教学周内为自然周）。`viewedSemesterId` 持久化（DataStore），App 重启恢复。
 
 ### 5.4 设置入口与页面
 
 见 §8.4（Settings 结构）。没有底部栏，设置从顶部齿轮进入。
+
+设置页以“课表 / 同步 / 学校账户 / 关于”四个紧凑分组卡呈现，保留原有行级动作与语义，不引入 Dashboard 或底部导航。
 
 ### 5.5 同步入口 UX
 

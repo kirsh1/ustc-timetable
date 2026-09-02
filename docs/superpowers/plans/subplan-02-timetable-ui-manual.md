@@ -47,7 +47,7 @@ object CoursePalette {
 }
 ```
 
-块渲染规则（SPEC §4.3/§4.7）：名称（粗体）与地点必显，均为单行 ellipsis；块高超过 60dp 且实际卡片宽 `groupW` 超过 52dp 时追加教师行，块高超过 90dp 且同一 `groupW` 超过 52dp 时追加时间行。`groupW` 是 overlap 分列后的有效宽度，不是完整 weekday column；所有文字单行 ellipsis，卡片按 4dp 圆角边界 clip，无 elevation。当前周由 `block.weeks.contains(viewedWeek)` 判定；非当前周且 `showNonCurrentWeek==true` 时 `alpha=0.35`，`showNonCurrentWeek==false` 时不参与布局输入（上层过滤）。取色用 `block.colorKey`（学校块 = `"$semesterId:$sourceCourseKey"`，与本地 meeting UUID 无关，替换重建不影响颜色；手动块 = `"manual:$manualItemId"`）。
+块渲染规则（SPEC §4.3/§4.7，含 UI-R2 reconciliation）：名称粗体并按实际卡高显示 1–3 行，最后一行 ellipsis；地点独立单行 ellipsis。块高超过 60dp 且实际卡片宽 `groupW` 超过 52dp 时追加教师行，块高超过 90dp 且同一 `groupW` 超过 52dp 时追加时间行；可选行同样 ellipsis。`groupW` 是 overlap 分列后的有效宽度，不是完整 weekday column；所有 child 受 6dp 圆角卡片 clip，内边距 3dp，无 elevation。背景包含七日分隔线、profile 节次开始线，以及只由绑定 profile 连续节次推导的教学时段带（间隔 ≥20 分钟才分组）；不硬编码官方时段。当前周由 `block.weeks.contains(viewedWeek)` 判定；非当前周且 `showNonCurrentWeek==true` 时 `alpha=0.35`，`showNonCurrentWeek==false` 时不参与布局输入（上层过滤）。取色用 `block.colorKey`（学校块 = `"$semesterId:$sourceCourseKey"`，与本地 meeting UUID 无关，替换重建不影响颜色；手动块 = `"manual:$manualItemId"`）；12 组 container/on-container 配对须满足既有对比度测试。
 
 步骤：
 - [ ] 1. 写 failing test（Robolectric compose；`TimedBlock` 用测试内 fake 实现 `FakeBlock`）：
@@ -208,6 +208,8 @@ class TimetableViewModel(
 - [ ] 4. 同命令 → GREEN。
 - [ ] 5. 定向回归：`./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.*"` → GREEN。
 - [ ] 6. `git add app/src && git commit -m "phaseC1: week switching via pager, arrows, week picker sheet"`。
+
+WeekOverview-R1 reconciliation：主界面增加默认收起的横向周概览条；每周状态由同一 raw SCHOOL+MANUAL blocks 独立按该周投影，严禁复用含 ghost 的主网格 page projection。概览点击只调用既有 week-selection authority、保持展开；展开状态不进入 DataStore/SavedState，学期 id 变化时收起。该增量由独立 TDD 与 cross-layer ghost-isolation regression 锁定。
 
 ---
 

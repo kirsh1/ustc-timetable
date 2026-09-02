@@ -152,13 +152,16 @@ class SettingsViewModel(
 
 ## Task J1 — 全测试套件 + lint（模拟器）【验证型任务】
 
+- 资格记录：[2026-09-02-j1-emulator.md](../qualification/2026-09-02-j1-emulator.md)。
+- androidTest 使用 test-owned runner 强制基础 `TimetableApp`；完整 MainActivity 测试先准备 Room/DataStore fixture，再启动 `ActivityScenario`。`DebugSeed` 只由测试显式调用，每个场景先关闭 ActivityScenario 再 reset Room；reauth 使用 androidTest-only sequenced runner fake。
+- 若 connected test 暴露 production behavior defect，J1 停止并回到所属任务执行独立 TDD；Lifecycle-R1 即按此边界先独立修正，未在 J1 harness 中混入 production fix。
 - 步骤：
-- [ ] 1. 准备 androidTest（新目录 `app/src/androidTest/java/com/ustc/timetable/ui/`）：`TimetableSmokeTest`（首启七列可见、切周、切学期）、`ManualItemUiTest`（长按新建→编辑→删除）、`ReauthUiTest`（fake portal source 经 `AppContainer` 测试覆写：AuthExpired → 弹窗 → 重登 contract fake → 续跑）。
-- [ ] 2. 首次执行：`./gradlew :app:testDebugUnitTest` → 预期 GREEN；`./gradlew :app:lintDebug` → 预期无 error（warning 逐条记录处置）；若 RED 则为发现缺陷。
-- [ ] 3. 修复发现的问题（缺陷修复走对应子计划 Task 的 TDD 流程，不在本任务内直接改实现）。
-- [ ] 4. 复跑确认 GREEN：`./gradlew :app:testDebugUnitTest :app:lintDebug`。
-- [ ] 5. 定向回归（connected，模拟器 AVD `dsh_android16` / API 36 x86_64）：`./gradlew :app:connectedDebugAndroidTest` → GREEN（SPEC §28 UI 项全部覆盖）。
-- [ ] 6. commit：`git add -A && git commit -m "phaseJ1: full suite green on emulator"`。
+- [x] 1. 准备 androidTest：runtime isolation、Timetable smoke、Manual CRUD、Reauth flow；test-owned runner 与 prelaunch fixture 隔离 production DebugSeed/runtime。
+- [x] 2. fresh unit serial/default-worker 均 887/887；`lintDebug` errors=0，12 个 warnings 已按 ID 记录。
+- [x] 3. production behavior defect 通过独立 Lifecycle-R1 TDD 修正；后续 harness 调整仅限 androidTest/test-only Gradle 配置。
+- [x] 4. final code tree 复跑 unit 887/887、lint errors=0。
+- [x] 5. AVD `dsh_android16` / API 36 x86_64 targeted 及 full connected 13/13，failures/errors/skips=0；真实设备仍留给 J2。
+- [x] 6. test commit：`de600dde769c4482c002abb07f6d7fe4f1d180ff`（`test(j1): complete connected UI qualification`）。
 
 ## Task J2 — 真机验收（SPEC §14 的 16 项）【验证型任务】
 
