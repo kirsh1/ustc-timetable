@@ -306,6 +306,7 @@ fun TimetableScreen(
                         onSchoolBlockClick = onSchoolBlockClick,
                         onManualBlockClick = { id -> onManualBlockClick(id, page.week) },
                         onEmptyLongPress = { x, y -> onEmptyLongPress(page.week, x, y) },
+                        periods = profile.periods,
                     )
                 }
             }

@@ -2,13 +2,16 @@ package com.ustc.timetable.timetable.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.layout.TimedBlock
+import androidx.compose.ui.unit.dp
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -40,24 +43,42 @@ object BlockTexts {
         if (block.teacherNames.isNotEmpty()) add(block.teacherNames.joinToString("、"))
     }.joinToString("，")
 
-    /** 卡片内容：名称/地点必显；教师、时间仅在高度与宽度同时足够时出现。 */
+    fun titleMaxLinesFor(cardHeightDp: Float, hasLocation: Boolean): Int = when {
+        cardHeightDp < 42f -> 1
+        cardHeightDp < if (hasLocation) 96f else 72f -> 2
+        else -> 3
+    }
+
+    /** 卡片内容：名称优先；地点独立一行；教师、时间仅在高度与宽度同时足够时出现。 */
     @Composable
-    fun Content(block: TimedBlock, showTeacher: Boolean, showTime: Boolean) {
-        Column(Modifier.fillMaxSize()) {
+    fun Content(
+        block: TimedBlock,
+        titleMaxLines: Int,
+        showLocation: Boolean,
+        showTeacher: Boolean,
+        showTime: Boolean,
+        contentColor: Color,
+    ) {
+        Column(Modifier.fillMaxSize().padding(3.dp)) {
             Text(
                 block.title,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                color = contentColor,
+                maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                block.location,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (showLocation && block.location.isNotBlank()) {
+                Text(
+                    block.location,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (showTeacher && block.teacherNames.isNotEmpty()) {
                 Text(
                     block.teacherNames.joinToString("、"),
+                    color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -65,6 +86,7 @@ object BlockTexts {
             if (showTime) {
                 Text(
                     timeText(block.start, block.endInclusive),
+                    color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

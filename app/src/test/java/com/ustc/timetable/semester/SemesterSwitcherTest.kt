@@ -3,6 +3,7 @@ package com.ustc.timetable.semester
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -239,6 +240,16 @@ class SemesterSwitcherTest {
         rule.onAllNodesWithTag("academic_current:L", useUnmergedTree = true).assertCountEquals(1)
         rule.onAllNodesWithTag("local_semester:L", useUnmergedTree = true).assertCountEquals(1)
         rule.onAllNodesWithTag("semester_item:L").assertCountEquals(1)
+    }
+
+    @Test fun sheet_uses_readable_status_labels_instead_of_bare_symbols() {
+        content(viewed = "A")
+        rule.onAllNodesWithText("当前学期", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("学校课表", useUnmergedTree = true).assertCountEquals(2)
+        rule.onAllNodesWithText("本地课表", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("●", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("校", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("本", useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test fun sheet_list_only_contains_known_semesters() {

@@ -2,6 +2,9 @@ package com.ustc.timetable.timetable.ui
 
 import androidx.compose.ui.graphics.Color
 import java.security.MessageDigest
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 
 /**
  * 稳定课程配色（SPEC §4.7）：paletteIndex = MD5(colorKey)[0]（unsigned byte）% 12。
@@ -13,18 +16,18 @@ object CoursePalette {
     const val PALETTE_SIZE: Int = 12
 
     private val pairs: List<Pair<Color, Color>> = listOf(
-        Color(0xFFE1F5FE) to Color(0xFF0D47A1),
-        Color(0xFFF3E5F5) to Color(0xFF4A148C),
-        Color(0xFFE8F5E9) to Color(0xFF1B5E20),
-        Color(0xFFFFF3E0) to Color(0xFFE65100),
-        Color(0xFFE0F7FA) to Color(0xFF006064),
-        Color(0xFFFCE4EC) to Color(0xFF880E4F),
-        Color(0xFFFFFDE7) to Color(0xFFF57F17),
-        Color(0xFFECEFF1) to Color(0xFF263238),
-        Color(0xFFE8EAF6) to Color(0xFF283593),
-        Color(0xFFEFEBE9) to Color(0xFF3E2723),
-        Color(0xFFE0F2F1) to Color(0xFF004D40),
-        Color(0xFFFBE9E7) to Color(0xFFBF360C),
+        Color(0xFFB9DCFF) to Color(0xFF102A43),
+        Color(0xFFE0C7F2) to Color(0xFF32164A),
+        Color(0xFFBFE3C4) to Color(0xFF17351C),
+        Color(0xFFFFD1AD) to Color(0xFF4A2200),
+        Color(0xFFAFE2E7) to Color(0xFF07383C),
+        Color(0xFFF2C3D2) to Color(0xFF4A1427),
+        Color(0xFFF0DA91) to Color(0xFF3D3000),
+        Color(0xFFC9D3D8) to Color(0xFF1E2B31),
+        Color(0xFFC8CEEE) to Color(0xFF202B5C),
+        Color(0xFFD8C9C2) to Color(0xFF39251C),
+        Color(0xFFB7DDD6) to Color(0xFF12362F),
+        Color(0xFFF1C5B9) to Color(0xFF4A1E14),
     )
 
     init {
@@ -46,4 +49,18 @@ object CoursePalette {
     fun containerColor(index: Int): Color = pairs[index].first
 
     fun onContainerColor(index: Int): Color = pairs[index].second
+
+    fun contrastRatio(index: Int): Double {
+        val a = relativeLuminance(containerColor(index))
+        val b = relativeLuminance(onContainerColor(index))
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
+    private fun relativeLuminance(color: Color): Double {
+        fun channel(value: Float): Double {
+            val c = value.toDouble()
+            return if (c <= 0.04045) c / 12.92 else ((c + 0.055) / 1.055).pow(2.4)
+        }
+        return 0.2126 * channel(color.red) + 0.7152 * channel(color.green) + 0.0722 * channel(color.blue)
+    }
 }

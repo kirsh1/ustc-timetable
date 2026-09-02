@@ -3,6 +3,7 @@ package com.ustc.timetable.settings
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -48,6 +49,14 @@ class SettingsScreenTest {
         var calls = 0
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks(onOpenProfile = { calls++ })) }
         rule.onNodeWithTag("working_profile").performClick(); rule.waitForIdle(); assertEquals(1, calls)
+    }
+
+    @Test fun settings_sections_use_compact_group_cards() {
+        rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
+        listOf("timetable", "sync", "account", "about").forEach {
+            rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("settings_group:$it"))
+            rule.onNodeWithTag("settings_group:$it").assertExists()
+        }
     }
 
     private fun state() = SettingsUiState(lastSyncText = "—", loginText = "未登录", appVersion = "1.0-test")

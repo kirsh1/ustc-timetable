@@ -23,6 +23,7 @@ import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.ui.BlockTexts
 import com.ustc.timetable.timetable.ui.CoursePalette
+import com.ustc.timetable.scheduleprofile.PeriodTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -292,10 +293,36 @@ class WeeklyTimetableGridTest {
         val card = rule.onNodeWithTag("school_block:content").fetchSemanticsNode().boundsInRoot
         val titleBounds = rule.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val locationBounds = rule.onNodeWithText(location, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue("title must remain one line: $titleBounds vs $locationBounds", titleBounds.height <= locationBounds.height + 1f)
+        assertTrue("title may use multiple lines before ellipsis: $titleBounds", titleBounds.height > 0f)
         assertTrue("title and location must not overlap: $titleBounds vs $locationBounds", titleBounds.bottom <= locationBounds.top)
         assertTrue("title must stay inside card: $titleBounds vs $card", titleBounds.left >= card.left && titleBounds.right <= card.right)
         assertTrue("location must stay inside card: $locationBounds vs $card", locationBounds.left >= card.left && locationBounds.right <= card.right)
+    }
+
+    @Test fun course_title_uses_multiline_before_ellipsis() {
+        assertEquals(3, BlockTexts.titleMaxLinesFor(cardHeightDp = 120f, hasLocation = true))
+        assertEquals(2, BlockTexts.titleMaxLinesFor(cardHeightDp = 72f, hasLocation = true))
+    }
+
+    @Test fun location_is_rendered_as_separate_line() {
+        setContentGrid(
+            school = placed(schoolBlock("separate", 1, LocalTime.of(8, 0), LocalTime.of(14, 0))),
+            width = 800.dp,
+            height = 900.dp,
+        )
+        val title = rule.onNodeWithText("高等无机化学", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val location = rule.onNodeWithText("TH-B301", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(title.bottom <= location.top)
+    }
+
+    @Test fun short_card_preserves_course_identity() {
+        setContentGrid(
+            school = placed(schoolBlock("short-id", 4, LocalTime.of(9, 45), LocalTime.of(10, 0), title = "高等无机化学")),
+            width = 600.dp,
+            height = 700.dp,
+        )
+        rule.onAllNodesWithText("高等无机化学", useUnmergedTree = true).assertCountEquals(1)
+        assertEquals(1, BlockTexts.titleMaxLinesFor(cardHeightDp = 20f, hasLocation = true))
     }
 
     @Test fun accessibility_still_contains_hidden_teacher_and_time() {
@@ -382,6 +409,34 @@ class WeeklyTimetableGridTest {
         val containers = (0..11).map { CoursePalette.containerColor(it) }
         assertEquals(12, containers.toSet().size)  // 12 对互不相同的配色
         for (i in 0..11) assertTrue(CoursePalette.containerColor(i) != CoursePalette.onContainerColor(i))
+    }
+
+    @Test fun palette_pairs_have_readable_contrast() {
+        for (index in 0 until CoursePalette.PALETTE_SIZE) {
+            assertTrue("palette[$index] contrast", CoursePalette.contrastRatio(index) >= 4.5)
+        }
+    }
+
+    @Test fun existing_stable_color_identity_is_unchanged() {
+        assertEquals(7, CoursePalette.colorIndexFor("s1:k1"))
+        assertEquals(10, CoursePalette.colorIndexFor("A:name:高等无机化学"))
+        assertEquals(8, CoursePalette.colorIndexFor("manual:debug-i-lecture"))
+    }
+
+    @Test fun teaching_groups_are_derived_from_profile_breaks() {
+        val periods = periodStarts.mapIndexed { index, start ->
+            PeriodTime(index + 1, start, start.plusMinutes(45))
+        }
+        assertEquals(
+            listOf(
+                LocalTime.of(7, 50) to LocalTime.of(9, 25),
+                LocalTime.of(9, 45) to LocalTime.of(12, 10),
+                LocalTime.of(14, 0) to LocalTime.of(15, 35),
+                LocalTime.of(15, 55) to LocalTime.of(18, 20),
+                LocalTime.of(19, 30) to LocalTime.of(21, 55),
+            ),
+            teachingTimeGroups(periods).map { it.start to it.endInclusive },
+        )
     }
 
     // ---- today / now line ----

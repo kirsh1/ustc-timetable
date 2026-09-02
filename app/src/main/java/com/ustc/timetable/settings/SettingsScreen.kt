@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -93,42 +96,72 @@ fun SettingsScreen(state: SettingsUiState, callbacks: SettingsCallbacks) {
                 Text("设置", style = MaterialTheme.typography.titleLarge)
             }
         }
-        item { SectionTitle("课表") }
-        item { SettingRow("学校作息时间", state.workingProfile?.name ?: "—", "working_profile", callbacks.onOpenProfile) }
-        item { ToggleRow("显示非当前周课程", state.showNonCurrentWeek, "show_noncurrent", callbacks.onToggleShowNonCurrent) }
-        item { if (state.canApplyWorkingToAcademicCurrent) SettingRow("应用为当前学期作息", "", "apply_working", callbacks.onApplyWorking) }
-        item { SettingRow("恢复学校默认", "", "restore_default", callbacks.onRestoreDefault) }
-
-        item { SectionTitle("同步") }
-        item { SettingRow("上次同步时间", state.lastSyncText, "last_sync") }
-        item { ToggleRow("每周静默同步", state.weeklySyncEnabled, "weekly_sync", callbacks.onToggleWeeklySync) }
-        item { SettingRow("立即同步", if (state.syncNowEnabled) "" else "当前不可用", "sync_now", if (state.syncNowEnabled) callbacks.onSyncNow else null) }
-        if (state.showNotificationDeniedHint) {
-            item { SettingRow("通知权限未授予，课表变化将不会提醒", "", "notification_hint", callbacks.onNotificationHint) }
+        item {
+            SettingsGroup("课表", "timetable") {
+                SettingRow("学校作息时间", state.workingProfile?.name ?: "—", "working_profile", callbacks.onOpenProfile)
+                GroupDivider()
+                ToggleRow("显示非当前周课程", state.showNonCurrentWeek, "show_noncurrent", callbacks.onToggleShowNonCurrent)
+                if (state.canApplyWorkingToAcademicCurrent) {
+                    GroupDivider()
+                    SettingRow("应用为当前学期作息", "", "apply_working", callbacks.onApplyWorking)
+                }
+                GroupDivider()
+                SettingRow("恢复学校默认", "", "restore_default", callbacks.onRestoreDefault)
+            }
         }
-
-        item { SectionTitle("学校账户") }
-        item { SettingRow("登录状态", state.loginText, "login_status") }
-        item { SettingRow("重新登录", if (state.reloginEnabled) "" else "当前不可用", "relogin", if (state.reloginEnabled) callbacks.onRelogin else null) }
-        item { SettingRow("清除登录状态", "", "clear_login", callbacks.onClearLogin) }
-
-        item { SectionTitle("关于") }
-        item { SettingRow("数据与版本", "本地课表数据", "data_version") }
-        item { SettingRow("App 版本", state.appVersion, "app_version") }
+        item {
+            SettingsGroup("同步", "sync") {
+                SettingRow("上次同步时间", state.lastSyncText, "last_sync")
+                GroupDivider()
+                ToggleRow("每周静默同步", state.weeklySyncEnabled, "weekly_sync", callbacks.onToggleWeeklySync)
+                GroupDivider()
+                SettingRow("立即同步", if (state.syncNowEnabled) "" else "当前不可用", "sync_now", if (state.syncNowEnabled) callbacks.onSyncNow else null)
+                if (state.showNotificationDeniedHint) {
+                    GroupDivider()
+                    SettingRow("通知权限未授予，课表变化将不会提醒", "", "notification_hint", callbacks.onNotificationHint)
+                }
+            }
+        }
+        item {
+            SettingsGroup("学校账户", "account") {
+                SettingRow("登录状态", state.loginText, "login_status")
+                GroupDivider()
+                SettingRow("重新登录", if (state.reloginEnabled) "" else "当前不可用", "relogin", if (state.reloginEnabled) callbacks.onRelogin else null)
+                GroupDivider()
+                SettingRow("清除登录状态", "", "clear_login", callbacks.onClearLogin)
+            }
+        }
+        item {
+            SettingsGroup("关于", "about") {
+                SettingRow("数据与版本", "本地课表数据", "data_version")
+                GroupDivider()
+                SettingRow("App 版本", state.appVersion, "app_version")
+            }
+        }
     }
 }
 
-@Composable private fun SectionTitle(text: String) = Text(text, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 18.dp, bottom = 6.dp))
+@Composable
+private fun SettingsGroup(title: String, tag: String, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Text(title, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
+        Card(Modifier.fillMaxWidth().testTag("settings_group:$tag")) {
+            Column(Modifier.padding(horizontal = 14.dp)) { content() }
+        }
+    }
+}
+
+@Composable private fun GroupDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
 @Composable private fun SettingRow(title: String, value: String, tag: String, onClick: (() -> Unit)? = null) {
-    val modifier = Modifier.fillMaxWidth().testTag(tag).then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)).padding(vertical = 12.dp)
+    val modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).testTag(tag).then(if (onClick == null) Modifier else Modifier.clickable(onClick = onClick)).padding(vertical = 12.dp)
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(title); Spacer(Modifier.weight(1f)); if (value.isNotEmpty()) Text(value, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable private fun ToggleRow(title: String, checked: Boolean, tag: String, onChecked: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(title); Switch(checked, onChecked, modifier = Modifier.testTag(tag))
     }
 }

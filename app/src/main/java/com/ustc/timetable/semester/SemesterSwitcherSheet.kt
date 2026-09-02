@@ -1,7 +1,6 @@
 package com.ustc.timetable.semester
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -57,16 +56,6 @@ internal fun SemesterSwitcherContent(
             val isViewed = viewedSemesterId == id
             val isCurrent = semester.isCurrentAcademicSemester
             val isPortal = semester.portalLinked
-            val status = buildString {
-                if (isCurrent) append("当前学期")
-                if (isPortal) {
-                    if (isNotEmpty()) append(" · ")
-                    append("学校")
-                } else {
-                    if (isNotEmpty()) append(" · ")
-                    append("本地")
-                }
-            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -77,36 +66,30 @@ internal fun SemesterSwitcherContent(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(semester.displayName, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        status.ifEmpty { if (isPortal) "学校" else "本地" },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isCurrent) StatusLabel("当前学期", "academic_current:${id.value}")
+                        StatusLabel(
+                            text = if (isPortal) "学校课表" else "本地课表",
+                            tag = if (isPortal) "portal_linked:${id.value}" else "local_semester:${id.value}",
+                        )
+                    }
                 }
-                // 三个概念独立 marker child（unmerged 树断言，C1 merge 教训）
                 if (isViewed) {
-                    Text(
-                        "✓",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.testTag("viewed_semester:${id.value}").padding(start = 8.dp),
-                    )
-                }
-                if (isCurrent) {
-                    Box(Modifier.testTag("academic_current:${id.value}").padding(start = 4.dp)) {
-                        Text("●", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
-                    }
-                }
-                if (isPortal) {
-                    Box(Modifier.testTag("portal_linked:${id.value}").padding(start = 4.dp)) {
-                        Text("校", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                    }
-                } else {
-                    Box(Modifier.testTag("local_semester:${id.value}").padding(start = 4.dp)) {
-                        Text("本", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                    }
+                    StatusLabel("正在查看", "viewed_semester:${id.value}")
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StatusLabel(text: String, tag: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.padding(end = 6.dp, top = 4.dp).testTag(tag),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
     }
 }

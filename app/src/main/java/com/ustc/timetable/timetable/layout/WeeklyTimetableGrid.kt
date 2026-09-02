@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -39,6 +40,30 @@ import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.ui.BlockTexts
 import com.ustc.timetable.timetable.ui.CoursePalette
+import com.ustc.timetable.scheduleprofile.PeriodTime
+
+data class TeachingTimeGroup(
+    val start: LocalTime,
+    val endInclusive: LocalTime,
+)
+
+fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
+    if (periods.isEmpty()) return emptyList()
+    val ordered = periods.sortedBy { it.number }
+    val groups = mutableListOf<TeachingTimeGroup>()
+    var start = ordered.first().start
+    var end = ordered.first().end
+    for (period in ordered.drop(1)) {
+        val gap = java.time.Duration.between(end, period.start).toMinutes()
+        if (gap >= 20) {
+            groups += TeachingTimeGroup(start, end)
+            start = period.start
+        }
+        end = period.end
+    }
+    groups += TeachingTimeGroup(start, end)
+    return groups
+}
 
 private const val GUTTER_WIDTH_DP: Int = 44
 private const val HEADER_HEIGHT_DP: Int = 32
@@ -67,6 +92,7 @@ fun WeeklyTimetableGrid(
     onSchoolBlockClick: (MeetingId) -> Unit,
     onManualBlockClick: (ManualItemId) -> Unit,
     onEmptyLongPress: (columnFraction: Float, yFraction: Float) -> Unit,
+    periods: List<PeriodTime> = emptyList(),
 ) {
     val gutterWidth = GUTTER_WIDTH_DP.dp
     Column(Modifier.fillMaxSize()) {
@@ -82,9 +108,11 @@ fun WeeklyTimetableGrid(
         ) {
             val bodyHeight = maxHeight
             val gridWidth = (maxWidth - gutterWidth).coerceAtLeast(0.dp)
+            val teachingGroups = teachingTimeGroups(periods)
             Row(Modifier.fillMaxSize()) {
                 TimeGutter(
                     periodStarts = periodStarts,
+                    teachingGroups = teachingGroups,
                     axis = axis,
                     bodyHeight = bodyHeight,
                     modifier = Modifier
@@ -97,6 +125,27 @@ fun WeeklyTimetableGrid(
                         .weight(1f)
                         .fillMaxHeight()
                         .testTag("timetable_grid")
+                        .drawBehind {
+                            val lineColor = Color(0xFF64748B).copy(alpha = 0.16f)
+                            val dividerColor = Color(0xFF64748B).copy(alpha = 0.12f)
+                            for (day in 1..6) {
+                                val x = size.width * day / 7f
+                                drawLine(dividerColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1f)
+                            }
+                            periodStarts.forEach { time ->
+                                val y = size.height * axis.fractionOf(time)
+                                drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1f)
+                            }
+                            teachingGroups.zipWithNext().forEach { (before, after) ->
+                                val top = size.height * axis.fractionOf(before.endInclusive)
+                                val bottom = size.height * axis.fractionOf(after.start)
+                                drawRect(
+                                    color = Color(0xFF94A3B8).copy(alpha = 0.07f),
+                                    topLeft = androidx.compose.ui.geometry.Offset(0f, top),
+                                    size = androidx.compose.ui.geometry.Size(size.width, (bottom - top).coerceAtLeast(0f)),
+                                )
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectTapGestures(onLongPress = { press ->
                                 onEmptyLongPress(
@@ -187,7 +236,7 @@ private fun BoxScope.BlockNode(
     val hasOptionalTextWidth = groupWidth > OPTIONAL_TEXT_MIN_WIDTH_DP.dp
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
-    val shape = RoundedCornerShape(4.dp)
+    val shape = RoundedCornerShape(6.dp)
     Box(
         Modifier
             .offset(x = x, y = y)
@@ -206,8 +255,11 @@ private fun BoxScope.BlockNode(
     ) {
         BlockTexts.Content(
             block = pb.block,
+            titleMaxLines = BlockTexts.titleMaxLinesFor(h.value, pb.block.location.isNotBlank()),
+            showLocation = h > 42.dp,
             showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
             showTime = h > TIME_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
+            contentColor = CoursePalette.onContainerColor(paletteIndex),
         )
     }
 }
@@ -234,12 +286,13 @@ private fun WeekHeaderCells(weekDates: LocalDateRange, today: LocalDate?, modifi
 @Composable
 private fun TimeGutter(
     periodStarts: List<LocalTime>,
+    teachingGroups: List<TeachingTimeGroup>,
     axis: TimelineAxis,
     bodyHeight: Dp,
     modifier: Modifier,
 ) {
     Box(modifier) {
-        val labels = (periodStarts + axis.start + axis.endInclusive).toSet().sorted()
+        val labels = (periodStarts + teachingGroups.flatMap { listOf(it.start, it.endInclusive) } + axis.start + axis.endInclusive).toSet().sorted()
         for (time in labels) {
             Layout(
                 content = {
