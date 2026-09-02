@@ -787,7 +787,7 @@ object SyncScheduler {
 ```
 - `BackgroundSyncRunner` 是 Worker 的中性 orchestration seam；`SyncEngineBackgroundRunner` 只转发到 `SyncEngine.syncCurrentAcademicSemester()`。semester gate 权威仍在 engine（自读 academic-current && portalLinked），Worker 不接受 semester id、不读 viewed semester、不查询 Room。
 - Worker 自己持有 `weeklySyncEnabled.first()` race gate；设置关闭后，即使旧 Worker 已开始，也在调用 runner 前静默成功。
-- H3 只交付 evidence-free Worker/Scheduler/WorkerFactory seam。真实 `SyncEngine` 尚不能在 9 项 portal evidence PENDING 时诚实组装，因此本轮不修改 `TimetableApp`/`AppContainer`，不安装 production WorkerFactory，也不在启动时 enqueue。runtime composition 与 scheduler reconciliation 等真实 portal stack 可用后一次接线。
+- H3 只交付 evidence-free Worker/Scheduler/WorkerFactory seam。该历史实现轮次在九项 portal evidence 审计前没有组装真实 `SyncEngine`，因此未修改 `TimetableApp`/`AppContainer`、未安装 production WorkerFactory、也未在启动时 enqueue。Phase 0 的审计记录不追溯性地改变这一历史范围；runtime composition 与 scheduler reconciliation 仍由后续真实 portal stack 接线。
 - 周期请求使用 7 天 interval、7 天 initial delay、CONNECTED constraint 与 unique KEEP；注册/重建调度不等于启动时立即联网。
 - `lastSyncFinishedAt` 的产品语义（最后成功、最后完成 attempt、manual/background 是否共享）仍待 Settings integration 明确；H3 不写该字段。
 - 步骤：
@@ -806,18 +806,18 @@ E2 测试中的 `fixture.example` URL、合成 HTML 和 fake detector 只证明�
 
 | 证据项（SPEC §13） | 状态 |
 |---|---|
-| 1 选课结果页与课表页登录后的完整最终 URL（含 scheme/host/port/path/query names 与非 secret functional values） | **PENDING** |
-| 2 两页完整、已脱敏 HTML：`course_selection.html` 与 `timetable.html` | **PENDING** |
-| 3 登录方式、登录页、SSO/重定向链特征与成功后跳转特征 | **PENDING** |
-| 4 两页是否由 XHR/fetch 填充；如有，提供已脱敏响应样例及请求触发关系 | **PENDING** |
-| 5 浏览器“查看网页源代码”（Ctrl+U）是否已经包含课程/课表数据 | **PENDING** |
-| 6 周次切换控件行为：是否请求新页面/参数、仅前端切换，及其真实字段/URL 变化 | **PENDING** |
-| 7 登录页与会话失效页的完整、已脱敏 HTML：`login_page.html`、`auth_expired.html` | **PENDING** |
-| 8 会话实际有效期、跨端/重复登录是否互踢，以及失效表现 | **PENDING** |
-| 9 建议的低成本 `probeUrl`（登录后可达、稳定、响应小） | **PENDING** |
+| 1 选课结果页与课表页登录后的完整最终 URL（含 scheme/host/port/path/query names 与非 secret functional values） | **AUDITED** — `docs/superpowers/evidence/2026-09-02-ustc-portal-evidence.md` |
+| 2 两页完整、已脱敏 HTML：`course_selection.html` 与 `timetable.html` | **AUDITED** — source/runtime distinctions recorded in the evidence record |
+| 3 登录方式、登录页、SSO/重定向链特征与成功后跳转特征 | **AUDITED** — CAS service-ticket structure recorded; no credential material retained |
+| 4 两页是否由 XHR/fetch 填充；如有，提供已脱敏响应样例及请求触发关系 | **AUDITED** — four POST mappings, response shapes, and static body builders recorded |
+| 5 浏览器“查看网页源代码”（Ctrl+U）是否已经包含课程/课表数据 | **AUDITED** — selection source populated; timetable source requires runtime DOM fallback |
+| 6 周次切换控件行为：是否请求新页面/参数、仅前端切换，及其真实字段/URL 变化 | **AUDITED** — no independent switch observed; explicitly bounded in evidence record |
+| 7 登录页与会话失效页的完整、已脱敏 HTML：`login_page.html`、`auth_expired.html` | **AUDITED** — sanitized login/expired target and HTML recorded |
+| 8 会话实际有效期、跨端/重复登录是否互踢，以及失效表现 | **AUDITED: UNKNOWN** — not observed and must not be inferred |
+| 9 建议的低成本 `probeUrl`（登录后可达、稳定、响应小） | **AUDITED: CANDIDATE ONLY** — default selection-result candidate; low-cost qualification remains unmeasured |
 
 ## 本子计划完成判定
 
-- 证据未交付时：E/F1/F5/H1/G2(fake)/G3/H2/H3 全绿——同步核心 evidence-free。
-- 证据交付后：gated 分支 F2→F3→F4→F6→G1 产出注入实现；G1 合入后只替换注入实现并重跑 G1 步骤 5 的定向回归。
+- Phase 0 audited the nine evidence rows. The evidence record remains authoritative for its explicit unknowns and does not qualify runtime/device behavior.
+- Gated 分支 F2→F3→F4→F6→G1 may now use the documented sanitized evidence; G1 合入后只替换注入实现并重跑 G1 步骤 5 的定向回归。
 - `./gradlew :app:testDebugUnitTest` 全绿；`./gradlew :app:lintDebug` 无 error。
