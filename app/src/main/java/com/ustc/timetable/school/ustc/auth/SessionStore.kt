@@ -1,7 +1,6 @@
 package com.ustc.timetable.school.ustc.auth
 
 import java.nio.charset.StandardCharsets
-import java.security.SecureRandom
 import java.time.Instant
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -20,18 +19,14 @@ class SessionStoreCorruptedException(
 class SessionStore(
     private val keys: SecretKeyProvider,
     private val storage: SessionStorage,
-    private val random: SecureRandom = SecureRandom(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     suspend fun save(blob: SessionBlob): Unit = withContext(ioDispatcher) {
         val plain = Json.encodeToString(SessionBlobDto.from(blob)).toByteArray(StandardCharsets.UTF_8)
-        val iv = ByteArray(IV_SIZE_BYTES).also(random::nextBytes)
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(
-            Cipher.ENCRYPT_MODE,
-            keys.getOrCreateKey(),
-            GCMParameterSpec(TAG_SIZE_BITS, iv),
-        )
+        cipher.init(Cipher.ENCRYPT_MODE, keys.getOrCreateKey())
+        val iv = cipher.iv
+        require(iv.size == IV_SIZE_BYTES) { "AES-GCM provider returned an invalid IV size" }
         cipher.updateAAD(AAD)
         storage.write(AAD + iv + cipher.doFinal(plain))
     }
