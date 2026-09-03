@@ -44,7 +44,7 @@ object WeeklyTimetableLayout {
         return LocalTime.of(flooredMin / 60, flooredMin % 60)
     }
 
-    fun place(blocks: List<TimedBlock>, axis: TimelineAxis): List<PlacedBlock> {
+    fun place(blocks: List<TimedBlock>, axis: ReversibleTimelineAxis): List<PlacedBlock> {
         require(blocks.all { it.weekday in 1..7 && it.endInclusive > it.start })
 
         val out = mutableListOf<PlacedBlock>()
@@ -77,7 +77,7 @@ object WeeklyTimetableLayout {
         return out
     }
 
-    private fun layGroup(group: List<TimedBlock>, axis: TimelineAxis): List<PlacedBlock> {
+    private fun layGroup(group: List<TimedBlock>, axis: ReversibleTimelineAxis): List<PlacedBlock> {
         data class ColLast(var lastEnd: LocalTime)
         val cols = mutableListOf<ColLast>()
         val placements = mutableListOf<Pair<TimedBlock, Int>>()

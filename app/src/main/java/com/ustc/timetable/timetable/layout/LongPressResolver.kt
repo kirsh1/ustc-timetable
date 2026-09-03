@@ -13,7 +13,7 @@ object LongPressResolver {
     fun resolve(
         columnFraction: Float,
         yFraction: Float,
-        axis: TimelineAxis,
+        axis: ReversibleTimelineAxis,
     ): LongPressDraft {
         require(columnFraction.isFinite()) { "columnFraction must be finite" }
         require(yFraction.isFinite()) { "yFraction must be finite" }
