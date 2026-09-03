@@ -21,6 +21,7 @@ data class UstcTimetableEntry(
     val weekText: String,
     val locationText: String,
     val teacherText: String,
+    val sourceAssignmentKey: String? = null,
 )
 
 data class UstcSemesterMetaPartial(

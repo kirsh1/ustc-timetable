@@ -1,0 +1,1204 @@
+
+<!DOCTYPE html>
+
+<html lang="zh" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<title>选课结果</title>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=1300,initial-scale=1.0,maximum-scale=1,user-scalable=yes" />
+  <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+  <!--<title layout:title-pattern="$DECORATOR_TITLE - $CONTENT_TITLE" th:text="#{system.title}">教务系统</title>-->
+
+  <!--<link th:href="@{/static/common-home/img/favicon.ico}" rel="icon" type="image/x-icon" />-->
+<!--  <link rel="icon" th:href="@{/static/favicon.png}"/>-->
+  <link rel="stylesheet" href="/static/eams-ui/css/eams-ui.css?v=00003" />
+  <link rel="stylesheet" href="/static/eams-ui/css/eams-ui-plugin.min.css?v=00004" />
+  <link rel="stylesheet" href="/static/helper/css/info-page.css?v=00002" />
+  <link rel="stylesheet" href="/static/helper/css/generate-template.css?v=00002" />
+  <link rel="stylesheet" href="/static/eams-ui/css/default.css?v=00014" />
+  <link rel="stylesheet" href="/static/helper/css/scrollbar.css" />
+  <link rel="stylesheet" href="/static/helper/css/page-header.css" />
+  <link rel="stylesheet" href="/static/eams-ui/css/iconfont.css" />
+  <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+  <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+  <!--[if lt IE 9]>
+  <script src="/static/eams-ui/js/html5shiv.min.js?v=00002"></script>
+  <script src="/static/eams-ui/js/respond.min.js?v=00002"></script>
+  <![endif]-->
+
+  <script src="/static/eams-ui/js/eams-ui.min.js?v=12"></script>
+<!--  <script th:src="@{/static/eams-ui/js/eams-ui.js?v=12}"></script> -->
+  <script src="/static/eams-ui/js/eams-ui.zh.min.js?v=00002"></script>
+  <script>
+    // 设置 context path, js会需要用
+    window.CONTEXT_PATH = '';
+    window.LOCALE = 'zh';
+  </script>
+  <script type="text/javascript">
+    /*<![CDATA[*/
+    // 换账号登录检测：default.html 为全局唯一 layout，每次整页渲染先于偏好读取执行。
+    // 登录成功后 currentAccount 已写入；账号变化时清除上一账号的固定 key 偏好缓存与会话同步标记，
+    // 触发后续"无缓存 → 同步回源"，按新账号从 Redis 拉取正确值，避免同浏览器换账号串号。
+    (function () {
+      var _cur = window.localStorage.getItem('currentAccount');
+      var _prev = window.localStorage.getItem('ustc-pref-account');
+      if (_cur && _cur !== _prev) {
+        window.localStorage.removeItem('ustc-preference-info');
+        window.sessionStorage.removeItem('ustc-preference-synced');
+      }
+      if (_cur) window.localStorage.setItem('ustc-pref-account', _cur);
+    })();
+    // 偏好设置读取（前端自管）：
+    //   1) localStorage 优先直出：首屏零请求、零 Redis 读；
+    //   2) 无缓存时同步 GET 一次回源（仅首次阻塞，保证首屏正确）；
+    //   3) 进系统后异步拉一次最新值覆盖缓存（实现换设备/清缓存也实时同步）；
+    //   4) sessionStorage 收敛：整个浏览器会话只在首次进系统时拉一次，避免整页跳转重复发。
+    window.__ustcAutoQueryOnLoad = true;
+
+    // 固定 key（不拼 accountId）：偏好为单账号登录态，换账号登录时 home 会覆盖；
+    // 用固定 key 可规避直开菜单页时 currentAccount 尚未写入的时序问题。
+    var __PREF_LS_KEY = 'ustc-preference-info';
+    var __PREF_SYNC_FLAG = 'ustc-preference-synced'; // 本浏览器会话是否已异步刷新过
+
+    // 把偏好 JSON 应用到全局变量与每页条数（缓存/远端共用）
+    // 兼容两种入参：字符串（localStorage 缓存 / 旧 AJAX 行为）或对象（jQuery 对 application/json 响应自动 parse 的结果）
+    function __applyPref(json) {
+      try {
+        var __info = (typeof json === 'object' && json !== null) ? json : JSON.parse(json);
+        if (typeof __info.autoQueryOnLoad === 'boolean') {
+          window.__ustcAutoQueryOnLoad = __info.autoQueryOnLoad;
+        }
+        if (__info.listCount) {
+          window.localStorage.setItem('_page_rowsPerPage', String(__info.listCount));
+        }
+        console.log('[PREF] __applyPref 应用成功', { autoQueryOnLoad: __info.autoQueryOnLoad, listCount: __info.listCount, __ustcAutoQueryOnLoad: window.__ustcAutoQueryOnLoad });
+        return true;
+      } catch (e) {
+        console.warn('[PREF] __applyPref 解析失败（将回退默认 autoQueryOnLoad=true）', json, e);
+        return false;
+      }
+    }
+
+    // 1) 本机缓存直出（首屏零请求）
+    // 注意：缓存必须是合法 JSON 字符串。历史上曾因"存对象"产生坏缓存 '[object Object]'，
+    // 会导致 JSON.parse 失败并永久回退默认 autoQueryOnLoad=true。此处加合法性校验：
+    // 解析失败则视为无缓存，清掉坏值并走步骤2 同步回源，避免永久卡死。
+    var __cached = null;
+    try {
+      __cached = window.localStorage.getItem(__PREF_LS_KEY);
+      console.log('[PREF] 步骤1 缓存直出', { hasCache: !!__cached, cache: __cached });
+      if (__cached) {
+        // 校验缓存是否为合法 JSON（排除 '[object Object]' 等坏值）
+        var __cacheValid = false;
+        try { JSON.parse(__cached); __cacheValid = true; } catch (pe) { __cacheValid = false; }
+        if (__cacheValid) {
+          __applyPref(__cached);
+        } else {
+          console.warn('[PREF] 步骤1 发现坏缓存，清除并走同步回源', __cached);
+          window.localStorage.removeItem(__PREF_LS_KEY);
+          __cached = null;
+        }
+      }
+    } catch (e) { __cached = null; }
+
+    // 2) 无缓存：同步 GET 一次回源（async:false 仅首次阻塞，避免首屏竞态）
+    if (!__cached) {
+      try {
+        var __remote = null;
+        $.ajax({
+          url: window.CONTEXT_PATH + '/account/get-preference-info',
+          type: 'GET',
+          async: false,
+          timeout: 3000, // 防止 Redis/接口异常时同步阻塞无限卡死首屏
+          success: function (res) { __remote = res; },
+          error: function (xhr, status, err) {
+            // 超时(status='timeout')或网络错误：保持默认 autoQueryOnLoad=true，不阻塞后续渲染
+            console.warn('[PREF] 步骤2 同步回源失败（保持默认）', { status: status });
+            __remote = null;
+          }
+        });
+        console.log('[PREF] 步骤2 同步回源', { raw: __remote, type: typeof __remote });
+        if (__remote) {
+          if (__applyPref(__remote)) {
+            // 必须 JSON.stringify：__remote 可能是对象（jQuery 自动 parse），直接存会变成 '[object Object]' 坏缓存
+            window.localStorage.setItem(__PREF_LS_KEY, JSON.stringify(__remote));
+          }
+        }
+      } catch (e) { console.warn('[PREF] 步骤2 同步回源异常', e); /* 查询或解析失败，保持默认值 */ }
+    }
+
+    // 3) 异步覆盖：整个浏览器会话只拉一次（实现绝对同步，且不阻塞首屏）
+    try {
+      if (!window.sessionStorage.getItem(__PREF_SYNC_FLAG)) {
+        console.log('[PREF] 步骤3 异步刷新发起', { syncFlag: window.sessionStorage.getItem(__PREF_SYNC_FLAG) });
+        $.ajax({
+          url: window.CONTEXT_PATH + '/account/get-preference-info',
+          type: 'GET',
+          async: true,
+          success: function (res) {
+            console.log('[PREF] 步骤3 异步刷新返回', { raw: res, type: typeof res });
+            if (res && __applyPref(res)) {
+              // 必须 JSON.stringify：res 可能是对象（jQuery 自动 parse），直接存会变成 '[object Object]' 坏缓存
+              window.localStorage.setItem(__PREF_LS_KEY, JSON.stringify(res));
+              window.sessionStorage.setItem(__PREF_SYNC_FLAG, '1');
+              console.log('[PREF] 步骤3 已覆盖缓存并置会话标记');
+            }
+          }
+        });
+      } else {
+        console.log('[PREF] 步骤3 跳过（本会话已异步刷新过）');
+      }
+    } catch (e) { console.warn('[PREF] 步骤3 异步刷新异常', e); /* 异步刷新失败不影响首屏，下次进系统再拉 */ }
+    /*]]>*/
+  </script>
+  <script type="text/javascript" src="/static/helper/ustc-common-helper.js?v=5"></script>
+  <script type="text/javascript" src="/static/helper/search-page-helper1.js?v=00003"></script>
+  <script type="text/javascript" src="/static/helper/ustc-search-form-helper.js?v=20260901-4"></script>
+  <script type="text/javascript" src="/static/helper/notIndex-page-helper.js?v=202607060801"></script>
+  <script type="text/javascript" src="/static/helper/ustc-search-page-helper.js?v=20260902-1"></script>
+  <script type="text/javascript" src="/static/helper/ustc-lazy-select.js?v=20260720-1"></script>
+  <script type="text/javascript" src="/static/helper/info-page.js?v=00003"></script>
+  <script type="text/javascript" src="/static/helper/student-selectize.js?v=00003"></script>
+  <script type="text/javascript" src="/static/helper/datatable-column-tools.js?v=20260618"></script>
+  <script type="text/javascript" src="/static/thymeleaf-component/common.js?v=00005"></script>
+  <script src="/static/eams-ui/js/global-iconfont.js?v=00000"></script>
+  <script src="/static/util/number-range-digestor.js?v=1"></script>
+  <script>
+    /*<![CDATA[*/
+    $(function () {
+      $.triggerParentEvent = function () {
+        var parentWindow = window.parent
+        while (parentWindow.name !== 'root-window' && parentWindow !== parentWindow.parent) {
+          parentWindow = parentWindow.parent
+        }
+        parentWindow.$.fn.trigger.apply(parentWindow.$(parentWindow), Array.prototype.slice.call(arguments))
+      }
+
+      var infoMessages = null;
+      if (!infoMessages) {
+        infoMessages = [];
+      }
+      $.each(infoMessages, function (index, message) {
+        new PNotify({
+          title: '消息',
+          text: message,
+          type: 'info',
+          delay: 1000
+        });
+      });
+
+      var successMessages = null;
+      if (!successMessages) {
+        successMessages = [];
+      }
+      $.each(successMessages, function (index, message) {
+        new PNotify({
+          title: '成功',
+          text: message,
+          type: 'success',
+          delay: 1000
+        });
+      });
+
+      var errorMessages = null;
+      if (!errorMessages) {
+        errorMessages = [];
+      }
+      $.each(errorMessages, function (index, message) {
+        new PNotify({
+          title: '错误',
+          text: message,
+          type: 'error',
+          delay: 5000
+        });
+      });
+
+      var noticeMessages = null;
+      if (!noticeMessages) {
+        noticeMessages = [];
+      }
+      $.each(noticeMessages, function (index, message) {
+        new PNotify({
+          title: '提示',
+          text: message,
+          type: 'notice',
+          delay: 1000
+        });
+      });
+
+      $(document).ajaxError(function (event, request) {
+
+        if (request.responseText && request.status == 200 && request.statusText == "parsererror") {
+          window.location.href = self.location.href;
+        }
+
+        if (!request.responseJSON) {
+          if (request.responseText && request.responseText.indexOf('TokenValidationException') !== -1) {
+            bootbox.alert({
+              title: '提示',
+              message: '页面已过期或存在重复提交，请刷新页面后重试。如果之前已点击过保存/提交，请先检查数据是否已保存成功，避免重复操作。',
+              callback: function () {
+                window.location.reload();
+              }
+            });
+          }
+          return;
+        }
+
+        if (request.responseJSON.exception === 'com.supwisdom.eams.infras.token.exception.TokenValidationException') {
+          bootbox.alert({
+            title: '提示',
+            message: '页面已过期或存在重复提交，请刷新页面后重试。如果之前已点击过保存/提交，请先检查数据是否已保存成功，避免重复操作。',
+            callback: function () {
+              window.location.reload();
+            }
+          });
+          return;
+        }
+
+        var data = {};
+        var message = request.responseJSON.message;
+        if (request.responseJSON.errors && request.responseJSON.errors.length > 0) {
+          message = request.responseJSON.errors[0].defaultMessage;
+        }
+        data['errError'] = request.responseJSON.error;
+        data['errException'] = request.responseJSON.exception;
+        data['errMessage'] = message;
+        data['errPath'] = request.responseJSON.path;
+        data['errStatus'] = request.responseJSON.status + ' (' + request.responseJSON.cookieString + ')';
+        data['errTimestamp'] = request.responseJSON.timestamp;
+        data['errTrace'] = request.responseJSON.trace;
+
+        new PNotify({
+          text: request.responseJSON.prompt,
+          type: 'error',
+          delay: 50000,
+          icon: false,
+          width: '350px',
+          min_height: '82px',
+          confirm: {
+            confirm: true,
+            align: 'right',
+            buttons: [
+              {
+                text: '上报错误',
+                addClass: "btn-sm",
+                click: function () {
+                  $.post({
+                    url: window.CONTEXT_PATH + '/sys-error-msg/save',
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify(data),
+                    success: function (response) {
+                      if ($(".bootbox-alert").length == 0) {
+                        bootbox.alert(response.content);
+                      }
+                    }
+                  })
+                }
+              }, {addClass: 'hide'}
+            ]
+          }
+        });
+
+      });
+
+      $("body").on("click", ".online-btn", function () {
+        var dataId = $(this).closest("li").attr("data-id");
+        window.open(window.CONTEXT_PATH + '/file/common/preview-by-key/' + dataId, "_blank");
+      });
+      $("body").on("click", ".download", function () {
+        var dataId = $(this).closest("li").attr("data-id");
+        FormUtil.get({
+          form: $("<form></form>"),
+          url: window.CONTEXT_PATH + '/file/common/download-by-key/' + dataId
+        });
+      });
+
+    });
+
+    // 重写表单校验remote
+    $.validator.addMethod("remoteCheck", function (value, element, param) {
+      if (null == value || value === '' || value === undefined) {
+        return {
+          result: true
+        }
+      }
+      if (!param.data){
+        param.data = {};
+      }
+      param.data[element.name] = value;
+      var result = false;
+      $.get($.extend({
+        async: false,
+        success: function (response) {
+          if (param.callback) {
+            result = param.callback.call(this, response, param)
+          } else {
+            result = response;
+          }
+        }
+      }, param));
+      return result;
+    }, function (param) {
+      return param.message;
+    });
+
+    // 添加自定义验证方法
+    $.validator.addMethod("notEqualTo", function(value, element, param) {
+      return this.optional(element) || value !== $(param).val();
+    }, "此字段不能与另一个字段的值相同");
+
+    window.preventFromSubmitTwice = function ($form) {
+      $form.submit(function () {
+        $(this).submit(function () {
+          return false;
+        });
+        return true;
+      });
+    }
+    window.preventFromSubmitTwice($('#save-form'));
+
+    window.semesterURIUtil = function (originalUri, insertBefore, semesterId) {
+      var semesterPattern = "/semester/";
+      if (originalUri.indexOf(semesterPattern) != -1) {
+        // remove semester pattern
+        var semesterPatternStartAt = originalUri.indexOf(semesterPattern);
+        var semesterPatternEndAt = semesterPatternStartAt +
+            originalUri.substring(semesterPatternStartAt, originalUri.length).indexOf("/", semesterPattern.length);
+        originalUri = originalUri.substring(0, semesterPatternStartAt) + originalUri.substring(semesterPatternEndAt, originalUri.length);
+      }
+      var appendIndex = originalUri.indexOf(insertBefore);
+      return originalUri.substring(0, appendIndex) + semesterPattern + semesterId + originalUri.substring(appendIndex, originalUri.length);
+    };
+    window.gradeURIUtil = function (originalUri, insertBefore, grade) {
+      var gradePattern = "/grade/";
+      if (originalUri.indexOf(gradePattern) != -1) {
+        var gradePatternStartAt = originalUri.indexOf(gradePattern);
+        var gradePatternEndAt = gradePatternStartAt +
+            originalUri.substring(gradePatternStartAt, originalUri.length).indexOf("/", gradePattern.length);
+        originalUri = originalUri.substring(0, gradePatternStartAt) + originalUri.substring(gradePatternEndAt, originalUri.length);
+      }
+      var appendIndex = originalUri.indexOf(insertBefore);
+      return originalUri.substring(0, appendIndex) + gradePattern + grade + originalUri.substring(appendIndex, originalUri.length);
+    };
+
+    window.escapeHtml = function(str) {
+      return str.replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+    };
+
+    //    eamsUiUtil.cascadeScrollParentWindowToTop(window);
+
+    /*]]>*/
+  </script>
+  <link rel="stylesheet" href="/static/system/pathNav.css?v=00002" />
+  <style type="text/css" media="print">
+    .path-nav {
+      display: none
+    }
+  </style>
+  <style type="text/css">
+    .path-nav {
+      color: #999999;
+      padding: 10px 10px;
+    }
+
+    #refresh {
+      margin-left: 10px;
+      cursor: pointer;
+      background-color: #eee;
+      transition: ease 0.3s;
+      color: #999;
+      border-radius: 4px;
+    }
+
+    #refresh:hover {
+      color: #fff;
+      background-color: #428bca;
+    }
+
+    .selectize-dropdown {
+      width: auto !important;
+      min-width: 100%;
+    }
+
+    .selectize-dropdown-content > div.option {
+      white-space: nowrap;
+    }
+
+    .caret.caret.caret {
+      border: none !important;
+      right: 5px !important;
+    }
+
+
+    .accessory-info{
+      font-size: 12px;
+      color: #330099;
+      font-weight: bold;
+    }
+    .accessory-list{
+      padding: 0;
+      margin: auto;
+      text-decoration: underline;
+      text-decoration-color: #0090ff;
+    }
+    .accessory-list .download{
+      cursor: pointer;
+    }
+    .accessory-list li{
+      list-style-type: none;
+    }
+    .accessory-list .online-btn{
+      height: 16px;
+      font-size: 12px;
+      box-sizing: border-box;
+      line-height: 1;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-left: 7px;
+      cursor: pointer;
+    }
+  </style>
+	<style>
+    .table > thead > tr > th,
+    .table > tbody > tr > td {
+      vertical-align: middle;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<!-- thymeleaf自定义组件代码锚点 -->
+<script compo="true"></script>
+<!-- thymeleaf自定义组件代码锚点 -->
+
+<body>
+<!--<div class="path-nav hide" >
+  <span>您的当前位置：<span id="path-nav-home"></span></span>   <button id="refresh" class="btn btn-xs">刷新</button>
+</div>-->
+<div class="clearfix"></div>
+<body>
+<div class="container">
+  <div class="row">
+    <div class="top-bar no-print">
+      <h2 class="info-title">选课结果</h2>
+
+    </div>
+
+    
+      <div id="info-content" style="margin-top: 30px;">
+        <div style="text-align: center">
+          <h2>2026年秋季学期</h2>
+        </div>
+
+        <table class="table table-bordered">
+          <thead>
+          <tr>
+            <th>课程编号</th>
+            <th>课程名称</th>
+            <th>教师</th>
+            <th>开课单位</th>
+            <th>学分</th>
+            <th>起止周</th>
+            <th>课程性质</th>
+            <th>课程层次</th>
+          </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CHEM5012P</td>
+              <td>电化学研究方法</td>
+              <td>
+                
+                  李少锋
+                  ,
+                
+                
+                  孔爽
+                  
+                
+              </td>
+              <td>003化学物理系</td>
+              <td>4.0</td>
+              <td>
+                2~17
+              </td>
+              <td>
+                
+              </td>
+              <td>本研贯通</td>
+            </tr>
+            <tr>
+              <td>CHEM5013P</td>
+              <td>高等无机化学</td>
+              <td>
+                
+                  吴长征
+                  ,
+                
+                
+                  刘斯
+                  ,
+                
+                
+                  郭宇桥
+                  
+                
+              </td>
+              <td>019化学系</td>
+              <td>3.0</td>
+              <td>
+                2~18
+              </td>
+              <td>
+                
+              </td>
+              <td>本研贯通</td>
+            </tr>
+            <tr>
+              <td>CHEM6001P</td>
+              <td>结晶化学导论</td>
+              <td>
+                
+                  朱永春
+                  
+                
+              </td>
+              <td>019化学系</td>
+              <td>3.0</td>
+              <td>
+                2~18
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>CHEM6016P</td>
+              <td>应用物理化学II</td>
+              <td>
+                
+                  葛君杰
+                  
+                
+              </td>
+              <td>003化学物理系</td>
+              <td>2.0</td>
+              <td>
+                10~17
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>CHEM6023P</td>
+              <td>固体化学原理</td>
+              <td>
+                
+                  张晓东
+                  ,
+                
+                
+                  郭宇桥
+                  
+                
+              </td>
+              <td>012应用化学系</td>
+              <td>3.0</td>
+              <td>
+                2~18
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>FORL6102U</td>
+              <td>日常交流英语</td>
+              <td>
+                
+                  Steve Masashi Musha
+                  
+                
+              </td>
+              <td>108外语教学中心</td>
+              <td>2.0</td>
+              <td>
+                2~16
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>MARX6102U</td>
+              <td>新时代中国特色社会主义理论与实践</td>
+              <td>
+                
+                  韩笑
+                  
+                
+              </td>
+              <td>220马克思主义学院</td>
+              <td>2.0</td>
+              <td>
+                8~18
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>MSEN6406P</td>
+              <td>无机新能源材料与应用</td>
+              <td>
+                
+                  陈立锋
+                  
+                
+              </td>
+              <td>014材料科学与工程系</td>
+              <td>2.0</td>
+              <td>
+                2~9
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+            <tr>
+              <td>PHIL6101U</td>
+              <td>自然辩证法概论</td>
+              <td>
+                
+                  吕凌峰
+                  
+                
+              </td>
+              <td>220马克思主义学院</td>
+              <td>1.0</td>
+              <td>
+                2~7
+              </td>
+              <td>
+                
+              </td>
+              <td>硕士</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    
+
+
+  </div>
+</div>
+
+<script>
+  /*<![CDATA[*/
+  $(function () {
+
+
+  });
+  /*]]>*/
+</script>
+
+</body>
+<!--STORY #19848 系统级调整：功能未开放实现方式  功能未开放：改成弹框方式提醒，不要直接进入新的页面，而且出错了还回不去-->
+
+  <div class="switchCheckModel modal fade" tabindex="-1" role="dialog" aria-labelledby="myLargeModalLabel">
+    <div class="modal-dialog" style="margin:30px auto;height:calc(100vh - 60px);display:flex;flex-flow:column nowrap;align-items: center;justify-content: center;">
+      <div class="modal-content" style="display:flex;flex-flow:column nowrap;align-items: center;justify-content: center;width:75vh;padding:2vh 0;max-height:100%;height:unset;">
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true" style="position:absolute;top:1.75vh;right: 1.75vh;font-size:3.5vh;color:#383639;">&times;</span>
+        </button>
+        <div class="" style="flex:none;">
+          <img style="height:25vh;" src="/static/new-module-index/swicth-no-open.png" />
+        </div>
+        <div class="switchMessage" style="flex:none;font-size: 3.158vh;font-weight: bold;line-height:1;margin-top:4.7vh;margin-bottom:2.8vh;">功能未开放
+        </div>
+        <div class="text-muted" style="flex:0 1 auto;font-size: 2.456vh;line-height:1.5;overflow:auto; white-space: pre-line;padding: 0 12px;text-align: center;">
+          开放时间为：<span class="openDate"></span>
+        </div>
+        <!--<div class="text-muted openDateMsgTip" style="flex:none;font-size: 2.456vh;color: #bbb;margin-top:1.5vh;">开放时间</div>-->
+      </div>
+    </div>
+  </div>
+
+<script>
+  /*<![CDATA[*/
+  $(function () {
+    //排除多个iframe的情况(开课计划,学生课表等)
+    if (window.frameElement && window.frameElement.name != 'generate-course-plan' && window.frameElement.name != 'student-grades') {
+      $(".path-nav").removeClass('hide');
+
+      //路径导航
+      function initMenu(menus, initParentId) {
+        var $home_li = $("<li class='dropdown home dropdown-hover'></li>");
+        var $home_a = $("<a></a>").addClass("dropdown-toggle")
+            .attr("role", "button").attr("data-toggle", "dropdown")
+            .attr("aria-haspopup", true).attr("aria-expanded", false)
+            .attr("href", "#")
+            .text('首页>')
+
+        var $home_ul = $("<ul></ul>")
+            .addClass("dropdown-menu").attr('aria-labelledby', 'drop_0');
+
+        var allMenus = getMenus(menus, initParentId);
+        if (allMenus && allMenus.length != 0) {
+          $.each(allMenus, function (i, menu) {
+            if (i == 0) {
+              return;
+            }
+            $home_ul.append(menu);
+          });
+          $home_li.append($home_a.append("")).append($home_ul);
+          $home_li.find("[appendDivider=true]").each(function () {
+            $(this).closest('li').after("<li class='divider'></li>");
+          });
+          $("#path-nav-home").append($home_li);
+        }
+
+
+        $(".dropdown-hover a:first").dropdownHover({
+          changePosition: true
+        });
+
+
+      }
+
+      function getMenus(menus, parentID) {
+        var $iframeContainer = $('#e-op-area .e-op-area-iframe-container');
+        var iframeHomeName = "e-home-iframe";
+        var $iframeHome = $iframeContainer.find('iframe[name=' + iframeHomeName + ']');
+        var home_src = $iframeHome.attr("src");
+        var $home_a = $("<a></a>").addClass("dropdown-toggle")
+            .attr("role", "button").attr("data-toggle", "dropdown")
+            .attr("aria-haspopup", true).attr("aria-expanded", false)
+            .attr("href", "#");
+
+        return menus.filter(function (node) {
+          return (node.parentId === parentID);
+        }).map(function (node) {
+          var exists = menus.some(function (childNode) {
+            return childNode.parentId === node.id;
+          });
+
+          var $ul = $("<ul></ul>").addClass("dropdown-menu").attr('aria-labelledby', "drop_" + node.id);
+          var subMenu = (exists) ? $ul.append(getMenus(menus, node.id)) : "";
+          var $li = $("<li></li>");
+          var $a = $("<a></a>");
+          $a.attr("id", "drop_" + node.id);
+          $a.attr("class", "drop_submenu");
+          $a.attr("href", node.href);
+          $a.text(node.title);
+
+          //如果是home页面设置target为e-home-iframe
+          if (node.href === home_src) {
+            $a.attr("target", "e-home-iframe");
+            $home_a.text(node.title);
+          }
+          if (node.parentId) {
+            $a.attr("parentId", "drop_" + node.parentId);
+          }
+          $a.attr('appendDivider', node.appendDivider);
+          if (subMenu != "") {
+            $li.addClass("dropdown-submenu");
+          }
+          return $li.append($a).append(subMenu);
+        });
+      }
+
+      function updateMenu($anchor) {
+        var drop_parentId = $anchor.attr("parentId");
+
+        var $menu_list = $("#path-nav-home").find("ul[aria-labelledby='" + drop_parentId + "']").removeAttr("style");
+        if ($menu_list.length != 0) {
+          var $new_li = $("<li></li>").addClass("dropdown children dropdown-hover");
+          var $new_a = $("<a></a>").addClass("dropdown-toggle")
+              .attr("role", "button").attr("data-toggle", "dropdown")
+              .attr("aria-haspopup", true).attr("aria-expanded", false)
+              .text($anchor.text());
+
+          $new_li.append($new_a)
+
+          //查找上一级菜单
+          var $parent_anchor = $("#path-nav-home").find("a[id='" + drop_parentId + "']");
+
+          if ($menu_list.find("li").length > 1) {
+            $new_a.append("<span class='fa fa-angle-right'></span>");
+            $new_li.append($menu_list.clone(true));
+          }
+
+          $("#path-nav-home").find("li:first").after($new_li);
+
+          updateMenu($parent_anchor);
+        } else {
+          $("#path-nav-home").find("li a:first").text($anchor.text()).append("<span class='fa fa-angle-right'></span>");
+        }
+
+        $(".dropdown-hover a[class='dropdown-toggle']").dropdownHover({
+          changePosition: true
+        });
+
+      }
+
+      if (typeof parent.$('#saveMenus').val() != 'undefined') {
+        var menus = JSON.parse(parent.$('#saveMenus').val());
+
+        initMenu(menus, "");
+        var targetMenu = menus.filter(function (menu) {
+          return menu.href == $(window.frameElement).attr('src')
+        })[0]
+        if (targetMenu) {
+          var $anchor = $('<a href="' + targetMenu.href + '" id="drop_' + targetMenu.id + '" parentId="drop_' + targetMenu.parentId + '">' + targetMenu.title + '</a>');
+
+          updateMenu($anchor);
+        }
+      }
+
+      var originName = '首页 ';
+      $("#path-nav-home").find('>li').each(function (index, li) {
+        var currentName = $(li).find('>a').text();
+        $(li).find('>a').text(originName + ' > ');
+        originName = currentName;
+      });
+      originName = originName.indexOf('首页') != -1 ? '' : originName;
+      $("#path-nav-home").append('<li><span style="color:#999999">&nbsp;' + originName + '</span></li>');
+
+
+      $('.drop_submenu').click(function (e) {
+        clickSubMenu(e, '');
+      });
+
+      function clickSubMenu(e, queryString) {
+        var $this = $(e.target);
+
+        var $body = $("body");
+        if (!$this.attr('href') || $this.attr('href') == '#') {
+          e.target.style.backgroundColor = 'transparent';
+          return false;
+        }
+
+        e.preventDefault();
+        $body.find(".dropdown-toggle-hover").removeClass("dropdown-toggle-hover");
+
+        parent.$("#e-top-menu").find('a[href="' + $this.attr('href') + '"]').click();
+
+      }
+
+    }
+
+  });
+  /*]]>*/
+</script>
+
+</body>
+
+<script>
+  /*<![CDATA[*/
+  $(function () {
+    $.each($(".selectized"), function () {
+      var _self = this;
+      if ($(_self)[0].tagName == 'SELECT') {
+        $(_self)[0].selectize.on('focus', function () {
+          if ($(_self)[0].selectize.getValue() == '') {
+            $(_self)[0].selectize.clear();
+          }
+        });
+      }
+    });
+
+    Date.prototype.format = function (format) {
+      var date = {
+        "M+": this.getMonth() + 1,
+        "d+": this.getDate(),
+        "h+": this.getHours(),
+        "m+": this.getMinutes(),
+        "s+": this.getSeconds(),
+        "q+": Math.floor((this.getMonth() + 3) / 3),
+        "S+": this.getMilliseconds()
+      };
+      if (/(y+)/i.test(format)) {
+        format = format.replace(RegExp.$1, (this.getFullYear() + '').substr(4 - RegExp.$1.length));
+      }
+      for (var k in date) {
+        if (new RegExp("(" + k + ")").test(format)) {
+          format = format.replace(RegExp.$1, RegExp.$1.length == 1
+              ? date[k] : ("00" + date[k]).substr(("" + date[k]).length));
+        }
+      }
+      return format;
+    };
+    var refreshTab = function (e) {
+      e.preventDefault();
+
+      document.location.reload();
+    };
+
+    $("#refresh").click(refreshTab);
+
+
+    /*
+    * validator插件验证后跳转第一个invalid处，兼容selectize
+    * */
+    $.validator.prototype.focusInvalid = function () {
+      if (this.settings.focusInvalid) {
+        try {
+          var $el = $(this.findLastActive() || this.errorList.length && this.errorList[0].element || []);
+
+          if ($el.is(":visible")) {
+            $el.focus()
+                // manually trigger focusin event; without it, focusin handler isn't called, findLastActive won't have anything to find
+                .trigger("focusin");
+          } else if ($el[0].selectize) {
+            $el[0].selectize.focus();
+          }
+        } catch (e) {
+          // ignore IE throwing errors when focusing hidden elements
+        }
+      }
+    }
+
+    //STORY #19848 系统级调整：功能未开放实现方式
+    if (FormUtil) {
+      $(".switchCheckModel").modal({
+        backdrop: true,
+        show: false
+      });
+
+      FormUtil.get = new Proxy(FormUtil.get, {
+        apply: function (target, thisArg, args) {
+          if (args[0].checkSwitch && !FormUtil.checkOpenSwitch(args[0].url, 'GET')) {
+            return false;
+          }
+          return target.call(thisArg, ...args);
+        }
+      });
+
+      FormUtil.post = new Proxy(FormUtil.post, {
+        apply: function (target, thisArg, args) {
+          if (args[0].checkSwitch && !FormUtil.checkOpenSwitch(args[0].url, 'POST')) {
+            return false;
+          }
+          return target.call(thisArg, ...args);
+        }
+      });
+
+      FormUtil.isOpenSwitch = function (url, data) {
+        var checkOpen = true;
+        $.ajax({
+          url: url,
+          type: 'get',
+          async: false,
+          data: data,
+          success: function (res) {
+            if (!res.success) {
+              checkOpen = false;
+
+              $(".switchCheckModel .switchMessage").text('功能未开放');
+              if (res.openDate) {
+                $(".switchCheckModel .openDate").text(res.openDate);
+                // $(".switchCheckModel .openDateMsg").show();
+              } else {
+                $(".switchCheckModel .openDate").text('');
+                // $(".switchCheckModel .openDateMsg").hide();
+              }
+              if (res.bulletin) {
+                //公告
+              }
+              $(".switchCheckModel").modal('show');
+            }
+          }
+        });
+
+        return checkOpen;
+      }
+      //开关未开放弹窗，如果开关数据在MODULE_SWITCH表中，使用（FormUtil.isOpenSwitchByModule），如果不在，就用 （switchAlterWindow（））
+      FormUtil.isOpenSwitchByModule = function (module, bizTypeId, semesterId) {
+        var checkOpen = true;
+        $.ajax({
+          url: window.CONTEXT_PATH + '/ws/switch/is-open',
+          type: 'get',
+          async: false,
+          data: {module: module, bizType: bizTypeId, semester: semesterId},
+          success: function (res) {
+            if (!res.success) {
+              checkOpen = false;
+
+              $(".switchCheckModel .switchMessage").text('功能未开放');
+              if (res.openDate) {
+                $(".switchCheckModel .openDate").text(res.openDate);
+                $(".switchCheckModel .openDateMsg").show();
+              } else {
+                $(".switchCheckModel .openDate").text('');
+                $(".switchCheckModel .openDateMsg").hide();
+              }
+              if (res.bulletin) {
+                //公告
+              }
+              $(".switchCheckModel").modal('show');
+            }
+          }
+        });
+
+        return checkOpen;
+      }
+
+      FormUtil.checkOpenSwitch = function (targetUrl, targetMethod) {
+        var checkOpen = true;
+        $.ajax({
+          url: window.CONTEXT_PATH + '/ws/switch/check-open',
+          type: 'get',
+          async: false,
+          data: {targetUrl: targetUrl, targetMethod: targetMethod.toUpperCase()},
+          success: function (res) {
+            if (!res.success) {
+              checkOpen = false;
+
+              $(".switchCheckModel .switchMessage").text(res.message);
+              if (res.openDate) {
+                $(".switchCheckModel .openDate").text(res.openDate);
+                $(".switchCheckModel .openDateMsg").show();
+              } else {
+                $(".switchCheckModel .openDate").text('');
+                $(".switchCheckModel .openDateMsg").hide();
+              }
+              if (res.bulletin) {
+                //公告
+              }
+              $(".switchCheckModel").modal('show');
+            }
+          }
+        });
+
+        return checkOpen;
+      }
+      FormUtil.checkBatchOpen = function (url, params = {}) {
+        var checkOpen = true;
+        $.ajax({
+          url: url,
+          type: 'get',
+          async: false,
+          data: params,
+          success: function (res) {
+            if (!res.success) {
+              checkOpen = false;
+
+              $(".switchCheckModel .switchMessage").text(res.message);
+              if (res.openDate) {
+                $(".switchCheckModel .openDate").text(res.openDate);
+                $(".switchCheckModel .openDateMsg").show();
+              } else {
+                $(".switchCheckModel .openDate").text('');
+                $(".switchCheckModel .openDateMsg").hide();
+              }
+              if (res.bulletin) {
+                //公告
+              }
+              $(".switchCheckModel").modal('show');
+            }
+          }
+        });
+
+        return checkOpen;
+      }
+      FormUtil.showOpenSwitch = function (message, openDate, bulletin) {
+        $(".switchCheckModel .switchMessage").text(message);
+        if (openDate) {
+          $(".switchCheckModel .openDate").text(openDate);
+          $(".switchCheckModel .openDateMsg").show();
+        } else {
+          $(".switchCheckModel .openDate").text('');
+          $(".switchCheckModel .openDateMsg").hide();
+        }
+        if (bulletin) {
+          //公告
+        }
+        $(".switchCheckModel").modal('show');
+      }
+
+    }
+
+    //更换主题
+    var changeTheme = function () {
+      function _replaceFiles(themeName) {
+        var href = window.CONTEXT_PATH + '/static/eams-ui/' + themeName;
+        var cssArray = ['eams-ui.min.css', 'eams-ui-home.min.css', 'eams-ui-plugin.min.css', 'eams-ui.css', 'eams-ui-home.css', 'eams-ui-plugin.css'];
+        $.each(cssArray, function (index, item) {
+          var $ele = $("link[href*='" + item + "']");
+          if (!$ele.length) {
+            return true;
+          }
+          var node = document.createElement("link");
+          node.rel = 'stylesheet';
+          node.href = href + '/' + item + '?v=' + Math.floor(Math.random() * 100000);
+          $ele.after(node);
+          setTimeout(function () {
+            $ele.remove();
+          }, 3000);
+        });
+      }
+
+      function _replaceBgImg(themeName) {
+        $(".theme-bgimg").attr("data-theme", themeName);
+        $(".pure-li[data-theme=" + themeName + "]").addClass("active").siblings().removeClass("active");
+      }
+
+      var themeName = localStorage.getItem("theme");
+
+      var userAgent = navigator.userAgent; //取得浏览器的userAgent字符串
+      var isIE = userAgent.indexOf("compatible") > -1 && userAgent.indexOf("MSIE") > -1; //判断是否IE<11浏览器
+      var isEdge = userAgent.indexOf("Edge") > -1 && !isIE; //判断是否IE的Edge浏览器
+      var isIE11 = userAgent.indexOf('Trident') > -1 && userAgent.indexOf("rv:11.0") > -1;
+
+      if (themeName) {
+        var themeArr = ['theme1', 'theme2', 'theme3', 'theme4', 'theme5', 'theme6'];
+
+        if (themeArr.indexOf(themeName) === -1) {
+          localStorage.removeItem('theme');//清除不匹配的
+          $(".theme-bgimg").attr("data-theme", "theme1");
+          $(".pure-li[data-theme='theme1']").addClass("active");
+          return;
+        }
+
+        if (!isIE && !isIE11) {
+          _replaceFiles(themeName);
+        }
+        _replaceBgImg(themeName);
+      } else {
+        $(".theme-bgimg").attr("data-theme", "theme1");
+        $(".pure-li[data-theme='theme1']").addClass("active");
+      }
+    };
+    changeTheme();
+
+    window.addEventListener('storage', function (e) {
+      if ('theme' === e.key) {
+        changeTheme();
+      }
+    });
+
+    +(function disableInputAutoComplete() {
+      var inputs = document.getElementsByTagName('input');
+      for (var i = 0; inputs[i]; i++) inputs[i].autocomplete = 'off';
+    })();
+  });
+  /*]]>*/
+</script>
+
+
+</html>
+

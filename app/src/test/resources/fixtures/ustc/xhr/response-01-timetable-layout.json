@@ -1,0 +1,168 @@
+{
+  "result": {
+    "id": 1,
+    "nameZh": "默认课表布局",
+    "nameEn": "Default time table layout",
+    "enabled": true,
+    "bizTypes": [],
+    "defaultBizTypes": [],
+    "courseUnitList": [
+      {
+        "nameZh": "第一节",
+        "nameEn": "Unit 1",
+        "indexNo": 1,
+        "startTime": 750,
+        "endTime": 835,
+        "dayPart": "MORNING",
+        "color": "yellow",
+        "startTimeText": "07:50",
+        "endTimeText": "08:35",
+        "name": "第一节"
+      },
+      {
+        "nameZh": "第二节",
+        "nameEn": "Unit 2",
+        "indexNo": 2,
+        "startTime": 840,
+        "endTime": 925,
+        "dayPart": "MORNING",
+        "color": "yellow",
+        "startTimeText": "08:40",
+        "endTimeText": "09:25",
+        "name": "第二节"
+      },
+      {
+        "nameZh": "第三节",
+        "nameEn": "Unit 3",
+        "indexNo": 3,
+        "startTime": 945,
+        "endTime": 1030,
+        "dayPart": "MORNING",
+        "color": "yellow",
+        "startTimeText": "09:45",
+        "endTimeText": "10:30",
+        "name": "第三节"
+      },
+      {
+        "nameZh": "第四节",
+        "nameEn": "Unit 4",
+        "indexNo": 4,
+        "startTime": 1035,
+        "endTime": 1120,
+        "dayPart": "MORNING",
+        "color": "yellow",
+        "startTimeText": "10:35",
+        "endTimeText": "11:20",
+        "name": "第四节"
+      },
+      {
+        "nameZh": "第五节",
+        "nameEn": "Unit 5",
+        "indexNo": 5,
+        "startTime": 1125,
+        "endTime": 1210,
+        "dayPart": "MORNING",
+        "color": "yellow",
+        "startTimeText": "11:25",
+        "endTimeText": "12:10",
+        "name": "第五节"
+      },
+      {
+        "nameZh": "第六节",
+        "nameEn": "Unit 6",
+        "indexNo": 6,
+        "startTime": 1400,
+        "endTime": 1445,
+        "dayPart": "AFTERNOON",
+        "color": "green",
+        "startTimeText": "14:00",
+        "endTimeText": "14:45",
+        "name": "第六节"
+      },
+      {
+        "nameZh": "第七节",
+        "nameEn": "Unit 7",
+        "indexNo": 7,
+        "startTime": 1450,
+        "endTime": 1535,
+        "dayPart": "AFTERNOON",
+        "color": "green",
+        "startTimeText": "14:50",
+        "endTimeText": "15:35",
+        "name": "第七节"
+      },
+      {
+        "nameZh": "第八节",
+        "nameEn": "Unit 8",
+        "indexNo": 8,
+        "startTime": 1555,
+        "endTime": 1640,
+        "dayPart": "AFTERNOON",
+        "color": "green",
+        "startTimeText": "15:55",
+        "endTimeText": "16:40",
+        "name": "第八节"
+      },
+      {
+        "nameZh": "第九节",
+        "nameEn": "Unit 9",
+        "indexNo": 9,
+        "startTime": 1645,
+        "endTime": 1730,
+        "dayPart": "AFTERNOON",
+        "color": "green",
+        "startTimeText": "16:45",
+        "endTimeText": "17:30",
+        "name": "第九节"
+      },
+      {
+        "nameZh": "第十节",
+        "nameEn": "Unit 10",
+        "indexNo": 10,
+        "startTime": 1735,
+        "endTime": 1820,
+        "dayPart": "AFTERNOON",
+        "color": "green",
+        "startTimeText": "17:35",
+        "endTimeText": "18:20",
+        "name": "第十节"
+      },
+      {
+        "nameZh": "第十一节",
+        "nameEn": "Unit 11",
+        "indexNo": 11,
+        "startTime": 1930,
+        "endTime": 2015,
+        "dayPart": "EVENING",
+        "color": "pink",
+        "startTimeText": "19:30",
+        "endTimeText": "20:15",
+        "name": "第十一节"
+      },
+      {
+        "nameZh": "第十二节",
+        "nameEn": "Unit 12",
+        "indexNo": 12,
+        "startTime": 2020,
+        "endTime": 2105,
+        "dayPart": "EVENING",
+        "color": "pink",
+        "startTimeText": "20:20",
+        "endTimeText": "21:05",
+        "name": "第十二节"
+      },
+      {
+        "nameZh": "第十三节",
+        "nameEn": "Unit 13",
+        "indexNo": 13,
+        "startTime": 2110,
+        "endTime": 2155,
+        "dayPart": "EVENING",
+        "color": "pink",
+        "startTimeText": "21:10",
+        "endTimeText": "21:55",
+        "name": "第十三节"
+      }
+    ]
+  }
+}

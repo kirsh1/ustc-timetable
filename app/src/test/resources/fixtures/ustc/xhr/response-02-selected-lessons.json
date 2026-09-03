@@ -1,0 +1,949 @@
+[
+  {
+    "id": 181405,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "CHEM5012P.01",
+    "teachers": [
+      {
+        "id": 326009,
+        "nameZh": "李少锋",
+        "nameEn": "Li Shao Feng"
+      },
+      {
+        "id": 326178,
+        "nameZh": "孔爽",
+        "nameEn": "Kong Shuang"
+      }
+    ],
+    "course": {
+      "id": 142155,
+      "nameZh": "电化学研究方法",
+      "nameEn": "Electrochemical Method",
+      "code": "CHEM5012P",
+      "credits": 4.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 102,
+      "nameZh": "笔试（开卷）",
+      "nameEn": "Written Examination(Open-Book)",
+      "code": "BS-KJ"
+    },
+    "limitCount": 120,
+    "dateTimePlace": {
+      "textZh": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)",
+      "textEn": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)",
+      "text": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 68,
+      "nameZh": "化学物理系",
+      "nameEn": "Department of Chemical Physics",
+      "code": "003"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)",
+      "textEn": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)",
+      "text": "TH-A101: 2(8,9,10);TH-A101: 5(8,9)"
+    },
+    "unitText": {
+      "textZh": "8~10;8~9",
+      "textEn": "8~10;8~9",
+      "text": "8~10;8~9"
+    },
+    "weekText": {
+      "textZh": "2~17",
+      "textEn": "2~17",
+      "text": "2~17"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 61,
+      "nameZh": "本研贯通",
+      "nameEn": "Undergraduate-Graduate Courses",
+      "code": "BYGT",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 180239,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "CHEM5013P.02",
+    "teachers": [
+      {
+        "id": 5949,
+        "nameZh": "吴长征",
+        "nameEn": "Wu Changzheng"
+      },
+      {
+        "id": 79517,
+        "nameZh": "刘斯",
+        "nameEn": "Liu Si"
+      },
+      {
+        "id": 88945,
+        "nameZh": "郭宇桥",
+        "nameEn": "Guo Yuqiao"
+      }
+    ],
+    "course": {
+      "id": 144428,
+      "nameZh": "高等无机化学",
+      "nameEn": "Advanced Inorganic Chemistry",
+      "code": "CHEM5013P",
+      "credits": 3.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 101,
+      "nameZh": "笔试（闭卷）",
+      "nameEn": "Written Examination(Closed-Book)",
+      "code": "BS-BJ"
+    },
+    "limitCount": 150,
+    "dateTimePlace": {
+      "textZh": "TH-B301: 5(3,4,5)",
+      "textEn": "TH-B301: 5(3,4,5)",
+      "text": "TH-B301: 5(3,4,5)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 74,
+      "nameZh": "化学系",
+      "nameEn": "Department of Chemistry",
+      "code": "019"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-B301: 5(3,4,5)",
+      "textEn": "TH-B301: 5(3,4,5)",
+      "text": "TH-B301: 5(3,4,5)"
+    },
+    "unitText": {
+      "textZh": "3~5",
+      "textEn": "3~5",
+      "text": "3~5"
+    },
+    "weekText": {
+      "textZh": "2~18",
+      "textEn": "2~18",
+      "text": "2~18"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 61,
+      "nameZh": "本研贯通",
+      "nameEn": "Undergraduate-Graduate Courses",
+      "code": "BYGT",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 180238,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "CHEM6001P.01",
+    "teachers": [
+      {
+        "id": 5058,
+        "nameZh": "朱永春",
+        "nameEn": "Zhu Yongchun"
+      }
+    ],
+    "course": {
+      "id": 142125,
+      "nameZh": "结晶化学导论",
+      "nameEn": "Introduction to Crystal Chemistry",
+      "code": "CHEM6001P",
+      "credits": 3.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 102,
+      "nameZh": "笔试（开卷）",
+      "nameEn": "Written Examination(Open-Book)",
+      "code": "BS-KJ"
+    },
+    "limitCount": 150,
+    "dateTimePlace": {
+      "textZh": "TH-B301: 4(6,7,8)",
+      "textEn": "TH-B301: 4(6,7,8)",
+      "text": "TH-B301: 4(6,7,8)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 74,
+      "nameZh": "化学系",
+      "nameEn": "Department of Chemistry",
+      "code": "019"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-B301: 4(14:00~16:55)",
+      "textEn": "TH-B301: 4(14:00~16:55)",
+      "text": "TH-B301: 4(14:00~16:55)"
+    },
+    "unitText": {
+      "textZh": "14:00~16:55",
+      "textEn": "14:00~16:55",
+      "text": "14:00~16:55"
+    },
+    "weekText": {
+      "textZh": "2~18",
+      "textEn": "2~18",
+      "text": "2~18"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 181406,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "CHEM6016P.01",
+    "teachers": [
+      {
+        "id": 196907,
+        "nameZh": "葛君杰",
+        "nameEn": "Ge Junjie"
+      }
+    ],
+    "course": {
+      "id": 141928,
+      "nameZh": "应用物理化学II",
+      "nameEn": "Applied Physical Electrochemistry II—Applied Electrochemistry",
+      "code": "CHEM6016P",
+      "credits": 2.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 102,
+      "nameZh": "笔试（开卷）",
+      "nameEn": "Written Examination(Open-Book)",
+      "code": "BS-KJ"
+    },
+    "limitCount": 110,
+    "dateTimePlace": {
+      "textZh": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)",
+      "textEn": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)",
+      "text": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 68,
+      "nameZh": "化学物理系",
+      "nameEn": "Department of Chemical Physics",
+      "code": "003"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)",
+      "textEn": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)",
+      "text": "TH-A301: 1(6,7);TH-A301: 4(3,4,5)"
+    },
+    "unitText": {
+      "textZh": "6~7;3~5",
+      "textEn": "6~7;3~5",
+      "text": "6~7;3~5"
+    },
+    "weekText": {
+      "textZh": "10~17",
+      "textEn": "10~17",
+      "text": "10~17"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 181357,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "CHEM6023P.02",
+    "teachers": [
+      {
+        "id": 88917,
+        "nameZh": "张晓东",
+        "nameEn": "Zhang Xiaodong"
+      },
+      {
+        "id": 88945,
+        "nameZh": "郭宇桥",
+        "nameEn": "Guo Yuqiao"
+      }
+    ],
+    "course": {
+      "id": 141915,
+      "nameZh": "固体化学原理",
+      "nameEn": "Fundamentals of Solid State Chemistry",
+      "code": "CHEM6023P",
+      "credits": 3.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 21,
+      "nameZh": "其他",
+      "nameEn": "Other",
+      "code": "QT"
+    },
+    "limitCount": 150,
+    "dateTimePlace": {
+      "textZh": "TH-B301: 2(3,4,5)",
+      "textEn": "TH-B301: 2(3,4,5)",
+      "text": "TH-B301: 2(3,4,5)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 182,
+      "nameZh": "应用化学系",
+      "nameEn": "Department of Applied Chemistry",
+      "code": "012"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-B301: 2(3,4,5)",
+      "textEn": "TH-B301: 2(3,4,5)",
+      "text": "TH-B301: 2(3,4,5)"
+    },
+    "unitText": {
+      "textZh": "3~5",
+      "textEn": "3~5",
+      "text": "3~5"
+    },
+    "weekText": {
+      "textZh": "2~18",
+      "textEn": "2~18",
+      "text": "2~18"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 182318,
+    "nameZh": null,
+    "nameEn": null,
+    "code": "FORL6102U.45",
+    "teachers": [
+      {
+        "id": 318791,
+        "nameZh": "Steve Masashi Musha",
+        "nameEn": "Steve Masashi Musha"
+      }
+    ],
+    "course": {
+      "id": 142157,
+      "nameZh": "日常交流英语",
+      "nameEn": "Everyday English Workshop",
+      "code": "FORL6102U",
+      "credits": 2.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 21,
+      "nameZh": "其他",
+      "nameEn": "Other",
+      "code": "QT"
+    },
+    "limitCount": 35,
+    "dateTimePlace": {
+      "textZh": "2204: 3(6,7)",
+      "textEn": "2204: 3(6,7)",
+      "text": "2204: 3(6,7)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 323,
+      "nameZh": "外语教学中心",
+      "nameEn": "None",
+      "code": "108"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 9,
+      "nameZh": "东区",
+      "nameEn": "east campus",
+      "code": "1"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "2204: 3(6,7)",
+      "textEn": "2204: 3(6,7)",
+      "text": "2204: 3(6,7)"
+    },
+    "unitText": {
+      "textZh": "6~7",
+      "textEn": "6~7",
+      "text": "6~7"
+    },
+    "weekText": {
+      "textZh": "2~16",
+      "textEn": "2~16",
+      "text": "2~16"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 182125,
+    "nameZh": null,
+    "nameEn": null,
+    "code": "MARX6102U.50",
+    "teachers": [
+      {
+        "id": 221325,
+        "nameZh": "韩笑",
+        "nameEn": "Han Xiao"
+      }
+    ],
+    "course": {
+      "id": 143395,
+      "nameZh": "新时代中国特色社会主义理论与实践",
+      "nameEn": "Theory & Practice of Socialist Construction",
+      "code": "MARX6102U",
+      "credits": 2.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 108,
+      "nameZh": "大作业（论文、报告、项目或作品等）",
+      "nameEn": "Course Assignment(Term Paper, Report, Project, Works Etc)",
+      "code": "DZY"
+    },
+    "limitCount": 97,
+    "dateTimePlace": {
+      "textZh": "TH-B201: 2(11,12,13)",
+      "textEn": "TH-B201: 2(11,12,13)",
+      "text": "TH-B201: 2(11,12,13)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 225,
+      "nameZh": "马克思主义学院",
+      "nameEn": "School of Marxism",
+      "code": "220"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-B201: 2(11,12,13)",
+      "textEn": "TH-B201: 2(11,12,13)",
+      "text": "TH-B201: 2(11,12,13)"
+    },
+    "unitText": {
+      "textZh": "11~13",
+      "textEn": "11~13",
+      "text": "11~13"
+    },
+    "weekText": {
+      "textZh": "8~18",
+      "textEn": "8~18",
+      "text": "8~18"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 181255,
+    "nameZh": "全校",
+    "nameEn": null,
+    "code": "MSEN6406P.01",
+    "teachers": [
+      {
+        "id": 182723,
+        "nameZh": "陈立锋",
+        "nameEn": "Chen Lifeng"
+      }
+    ],
+    "course": {
+      "id": 141850,
+      "nameZh": "无机新能源材料与应用",
+      "nameEn": "Introduction of Inorganic Materials for Energy Applications",
+      "code": "MSEN6406P",
+      "credits": 2.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 21,
+      "nameZh": "其他",
+      "nameEn": "Other",
+      "code": "QT"
+    },
+    "limitCount": 300,
+    "dateTimePlace": {
+      "textZh": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)",
+      "textEn": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)",
+      "text": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 70,
+      "nameZh": "材料科学与工程系",
+      "nameEn": "Department of Materials Science and Engineering",
+      "code": "014"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 102,
+      "nameZh": "太湖路校区",
+      "nameEn": "THL campus",
+      "code": "11"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)",
+      "textEn": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)",
+      "text": "TH-C101: 1(9,10);TH-C101: 1(11,12,13)"
+    },
+    "unitText": {
+      "textZh": "9~10;11~13",
+      "textEn": "9~10;11~13",
+      "text": "9~10;11~13"
+    },
+    "weekText": {
+      "textZh": "2~9",
+      "textEn": "2~9",
+      "text": "2~9"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  },
+  {
+    "id": 182155,
+    "nameZh": null,
+    "nameEn": null,
+    "code": "PHIL6101U.10",
+    "teachers": [
+      {
+        "id": 5171,
+        "nameZh": "吕凌峰",
+        "nameEn": "Lv Lingfeng"
+      }
+    ],
+    "course": {
+      "id": 142160,
+      "nameZh": "自然辩证法概论",
+      "nameEn": "Dialectics of Nature",
+      "code": "PHIL6101U",
+      "credits": 1.0
+    },
+    "courseType": {
+      "id": 21,
+      "nameZh": "理论课",
+      "nameEn": "理论课",
+      "code": "01"
+    },
+    "examMode": {
+      "id": 101,
+      "nameZh": "笔试（闭卷）",
+      "nameEn": "Written Examination(Closed-Book)",
+      "code": "BS-BJ"
+    },
+    "limitCount": 97,
+    "dateTimePlace": {
+      "textZh": "3B101: 3(3,4,5)",
+      "textEn": "3B101: 3(3,4,5)",
+      "text": "3B101: 3(3,4,5)"
+    },
+    "virtualCost": 0,
+    "retake": false,
+    "setup": false,
+    "classType": {
+      "id": 21,
+      "nameZh": "基础",
+      "nameEn": "Graduate Basic Courses",
+      "code": "91"
+    },
+    "remark": null,
+    "openDepartment": {
+      "id": 225,
+      "nameZh": "马克思主义学院",
+      "nameEn": "School of Marxism",
+      "code": "220"
+    },
+    "courseCategory": {
+      "id": 81,
+      "nameZh": "研究生课程",
+      "nameEn": null,
+      "code": "11"
+    },
+    "attendDepartments": [],
+    "attendMajors": [],
+    "attendTrainTypes": [],
+    "campus": {
+      "id": 7,
+      "nameZh": "西区",
+      "nameEn": "west campus",
+      "code": "3"
+    },
+    "pinned": true,
+    "weekDayPlaceText": {
+      "textZh": "3B101: 3(3,4,5)",
+      "textEn": "3B101: 3(3,4,5)",
+      "text": "3B101: 3(3,4,5)"
+    },
+    "unitText": {
+      "textZh": "3~5",
+      "textEn": "3~5",
+      "text": "3~5"
+    },
+    "weekText": {
+      "textZh": "2~7",
+      "textEn": "2~7",
+      "text": "2~7"
+    },
+    "enablePreSelect": false,
+    "selectionType": null,
+    "selectionState": {
+      "nameZh": "正选",
+      "nameEn": "Select"
+    },
+    "courseGradation": {
+      "id": 34,
+      "nameZh": "硕士",
+      "nameEn": "Courses for Master",
+      "code": "05",
+      "education": {
+        "id": 2,
+        "nameZh": "研究生",
+        "nameEn": "Graduate",
+        "code": "2"
+      }
+    }
+  }
+]

@@ -39,6 +39,7 @@ class UstcSnapshotNormalizer {
             teacherAssignments(entry.teacherText, baseWeeks, meta.totalWeeks).map { teacherAssignment ->
                 Assignment(
                     sourceKey = selectedCourse.sourceKey,
+                    sourceAssignmentKey = entry.sourceAssignmentKey?.trim()?.ifEmpty { null },
                     weekday = weekday,
                     startPeriod = periods.first,
                     endPeriod = periods.second,
@@ -56,15 +57,16 @@ class UstcSnapshotNormalizer {
                 id = MeetingId(
                     stableId(
                         prefix = "normalized-meeting",
-                        parts = listOf(
-                            assignment.sourceKey,
-                            assignment.weekday.toString(),
-                            assignment.startPeriod.toString(),
-                            assignment.endPeriod.toString(),
-                            assignment.weeks.mask.toString(),
-                            assignment.location,
-                            assignment.teacherNames.joinToString("\u001f"),
-                        ),
+                        parts = buildList {
+                            add(assignment.sourceKey)
+                            add(assignment.weekday.toString())
+                            add(assignment.startPeriod.toString())
+                            add(assignment.endPeriod.toString())
+                            add(assignment.weeks.mask.toString())
+                            add(assignment.location)
+                            add(assignment.teacherNames.joinToString("\u001f"))
+                            assignment.sourceAssignmentKey?.let(::add)
+                        },
                     ),
                 ),
                 courseId = course.id,
@@ -252,6 +254,7 @@ class UstcSnapshotNormalizer {
             .map { (key, group) ->
                 Assignment(
                     sourceKey = key.sourceKey,
+                    sourceAssignmentKey = key.sourceAssignmentKey,
                     weekday = key.weekday,
                     startPeriod = key.startPeriod,
                     endPeriod = key.endPeriod,
@@ -266,6 +269,7 @@ class UstcSnapshotNormalizer {
             .map { (key, group) ->
                 Assignment(
                     sourceKey = key.sourceKey,
+                    sourceAssignmentKey = key.sourceAssignmentKey,
                     weekday = key.weekday,
                     startPeriod = key.startPeriod,
                     endPeriod = key.endPeriod,
@@ -324,6 +328,7 @@ class UstcSnapshotNormalizer {
 
     private data class Assignment(
         val sourceKey: String,
+        val sourceAssignmentKey: String?,
         val weekday: Int,
         val startPeriod: Int,
         val endPeriod: Int,
@@ -333,6 +338,7 @@ class UstcSnapshotNormalizer {
     ) {
         fun teacherMergeKey() = TeacherMergeKey(
             sourceKey,
+            sourceAssignmentKey,
             weekday,
             startPeriod,
             endPeriod,
@@ -342,6 +348,7 @@ class UstcSnapshotNormalizer {
 
         fun weekMergeKey() = WeekMergeKey(
             sourceKey,
+            sourceAssignmentKey,
             weekday,
             startPeriod,
             endPeriod,
@@ -352,6 +359,7 @@ class UstcSnapshotNormalizer {
 
     private data class TeacherMergeKey(
         val sourceKey: String,
+        val sourceAssignmentKey: String?,
         val weekday: Int,
         val startPeriod: Int,
         val endPeriod: Int,
@@ -361,6 +369,7 @@ class UstcSnapshotNormalizer {
 
     private data class WeekMergeKey(
         val sourceKey: String,
+        val sourceAssignmentKey: String?,
         val weekday: Int,
         val startPeriod: Int,
         val endPeriod: Int,
@@ -381,6 +390,7 @@ class UstcSnapshotNormalizer {
         val TEACHER_SEPARATOR = Regex("""[/、,，;；]""")
         val ASSIGNMENT_ORDER = compareBy<Assignment>(
             { it.sourceKey },
+            { it.sourceAssignmentKey },
             { it.weekday },
             { it.startPeriod },
             { it.endPeriod },

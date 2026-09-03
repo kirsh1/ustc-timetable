@@ -2,6 +2,7 @@ package com.ustc.timetable.school.ustc.portal
 
 import com.ustc.timetable.school.ustc.auth.SessionCookieHeader
 import com.ustc.timetable.school.ustc.dto.UstcPortalPage
+import com.ustc.timetable.school.ustc.dto.UstcPortalResponse
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.SyncFailure
 import com.ustc.timetable.sync.asFailure
@@ -36,6 +37,7 @@ class CookieAwareFetcher(
         headers: List<SessionCookieHeader>,
     ): UstcPortalPage {
         var current = validatedHttpUrl(url)
+        val requestUrl = current.toString()
         var redirectCount = 0
         while (true) {
             val request = Request.Builder().url(current).apply {
@@ -70,7 +72,14 @@ class CookieAwareFetcher(
                 } catch (io: IOException) {
                     throw SyncError.NetworkFailed.asFailure(io)
                 }
-                return UstcPortalPage(html = html, finalUrl = current.toString())
+                return UstcPortalPage(
+                    document = UstcPortalResponse(
+                        requestUrl = requestUrl,
+                        finalUrl = current.toString(),
+                        contentType = it.header("Content-Type"),
+                        body = html,
+                    ),
+                )
             }
         }
     }

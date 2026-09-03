@@ -52,6 +52,26 @@ class CookieAwareFetcherTest {
         assertEquals("<html>verified</html>", page.html)
     }
 
+    @Test fun response_boundary_preserves_request_final_url_and_content_type() = runBlocking {
+        server.enqueue(redirect("/final"))
+        server.enqueue(
+            MockResponse.Builder()
+                .code(200)
+                .addHeader("Content-Type", "application/json; charset=utf-8")
+                .body("{\"result\":true}")
+                .build(),
+        )
+        val requestUrl = server.url("/start").toString()
+        val finalUrl = server.url("/final").toString()
+
+        val response = fetcher().fetch(requestUrl, emptyList()).document!!
+
+        assertEquals(requestUrl, response.requestUrl)
+        assertEquals(finalUrl, response.finalUrl)
+        assertEquals("application/json; charset=utf-8", response.contentType)
+        assertEquals("{\"result\":true}", response.body)
+    }
+
     @Test fun redirect_same_exact_scope_reuses_header() = runBlocking {
         server.enqueue(redirect("/probe"))
         server.enqueue(response())
