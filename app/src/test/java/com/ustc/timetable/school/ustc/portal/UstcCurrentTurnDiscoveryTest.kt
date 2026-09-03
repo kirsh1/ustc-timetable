@@ -30,6 +30,21 @@ class UstcCurrentTurnDiscoveryTest {
         )
     }
 
+    @Test fun descriptor_accepts_only_the_evidenced_dynamic_landing_scope() {
+        assertEquals(
+            true,
+            descriptor.isDynamicSessionCookieUrl(
+                "https://portal.fixture.invalid/for-std/course-select/turns/101",
+            ),
+        )
+        listOf(
+            "https://portal.fixture.invalid/for-std/course-select/turns/101?next=1",
+            "https://portal.fixture.invalid/for-std/course-select/turns/not-an-id",
+            "https://portal.fixture.invalid/for-std/course-select/101/turn/202/select",
+            "https://other.fixture.invalid/for-std/course-select/turns/101",
+        ).forEach { url -> assertEquals(false, descriptor.isDynamicSessionCookieUrl(url)) }
+    }
+
     @Test fun parses_typed_identifiers_from_the_unique_current_turn_link() {
         val context = discovery.parse(
             response(

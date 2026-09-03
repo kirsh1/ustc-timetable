@@ -30,6 +30,21 @@ class UstcPortalDescriptor(
         weekIndicesDigestUrl,
     )
 
+    override fun isDynamicSessionCookieUrl(rawUrl: String): Boolean {
+        val uri = try {
+            URI(rawUrl)
+        } catch (_: Exception) {
+            return false
+        }
+        if (!hasSameOrigin(uri) || uri.rawQuery != null || uri.rawFragment != null) return false
+        val segments = uri.rawPath.orEmpty().split('/').filter(String::isNotEmpty)
+        return segments.size == 4 &&
+            segments[0] == "for-std" &&
+            segments[1] == "course-select" &&
+            segments[2] == "turns" &&
+            segments[3].toLongOrNull()?.let { it > 0 } == true
+    }
+
     internal fun hasSameOrigin(uri: URI): Boolean {
         val expected = URI(baseUrl.toString())
         return uri.scheme.equals(expected.scheme, ignoreCase = true) &&

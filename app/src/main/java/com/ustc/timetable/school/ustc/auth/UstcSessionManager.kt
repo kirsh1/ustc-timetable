@@ -25,25 +25,32 @@ class UstcSessionManager(
 
     suspend fun captureAndVerify(): SessionBlob {
         val targets = descriptor.sessionCookieUrls.distinct()
-        val headers = targets.mapNotNull { target ->
-            cookies.cookieHeaderFor(target)
-                ?.takeUnless(String::isBlank)
-                ?.let { cookieHeader ->
-                    val credentialSafeRequestUrl = SessionCookieHeader.Scope.of(target).requestUrl()
-                    SessionCookieHeader(credentialSafeRequestUrl, cookieHeader)
-                }
-        }.distinct()
+        val headers = targets.mapNotNull(::captureHeaderFor).distinct().toMutableList()
 
         if (SessionCookieHeader.pickFor(descriptor.probeUrl, headers) == null) {
             throw SyncError.AuthenticationExpired.asFailure()
         }
 
-        val page = fetcher.fetch(descriptor.probeUrl, headers)
+        val page = fetcher.fetch(descriptor.probeUrl, headers) { redirectTarget ->
+            if (!descriptor.isDynamicSessionCookieUrl(redirectTarget)) return@fetch null
+            captureHeaderFor(redirectTarget)?.also { captured ->
+                headers.removeAll { existing -> existing.scope == captured.scope }
+                headers += captured
+            }
+        }
         if (page.html.isBlank()) throw SyncError.NetworkFailed.asFailure()
         if (detector.isLoginPage(page.finalUrl, page.html)) {
             throw SyncError.AuthenticationExpired.asFailure()
         }
 
-        return SessionBlob(headers, clock.instant()).also { store.save(it) }
+        return SessionBlob(headers.distinct(), clock.instant()).also { store.save(it) }
     }
+
+    private fun captureHeaderFor(target: String): SessionCookieHeader? =
+        cookies.cookieHeaderFor(target)
+            ?.takeUnless(String::isBlank)
+            ?.let { cookieHeader ->
+                val credentialSafeRequestUrl = SessionCookieHeader.Scope.of(target).requestUrl()
+                SessionCookieHeader(credentialSafeRequestUrl, cookieHeader)
+            }
 }

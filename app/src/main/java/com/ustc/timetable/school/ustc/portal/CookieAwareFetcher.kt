@@ -35,21 +35,28 @@ class CookieAwareFetcher(
     suspend fun fetch(
         url: String,
         headers: List<SessionCookieHeader>,
+        redirectCookieHeaderFor: ((String) -> SessionCookieHeader?)? = null,
     ): UstcPortalPage = UstcPortalPage(
-        document = fetch(Request.Builder().url(validatedHttpUrl(url)).build(), headers),
+        document = fetch(
+            Request.Builder().url(validatedHttpUrl(url)).build(),
+            headers,
+            redirectCookieHeaderFor,
+        ),
     )
 
     suspend fun fetch(
         initialRequest: Request,
         headers: List<SessionCookieHeader>,
+        redirectCookieHeaderFor: ((String) -> SessionCookieHeader?)? = null,
     ): UstcPortalResponse {
         validatedHttpUrl(initialRequest.url.toString())
         var currentRequest = initialRequest
+        val availableHeaders = headers.toMutableList()
         val requestUrl = initialRequest.url.toString()
         var redirectCount = 0
         while (true) {
             val request = currentRequest.newBuilder().removeHeader("Cookie").apply {
-                SessionCookieHeader.pickFor(currentRequest.url.toString(), headers)?.let {
+                SessionCookieHeader.pickFor(currentRequest.url.toString(), availableHeaders)?.let {
                     header("Cookie", it.cookieHeader)
                 }
             }.build()
@@ -69,6 +76,13 @@ class CookieAwareFetcher(
                     if (redirectCount >= maxRedirects) throw SyncError.NetworkFailed.asFailure()
                     val location = it.header("Location") ?: throw SyncError.NetworkFailed.asFailure()
                     val target = resolveRedirect(request.url, location)
+                    redirectCookieHeaderFor?.invoke(target.toString())?.let { captured ->
+                        if (captured.scope != SessionCookieHeader.Scope.of(target.toString())) {
+                            throw SyncError.NetworkFailed.asFailure()
+                        }
+                        availableHeaders.removeAll { existing -> existing.scope == captured.scope }
+                        availableHeaders += captured
+                    }
                     currentRequest = redirectRequest(request, target, it.code)
                     redirectCount++
                     continue

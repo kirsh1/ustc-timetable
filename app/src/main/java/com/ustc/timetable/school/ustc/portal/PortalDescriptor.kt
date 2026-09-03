@@ -11,6 +11,8 @@ interface PortalDescriptor {
     val sessionHosts: List<String>
     val sessionCookieUrls: List<String>
         get() = listOf(probeUrl, selectionUrl, timetableUrl)
+
+    fun isDynamicSessionCookieUrl(rawUrl: String): Boolean = false
 }
 
 internal object PortalDescriptorRules {

@@ -1,11 +1,13 @@
 package com.ustc.timetable.school.ustc.portal
 
 import com.ustc.timetable.school.ustc.auth.HeuristicLoginPageDetector
+import com.ustc.timetable.school.ustc.auth.CookieRetriever
 import com.ustc.timetable.school.ustc.auth.SecretKeyProvider
 import com.ustc.timetable.school.ustc.auth.SessionBlob
 import com.ustc.timetable.school.ustc.auth.SessionCookieHeader
 import com.ustc.timetable.school.ustc.auth.SessionStorage
 import com.ustc.timetable.school.ustc.auth.SessionStore
+import com.ustc.timetable.school.ustc.auth.UstcSessionManager
 import com.ustc.timetable.school.ustc.dto.UstcEndpointId
 import com.ustc.timetable.school.ustc.parser.UstcCourseSelectionPageParser
 import com.ustc.timetable.school.ustc.parser.UstcTimetablePageParser
@@ -127,6 +129,40 @@ class UstcHttpPortalSourceTest {
 
         assertEquals("COOKIE=discovery", server.takeRequest().headers["Cookie"])
         assertEquals("COOKIE=redirected", server.takeRequest().headers["Cookie"])
+    }
+
+    @Test fun real_capture_path_persists_dynamic_landing_scope_for_source_redirect() = runBlocking {
+        val redirectedUrl = server.url("/for-std/course-select/turns/101").toString()
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", redirectedUrl).build())
+        server.enqueue(htmlResponse(discoveryHtml()))
+        server.enqueue(MockResponse.Builder().code(302).addHeader("Location", redirectedUrl).build())
+        server.enqueue(htmlResponse(discoveryHtml()))
+        enqueuePostResponses()
+        val cookies = RecordingCookies(
+            scopedHeaders().associate { it.requestUrl to it.cookieHeader } +
+                (redirectedUrl to "COOKIE=dynamic-capture"),
+        )
+        val store = SessionStore(FixedKeyProvider(), InMemorySessionStorage())
+        val detector = HeuristicLoginPageDetector(descriptor.loginUrl)
+        val fetcher = CookieAwareFetcher(PortalHttpClientFactory.create())
+        val sessionManager = UstcSessionManager(
+            descriptor = descriptor,
+            store = store,
+            cookies = cookies,
+            fetcher = fetcher,
+            detector = detector,
+        )
+
+        val captured = sessionManager.captureAndVerify()
+        val source = UstcHttpPortalSource(descriptor, store, detector, fetcher)
+        source.fetchCourseSelectionPage()
+
+        assertEquals(descriptor.sessionCookieUrls + redirectedUrl, cookies.urls)
+        assertEquals(redirectedUrl, captured.headers.last().requestUrl)
+        assertEquals("COOKIE=discovery", server.takeRequest().headers["Cookie"])
+        assertEquals("COOKIE=dynamic-capture", server.takeRequest().headers["Cookie"])
+        assertEquals("COOKIE=discovery", server.takeRequest().headers["Cookie"])
+        assertEquals("COOKIE=dynamic-capture", server.takeRequest().headers["Cookie"])
     }
 
     @Test fun login_redirect_to_successful_login_html_is_authentication_expired() = runBlocking {
@@ -268,6 +304,15 @@ class UstcHttpPortalSourceTest {
         private val key = SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
 
         override fun getOrCreateKey(): SecretKey = key
+    }
+
+    private class RecordingCookies(private val values: Map<String, String?>) : CookieRetriever {
+        val urls = mutableListOf<String>()
+
+        override fun cookieHeaderFor(url: String): String? {
+            urls += url
+            return values[url]
+        }
     }
 
     private companion object {
