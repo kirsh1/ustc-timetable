@@ -2,6 +2,8 @@ package com.ustc.timetable.settings
 
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.school.ustc.auth.SessionBlob
+import com.ustc.timetable.timetable.domain.Semester
+import com.ustc.timetable.timetable.domain.SemesterId
 import java.time.Instant
 
 internal fun shouldShowNotificationDeniedHint(sdk: Int, notificationsEnabled: Boolean, requestShown: Boolean): Boolean =
@@ -43,5 +45,7 @@ data class SettingsUiState(
     val reloginEnabled: Boolean = false,
     val canApplyWorkingToAcademicCurrent: Boolean = false,
     val semestersLoaded: Boolean = false,
+    val availableSemesters: List<Semester> = emptyList(),
+    val viewedSemesterId: SemesterId? = null,
     val appVersion: String = "",
 )

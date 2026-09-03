@@ -254,6 +254,20 @@ class SettingsViewModelTest {
         val sync = RecordingSync(); val vm = vm(sync = sync); await { vm.state.value.syncNowEnabled }; vm.onSyncNow(); assertEquals(1, sync.calls)
     }
 
+    @Test fun semester_selection_writes_only_viewed_semester_authority() = runSettingsTest {
+        seedSemester("current", portal = true)
+        seedSemester("history", portal = false, current = false)
+        settings.setViewedSemesterId("current")
+        val before = db.semesterDao().allByStartDateDesc()
+        val vm = vm()
+        await { vm.state.value.availableSemesters.size == 2 }
+
+        vm.onSemesterSelected(com.ustc.timetable.timetable.domain.SemesterId("history"))
+
+        await { settings.viewedSemesterId.first() == "history" }
+        assertEquals(before, db.semesterDao().allByStartDateDesc())
+    }
+
     @Test fun apply_action_allowed_for_manual_academic_current() = runSettingsTest {
         seedSemester("manual-current", portal = false); val vm = vm(); await { vm.state.value.canApplyWorkingToAcademicCurrent }
         assertTrue(vm.state.value.canApplyWorkingToAcademicCurrent)

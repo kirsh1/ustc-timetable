@@ -9,6 +9,7 @@ import com.ustc.timetable.scheduleprofile.ScheduleProfileRepository
 import com.ustc.timetable.school.ustc.auth.SessionBlob
 import com.ustc.timetable.timetable.data.SemesterRepository
 import com.ustc.timetable.timetable.data.SettingsStore
+import com.ustc.timetable.timetable.domain.SemesterId
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -41,7 +42,14 @@ class SettingsViewModel(
     private val zoneId: ZoneId = ZoneId.systemDefault(),
     appVersion: String,
 ) : ViewModel() {
-    private data class Persisted(val show: Boolean, val weekly: Boolean, val reauth: Boolean, val last: Long?, val requested: Boolean)
+    private data class Persisted(
+        val show: Boolean,
+        val weekly: Boolean,
+        val reauth: Boolean,
+        val last: Long?,
+        val requested: Boolean,
+        val viewedSemesterId: String? = null,
+    )
     private data class SessionStatus(val loading: Boolean, val blob: SessionBlob?)
 
     private val sessionStatus = MutableStateFlow(SessionStatus(true, null))
@@ -51,13 +59,16 @@ class SettingsViewModel(
     private val requestMutex = Mutex()
     private var requestEventIssued = false
 
-    private val persisted = combine(
+    private val persistedCore = combine(
         settings.showNonCurrentWeek,
         settings.weeklySyncEnabled,
         settings.needReauth,
         settings.lastSyncFinishedAt,
         settings.notificationRequestShown,
     ) { show, weekly, reauth, last, requested -> Persisted(show, weekly, reauth, last, requested) }
+    private val persisted = combine(persistedCore, settings.viewedSemesterId) { value, viewedId ->
+        value.copy(viewedSemesterId = viewedId)
+    }
 
     val state = combine(persisted, profiles.observeWorking(), semesters.observeSemesters(), sessionStatus, notificationsEnabled) {
             p, working, semesterList, sessionValue, enabled ->
@@ -85,6 +96,8 @@ class SettingsViewModel(
             reloginEnabled = reloginRuntimeAvailable,
             canApplyWorkingToAcademicCurrent = semesterList.any { it.isCurrentAcademicSemester },
             semestersLoaded = true,
+            availableSemesters = semesterList,
+            viewedSemesterId = p.viewedSemesterId?.let(::SemesterId),
             appVersion = appVersion,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState(appVersion = appVersion))
@@ -92,6 +105,11 @@ class SettingsViewModel(
     init { refreshSession() }
 
     fun onToggleShowNonCurrentWeek(value: Boolean) { viewModelScope.launch { settings.setShowNonCurrentWeek(value) } }
+
+    fun onSemesterSelected(id: SemesterId) {
+        if (state.value.availableSemesters.none { it.id == id }) return
+        viewModelScope.launch { settings.setViewedSemesterId(id.value) }
+    }
 
     fun onToggleWeeklySync(value: Boolean) {
         viewModelScope.launch {

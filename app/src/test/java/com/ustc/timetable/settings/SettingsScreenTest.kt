@@ -5,7 +5,9 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import org.junit.Assert.assertEquals
@@ -14,6 +16,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.ustc.timetable.timetable.domain.SemesterDefaults
+import com.ustc.timetable.timetable.domain.SemesterId
+import com.ustc.timetable.sync.ManualSyncState
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -22,7 +27,7 @@ class SettingsScreenTest {
 
     @Test fun all_required_settings_entries_present() {
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
-        listOf("课表", "学校作息时间", "显示非当前周课程", "同步", "上次同步时间", "每周静默同步", "立即同步", "学校账户", "登录状态", "重新登录", "清除登录状态", "关于", "数据与版本", "App 版本").forEach {
+        listOf("课表", "当前查看学期", "2026-2027 秋季", "学校作息时间", "显示非当前周课程", "同步", "上次同步时间", "每周静默同步", "立即同步", "学校账户", "登录状态", "重新登录", "清除登录状态", "关于", "数据与版本", "App 版本").forEach {
             rule.onNodeWithTag("settings_list").performScrollToNode(hasText(it))
             rule.onAllNodesWithText(it)[0].assertExists()
         }
@@ -51,6 +56,44 @@ class SettingsScreenTest {
         rule.onNodeWithTag("working_profile").performClick(); rule.waitForIdle(); assertEquals(1, calls)
     }
 
+    @Test fun semester_row_opens_existing_switcher_boundary() {
+        var calls = 0
+        rule.setContent {
+            SettingsScreen(
+                state = state(),
+                callbacks = SettingsCallbacks(onOpenSemesterSwitcher = { calls++ }),
+            )
+        }
+        rule.onNodeWithTag("viewed_semester").performClick()
+        rule.waitForIdle()
+        assertEquals(1, calls)
+    }
+
+    @Test fun back_and_sync_use_vector_icon_semantics() {
+        rule.setContent {
+            SettingsScreen(
+                state = state().copy(syncNowEnabled = true),
+                callbacks = SettingsCallbacks(),
+            )
+        }
+        rule.onNodeWithContentDescription("返回").assertExists()
+        rule.onNodeWithContentDescription("立即同步").assertExists()
+        rule.onAllNodesWithText("‹").assertCountEquals(0)
+        rule.onAllNodesWithText("↻").assertCountEquals(0)
+    }
+
+    @Test fun syncing_state_replaces_refresh_action_with_progress() {
+        rule.setContent {
+            SettingsScreen(
+                state = state().copy(syncNowEnabled = true),
+                callbacks = SettingsCallbacks(),
+                manualSyncState = ManualSyncState.Syncing,
+            )
+        }
+        rule.onNodeWithTag("sync_progress").assertExists()
+        rule.onAllNodesWithTag("sync_action").assertCountEquals(0)
+    }
+
     @Test fun settings_sections_use_compact_group_cards() {
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
         listOf("timetable", "sync", "account", "about").forEach {
@@ -59,5 +102,11 @@ class SettingsScreenTest {
         }
     }
 
-    private fun state() = SettingsUiState(lastSyncText = "—", loginText = "未登录", appVersion = "1.0-test")
+    private fun state() = SettingsUiState(
+        lastSyncText = "—",
+        loginText = "未登录",
+        appVersion = "1.0-test",
+        availableSemesters = listOf(SemesterDefaults.AUTUMN_2026(id = "semester", profileId = "profile")),
+        viewedSemesterId = SemesterId("semester"),
+    )
 }
