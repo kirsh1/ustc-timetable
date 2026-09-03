@@ -199,6 +199,20 @@ class SettingsViewModelTest {
         assertEquals("已登录（2026-09-01 10:03）", vm.state.value.loginText)
     }
 
+    @Test fun entering_settings_refreshes_session_created_by_timetable_reauth() = runSettingsTest {
+        val vm = vm()
+        await {
+            !vm.state.value.sessionLoading &&
+                vm.state.value.loginState == SchoolLoginUiState.NotLoggedIn
+        }
+
+        session.blob = SessionBlob(emptyList(), Instant.parse("2026-09-01T02:03:00Z"))
+        vm.onSyncSectionEntered()
+
+        await { vm.state.value.loginState is SchoolLoginUiState.LoggedIn }
+        assertEquals("已登录（2026-09-01 10:03）", vm.state.value.loginText)
+    }
+
     @Test fun need_reauth_overrides_stored_session_as_expired() = runSettingsTest {
         session.blob = SessionBlob(emptyList(), Instant.EPOCH); settings.setNeedReauth(true); val vm = vm(); await { vm.state.value.loginState == SchoolLoginUiState.Expired }
         assertEquals("已失效", vm.state.value.loginText)

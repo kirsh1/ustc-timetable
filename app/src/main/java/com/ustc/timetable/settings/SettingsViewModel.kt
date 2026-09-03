@@ -101,7 +101,12 @@ class SettingsViewModel(
         }
     }
 
-    fun onSyncSectionEntered() { viewModelScope.launch { maybeRequestNotificationPermission() } }
+    fun onSyncSectionEntered() {
+        viewModelScope.launch {
+            refreshSessionNow()
+            maybeRequestNotificationPermission()
+        }
+    }
 
     private suspend fun maybeRequestNotificationPermission() = requestMutex.withLock {
         if (!requestEventIssued && permission.shouldRequestNow(notifications.areEnabled())) {
