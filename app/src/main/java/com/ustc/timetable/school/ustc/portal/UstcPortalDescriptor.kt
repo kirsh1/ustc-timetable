@@ -65,18 +65,9 @@ class UstcPortalDescriptor(
 
     internal fun requestContextFrom(uri: URI): UstcRequestContext? {
         if (!hasSameOrigin(uri) || uri.rawQuery != null || uri.rawFragment != null) return null
-        val segments = uri.rawPath.orEmpty().split('/').filter(String::isNotEmpty)
-        if (
-            segments.size != 6 ||
-            segments[0] != "for-std" ||
-            segments[1] != "course-select" ||
-            segments[3] != "turn" ||
-            segments[5] != "select"
-        ) {
-            return null
-        }
-        val studentId = segments[2].toLongOrNull()?.takeIf { it > 0 } ?: return null
-        val turnId = segments[4].toLongOrNull()?.takeIf { it > 0 } ?: return null
+        val match = CURRENT_TURN_SELECTION_PATH.matchEntire(uri.rawPath.orEmpty()) ?: return null
+        val studentId = match.groupValues[1].toLongOrNull()?.takeIf { it > 0 } ?: return null
+        val turnId = match.groupValues[2].toLongOrNull()?.takeIf { it > 0 } ?: return null
         return UstcRequestContext(UstcStudentId(studentId), UstcTurnId(turnId))
     }
 
@@ -99,5 +90,7 @@ class UstcPortalDescriptor(
     private companion object {
         const val PRODUCTION_ORIGIN = "https://jw.ustc.edu.cn/"
         val DYNAMIC_LANDING_PATH = Regex("/for-std/course-select/turns/([0-9]+)")
+        val CURRENT_TURN_SELECTION_PATH =
+            Regex("/for-std/course-select/([0-9]+)/turn/([0-9]+)/select")
     }
 }

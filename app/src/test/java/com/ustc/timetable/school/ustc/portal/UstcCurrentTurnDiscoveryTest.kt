@@ -69,6 +69,9 @@ class UstcCurrentTurnDiscoveryTest {
         listOf(
             "$valid?next=1",
             "$valid#section",
+            "$valid/",
+            "https://portal.fixture.invalid/for-std/course-select/101//turn/202/select",
+            "https://portal.fixture.invalid//for-std/course-select/101/turn/202/select",
             "https://portal.fixture.invalid/for-std/course-select/0/turn/202/select",
             "https://portal.fixture.invalid/for-std/course-select/101/turn/0/select",
             "https://portal.fixture.invalid/for-std/course-select/101/turn/202/all-course-takes",
