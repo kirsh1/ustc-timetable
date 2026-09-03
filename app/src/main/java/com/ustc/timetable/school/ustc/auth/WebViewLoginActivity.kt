@@ -61,6 +61,7 @@ class WebViewLoginActivity : ComponentActivity() {
         val browser = WebView(this).apply {
             setBackgroundColor(Color.WHITE)
             settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW

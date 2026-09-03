@@ -175,6 +175,14 @@ class WebViewLoginActivityTest {
         assertEquals(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW, webView.settings.mixedContentMode)
     }
 
+    @Test fun webview_enables_dom_storage_for_official_cas() {
+        val descriptor = descriptor()
+        app.dependencies = dependencies(descriptor)
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        val webView = findView(activity.window.decorView, WebView::class.java)!!
+        assertTrue(webView.settings.domStorageEnabled)
+    }
+
     private fun dependencies(
         descriptor: PortalDescriptor,
         detector: LoginPageDetector = LoginPageDetector { _, _ -> false },
