@@ -48,7 +48,7 @@ class SessionStoreTest {
     private val keyB = ByteArray(32) { (it + 1).toByte() }
     private val blob = SessionBlob(
         headers = listOf(
-            SessionCookieHeader("https://one.example/course?a=1", "A=1; A=2; B=3"),
+            SessionCookieHeader("https://one.example/course", "A=1; A=2; B=3"),
             SessionCookieHeader("https://two.example/timetable", "SESSION=opaque value"),
         ),
         capturedAt = Instant.parse("2026-09-01T12:34:56.789Z"),
@@ -73,6 +73,24 @@ class SessionStoreTest {
         val loaded = store.load()!!
         assertEquals(blob.headers.map { it.requestUrl }, loaded.headers.map { it.requestUrl })
         assertEquals(listOf("A=1; A=2; B=3", "SESSION=opaque value"), loaded.headers.map { it.cookieHeader })
+    }
+
+    @Test fun persisted_session_header_keeps_only_scope_url_without_query_or_fragment() = runBlocking {
+        val storage = InMemorySessionStorage()
+        val store = store(storage)
+        val queryBearing = SessionBlob(
+            headers = listOf(
+                SessionCookieHeader(
+                    "https://one.example/callback?ticket=%3Credacted%3E&mode=current#fragment",
+                    "A=1",
+                ),
+            ),
+            capturedAt = Instant.EPOCH,
+        )
+
+        store.save(queryBearing)
+
+        assertEquals("https://one.example/callback", store.load()!!.headers.single().requestUrl)
     }
 
     @Test fun same_blob_two_saves_have_different_ciphertext() = runBlocking {

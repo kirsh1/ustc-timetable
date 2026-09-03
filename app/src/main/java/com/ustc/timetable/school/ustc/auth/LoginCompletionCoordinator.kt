@@ -16,6 +16,7 @@ class LoginCompletionCoordinator(
     private val captureAndVerify: suspend () -> Unit,
 ) {
     private val running = AtomicBoolean(false)
+    private val completed = AtomicBoolean(false)
 
     @Volatile
     var consecutiveAutomaticFailures: Int = 0
@@ -29,7 +30,7 @@ class LoginCompletionCoordinator(
     }
 
     suspend fun onPageFinished(rawUrl: String): LoginCompletionResult {
-        if (!PortalDescriptorRules.isSessionHost(descriptor, rawUrl)) {
+        if (!PortalDescriptorRules.isAutomaticCompletionNavigation(descriptor, rawUrl)) {
             return LoginCompletionResult.Ignored
         }
         return probe(isAutomatic = true)
@@ -38,11 +39,16 @@ class LoginCompletionCoordinator(
     suspend fun onManualProbe(): LoginCompletionResult = probe(isAutomatic = false)
 
     private suspend fun probe(isAutomatic: Boolean): LoginCompletionResult {
+        if (completed.get()) return LoginCompletionResult.Ignored
         if (!running.compareAndSet(false, true)) return LoginCompletionResult.Ignored
         return try {
             captureAndVerify()
             consecutiveAutomaticFailures = 0
-            LoginCompletionResult.Verified
+            if (completed.compareAndSet(false, true)) {
+                LoginCompletionResult.Verified
+            } else {
+                LoginCompletionResult.Ignored
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {

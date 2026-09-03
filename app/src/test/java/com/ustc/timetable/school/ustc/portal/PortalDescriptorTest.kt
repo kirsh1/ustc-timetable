@@ -45,17 +45,64 @@ class PortalDescriptorTest {
             }
     }
 
+    @Test fun descriptor_rejects_invalid_session_cookie_url() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PortalDescriptorRules.validate(descriptor(sessionCookieUrls = listOf("file:///session")))
+        }
+    }
+
+    @Test fun descriptor_requires_probe_in_session_cookie_urls() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PortalDescriptorRules.validate(
+                descriptor(sessionCookieUrls = listOf("https://fixture.example/selection")),
+            )
+        }
+    }
+
+    @Test fun login_route_on_session_host_is_not_an_automatic_completion_navigation() {
+        val descriptor = descriptor()
+        assertFalse(
+            PortalDescriptorRules.isAutomaticCompletionNavigation(
+                descriptor,
+                "https://fixture.example/login?refer=%2Ffixture",
+            ),
+        )
+    }
+
+    @Test fun non_login_route_on_session_host_is_an_automatic_completion_navigation() {
+        val descriptor = descriptor()
+        assertTrue(
+            PortalDescriptorRules.isAutomaticCompletionNavigation(
+                descriptor,
+                "https://fixture.example/home",
+            ),
+        )
+    }
+
+    @Test fun service_ticket_callback_is_not_an_automatic_completion_navigation() {
+        val descriptor = descriptor()
+        assertFalse(
+            PortalDescriptorRules.isAutomaticCompletionNavigation(
+                descriptor,
+                "https://fixture.example/ucas-sso/login?ticket=%3Credacted%3E",
+            ),
+        )
+    }
+
     private fun descriptor(
         loginUrl: String = "https://fixture.example/login",
         probeUrl: String = "https://fixture.example/probe",
         selectionUrl: String = "https://fixture.example/selection",
         timetableUrl: String = "https://fixture.example/timetable",
         sessionHosts: List<String> = listOf("fixture.example"),
+        sessionCookieUrls: List<String>? = null,
     ): PortalDescriptor = object : PortalDescriptor {
         override val loginUrl = loginUrl
         override val probeUrl = probeUrl
         override val selectionUrl = selectionUrl
         override val timetableUrl = timetableUrl
         override val sessionHosts = sessionHosts
+        override val sessionCookieUrls = sessionCookieUrls
+            ?: listOf(probeUrl, selectionUrl, timetableUrl)
     }
 }

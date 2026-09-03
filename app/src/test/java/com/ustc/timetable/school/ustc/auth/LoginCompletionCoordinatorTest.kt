@@ -4,6 +4,7 @@ import com.ustc.timetable.school.ustc.portal.PortalDescriptor
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.asFailure
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
@@ -25,6 +26,16 @@ class LoginCompletionCoordinatorTest {
         val coordinator = coordinator { calls++ }
         assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished("https://SESSION.fixture.example/done"))
         assertEquals(1, calls)
+    }
+
+    @Test fun login_route_on_session_host_does_not_probe() = runBlocking {
+        var calls = 0
+        val coordinator = coordinator { calls++ }
+        assertEquals(
+            LoginCompletionResult.Ignored,
+            coordinator.onPageFinished("https://session.fixture.example/login?refer=%2Ffixture"),
+        )
+        assertEquals(0, calls)
     }
 
     @Test fun concurrent_page_finished_is_single_flight() = runBlocking {
@@ -76,6 +87,31 @@ class LoginCompletionCoordinatorTest {
         assertFalse(coordinator.isFallbackVisible)
     }
 
+    @Test fun successful_completion_is_reported_only_once() = runBlocking {
+        var calls = 0
+        val coordinator = coordinator { calls++ }
+        assertEquals(
+            LoginCompletionResult.Verified,
+            coordinator.onPageFinished("https://session.fixture.example/home"),
+        )
+        assertEquals(
+            LoginCompletionResult.Ignored,
+            coordinator.onPageFinished("https://session.fixture.example/next"),
+        )
+        assertEquals(LoginCompletionResult.Ignored, coordinator.onManualProbe())
+        assertEquals(1, calls)
+    }
+
+    @Test fun cancellation_remains_cancellation_and_does_not_count_as_failure() = runBlocking {
+        val coordinator = coordinator { throw CancellationException("cancel-login") }
+        val thrown = runCatching {
+            coordinator.onPageFinished("https://session.fixture.example/home")
+        }.exceptionOrNull()
+        assertTrue(thrown is CancellationException)
+        assertEquals(0, coordinator.consecutiveAutomaticFailures)
+        assertFalse(coordinator.isFallbackVisible)
+    }
+
     @Test fun manual_probe_does_not_require_session_host_event() = runBlocking {
         var calls = 0
         val coordinator = coordinator { calls++ }
@@ -87,7 +123,7 @@ class LoginCompletionCoordinatorTest {
         LoginCompletionCoordinator(descriptor(), capture)
 
     private fun descriptor(): PortalDescriptor = object : PortalDescriptor {
-        override val loginUrl = "https://login.fixture.example/login"
+        override val loginUrl = "https://session.fixture.example/login"
         override val probeUrl = "https://session.fixture.example/probe"
         override val selectionUrl = "https://session.fixture.example/selection"
         override val timetableUrl = "https://session.fixture.example/timetable"

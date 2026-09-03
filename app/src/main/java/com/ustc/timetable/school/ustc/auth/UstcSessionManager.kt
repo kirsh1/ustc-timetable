@@ -24,15 +24,14 @@ class UstcSessionManager(
     suspend fun clear() = store.clear()
 
     suspend fun captureAndVerify(): SessionBlob {
-        val targets = listOf(
-            descriptor.probeUrl,
-            descriptor.selectionUrl,
-            descriptor.timetableUrl,
-        ).distinct()
+        val targets = descriptor.sessionCookieUrls.distinct()
         val headers = targets.mapNotNull { target ->
             cookies.cookieHeaderFor(target)
                 ?.takeUnless(String::isBlank)
-                ?.let { SessionCookieHeader(target, it) }
+                ?.let { cookieHeader ->
+                    val credentialSafeRequestUrl = SessionCookieHeader.Scope.of(target).requestUrl()
+                    SessionCookieHeader(credentialSafeRequestUrl, cookieHeader)
+                }
         }.distinct()
 
         if (SessionCookieHeader.pickFor(descriptor.probeUrl, headers) == null) {

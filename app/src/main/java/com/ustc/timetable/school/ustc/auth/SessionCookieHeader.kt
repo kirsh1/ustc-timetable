@@ -19,6 +19,13 @@ data class SessionCookieHeader(
         val port: Int,
         val path: String,
     ) {
+        fun requestUrl(): String {
+            val authorityHost = if (':' in host) "[$host]" else host
+            val defaultPort = (scheme == "http" && port == 80) || (scheme == "https" && port == 443)
+            val portSuffix = if (defaultPort) "" else ":$port"
+            return "$scheme://$authorityHost$portSuffix$path"
+        }
+
         companion object {
             fun of(raw: String): Scope {
                 val uri = try {

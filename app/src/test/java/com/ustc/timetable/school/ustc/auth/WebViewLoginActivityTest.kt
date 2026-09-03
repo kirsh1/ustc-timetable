@@ -73,6 +73,41 @@ class WebViewLoginActivityTest {
         assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
     }
 
+    @Test fun portal_login_route_does_not_auto_probe() {
+        val descriptor = descriptor(loginUrl = server.url("/login").toString())
+        app.dependencies = dependencies(descriptor)
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        finishPage(activity, "${descriptor.loginUrl}?refer=%2Ffixture")
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, server.requestCount)
+        assertFalse(activity.isFinishing)
+        assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
+    }
+
+    @Test fun successful_auto_probe_runs_only_once() {
+        server.enqueue(okPage("verified"))
+        val descriptor = descriptor()
+        app.dependencies = dependencies(descriptor)
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        finishPage(activity, server.url("/home").toString())
+        awaitCondition { activity.isFinishing }
+        finishPage(activity, server.url("/next").toString())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, server.requestCount)
+        assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
+    }
+
+    @Test fun missing_session_cookie_keeps_activity_incomplete_and_canceled() {
+        val descriptor = descriptor()
+        app.dependencies = dependencies(descriptor, cookies = CookieRetriever { null })
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        finishPage(activity, server.url("/home").toString())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, server.requestCount)
+        assertFalse(activity.isFinishing)
+        assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
+    }
+
     @Test fun three_auto_failures_show_fallback() {
         repeat(3) { server.enqueue(okPage("login")) }
         var attempts = 0
@@ -143,6 +178,9 @@ class WebViewLoginActivityTest {
     private fun dependencies(
         descriptor: PortalDescriptor,
         detector: LoginPageDetector = LoginPageDetector { _, _ -> false },
+        cookies: CookieRetriever = CookieRetriever { url ->
+            if (url == descriptor.probeUrl) "SESSION=fixture" else null
+        },
     ): WebViewLoginDependencies {
         val storage = object : SessionStorage {
             private var bytes: ByteArray? = null
@@ -152,7 +190,6 @@ class WebViewLoginActivityTest {
         val key = object : SecretKeyProvider {
             override fun getOrCreateKey(): SecretKey = SecretKeySpec(ByteArray(32) { it.toByte() }, "AES")
         }
-        val cookies = CookieRetriever { url -> if (url == descriptor.probeUrl) "SESSION=fixture" else null }
         return WebViewLoginDependencies(
             descriptor,
             UstcSessionManager(
@@ -166,10 +203,12 @@ class WebViewLoginActivityTest {
         )
     }
 
-    private fun descriptor(): PortalDescriptor {
+    private fun descriptor(
+        loginUrl: String = "https://login.fixture.example/login",
+    ): PortalDescriptor {
         val probe = server.url("/probe").toString()
         return object : PortalDescriptor {
-            override val loginUrl = "https://login.fixture.example/login"
+            override val loginUrl = loginUrl
             override val probeUrl = probe
             override val selectionUrl = "https://selection.fixture.example/course"
             override val timetableUrl = "https://timetable.fixture.example/table"

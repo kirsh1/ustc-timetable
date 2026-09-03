@@ -108,11 +108,14 @@ private data class HeaderDto(
     val requestUrl: String,
     val cookieHeader: String,
 ) {
-    fun toDomain(): SessionCookieHeader = SessionCookieHeader(requestUrl, cookieHeader)
+    fun toDomain(): SessionCookieHeader {
+        val scopeUrl = SessionCookieHeader.Scope.of(requestUrl).requestUrl()
+        return SessionCookieHeader(scopeUrl, cookieHeader)
+    }
 
     companion object {
         fun from(header: SessionCookieHeader): HeaderDto = HeaderDto(
-            requestUrl = header.requestUrl,
+            requestUrl = header.scope.requestUrl(),
             cookieHeader = header.cookieHeader,
         )
     }

@@ -62,12 +62,41 @@ class UstcSessionManagerTest {
         server.close()
     }
 
-    @Test fun capture_reads_all_three_target_urls() = runBlocking {
+    @Test fun capture_reads_every_configured_document_and_xhr_url() = runBlocking {
         server.enqueue(okPage())
-        val descriptor = descriptor()
+        val probe = server.url("/probe").toString()
+        val targets = listOf(
+            probe,
+            server.url("/selection-document").toString(),
+            server.url("/timetable-document").toString(),
+            server.url("/xhr/layout").toString(),
+            server.url("/xhr/selected-lessons").toString(),
+            server.url("/xhr/datum").toString(),
+            server.url("/xhr/week-digest").toString(),
+        )
+        val descriptor = descriptor(
+            probeUrl = probe,
+            selectionUrl = targets[1],
+            timetableUrl = targets[2],
+            sessionCookieUrls = targets,
+        )
         val cookies = RecordingCookies(allHeaders(descriptor))
         manager(descriptor, cookies).captureAndVerify()
-        assertEquals(listOf(descriptor.probeUrl, descriptor.selectionUrl, descriptor.timetableUrl), cookies.urls)
+        assertEquals(targets, cookies.urls)
+    }
+
+    @Test fun capture_strips_query_values_before_persisting_request_scope() = runBlocking {
+        server.enqueue(okPage())
+        val probeWithQuery = server.url("/probe?ticket=%3Credacted%3E&mode=current").toString()
+        val descriptor = descriptor(probeUrl = probeWithQuery)
+        val cookies = RecordingCookies(mapOf(probeWithQuery to "SESSION=fixture"))
+
+        val blob = manager(descriptor, cookies).captureAndVerify()
+
+        assertEquals(descriptor.sessionCookieUrls, cookies.urls)
+        assertEquals(server.url("/probe").toString(), blob.headers.single().requestUrl)
+        assertFalse(blob.headers.single().requestUrl.contains('?'))
+        assertFalse(blob.headers.single().requestUrl.contains("ticket", ignoreCase = true))
     }
 
     @Test fun capture_preserves_cross_host_headers() = runBlocking {
@@ -237,19 +266,26 @@ class UstcSessionManagerTest {
         probeUrl: String = server.url("/probe").toString(),
         selectionUrl: String = "https://selection.fixture.example/course",
         timetableUrl: String = "https://timetable.fixture.example/table",
+        sessionCookieUrls: List<String>? = null,
     ): PortalDescriptor = object : PortalDescriptor {
         override val loginUrl = "https://login.fixture.example/login"
         override val probeUrl = probeUrl
         override val selectionUrl = selectionUrl
         override val timetableUrl = timetableUrl
         override val sessionHosts = listOf(server.hostName)
+        override val sessionCookieUrls = sessionCookieUrls
+            ?: listOf(probeUrl, selectionUrl, timetableUrl)
     }
 
-    private fun allHeaders(descriptor: PortalDescriptor) = mapOf(
-        descriptor.probeUrl to "PROBE=1",
-        descriptor.selectionUrl to "SELECT=2",
-        descriptor.timetableUrl to "TABLE=3",
-    )
+    private fun allHeaders(descriptor: PortalDescriptor): Map<String, String> =
+        descriptor.sessionCookieUrls.associateWith { target ->
+            when (target) {
+                descriptor.probeUrl -> "PROBE=1"
+                descriptor.selectionUrl -> "SELECT=2"
+                descriptor.timetableUrl -> "TABLE=3"
+                else -> "ENDPOINT=fixture"
+            }
+        }
 
     private fun okPage(body: String = "<html>ok</html>") = MockResponse.Builder().code(200).body(body).build()
 
