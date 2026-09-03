@@ -1,6 +1,7 @@
 package com.ustc.timetable.school.ustc.auth
 
 import com.ustc.timetable.school.ustc.portal.PortalDescriptor
+import com.ustc.timetable.school.ustc.portal.UstcPortalDescriptor
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.asFailure
 import kotlinx.coroutines.CompletableDeferred
@@ -21,11 +22,33 @@ class LoginCompletionCoordinatorTest {
         assertEquals(0, calls)
     }
 
-    @Test fun session_host_exact_match_probes() = runBlocking {
+    @Test fun dynamic_student_selection_landing_probes() = runBlocking {
         var calls = 0
         val coordinator = coordinator { calls++ }
-        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished("https://SESSION.fixture.example/done"))
+        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(landing()))
         assertEquals(1, calls)
+    }
+
+    @Test fun arbitrary_same_host_page_does_not_probe() = runBlocking {
+        var calls = 0
+        val coordinator = coordinator { calls++ }
+        assertEquals(
+            LoginCompletionResult.Ignored,
+            coordinator.onPageFinished("https://session.fixture.example/dashboard"),
+        )
+        assertEquals(0, calls)
+    }
+
+    @Test fun invalid_dynamic_student_selection_id_does_not_probe() = runBlocking {
+        var calls = 0
+        val coordinator = coordinator { calls++ }
+        listOf("0", "-1", "not-an-id").forEach { id ->
+            assertEquals(
+                LoginCompletionResult.Ignored,
+                coordinator.onPageFinished("https://session.fixture.example/for-std/course-select/turns/$id"),
+            )
+        }
+        assertEquals(0, calls)
     }
 
     @Test fun login_route_on_session_host_does_not_probe() = runBlocking {
@@ -47,9 +70,9 @@ class LoginCompletionCoordinatorTest {
             entered.complete(Unit)
             release.await()
         }
-        val first = async { coordinator.onPageFinished("https://session.fixture.example/done") }
+        val first = async { coordinator.onPageFinished(landing()) }
         entered.await()
-        val second = async { coordinator.onPageFinished("https://session.fixture.example/next") }
+        val second = async { coordinator.onPageFinished(landing(202)) }
         yield()
         assertEquals(LoginCompletionResult.Ignored, second.await())
         assertEquals(1, calls)
@@ -67,10 +90,10 @@ class LoginCompletionCoordinatorTest {
     @Test fun three_actual_failures_enable_fallback() = runBlocking {
         val coordinator = coordinator { throw SyncError.AuthenticationExpired.asFailure() }
         repeat(2) {
-            assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished("https://session.fixture.example/done"))
+            assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
             assertFalse(coordinator.isFallbackVisible)
         }
-        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished("https://session.fixture.example/done"))
+        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
         assertEquals(3, coordinator.consecutiveAutomaticFailures)
         assertTrue(coordinator.isFallbackVisible)
     }
@@ -80,9 +103,9 @@ class LoginCompletionCoordinatorTest {
         val coordinator = coordinator {
             if (fail) throw SyncError.AuthenticationExpired.asFailure()
         }
-        coordinator.onPageFinished("https://session.fixture.example/done")
+        coordinator.onPageFinished(landing())
         fail = false
-        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished("https://session.fixture.example/done"))
+        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(landing()))
         assertEquals(0, coordinator.consecutiveAutomaticFailures)
         assertFalse(coordinator.isFallbackVisible)
     }
@@ -92,11 +115,11 @@ class LoginCompletionCoordinatorTest {
         val coordinator = coordinator { calls++ }
         assertEquals(
             LoginCompletionResult.Verified,
-            coordinator.onPageFinished("https://session.fixture.example/home"),
+            coordinator.onPageFinished(landing()),
         )
         assertEquals(
             LoginCompletionResult.Ignored,
-            coordinator.onPageFinished("https://session.fixture.example/next"),
+            coordinator.onPageFinished(landing(202)),
         )
         assertEquals(LoginCompletionResult.Ignored, coordinator.onManualProbe())
         assertEquals(1, calls)
@@ -105,28 +128,38 @@ class LoginCompletionCoordinatorTest {
     @Test fun cancellation_remains_cancellation_and_does_not_count_as_failure() = runBlocking {
         val coordinator = coordinator { throw CancellationException("cancel-login") }
         val thrown = runCatching {
-            coordinator.onPageFinished("https://session.fixture.example/home")
+            coordinator.onPageFinished(landing())
         }.exceptionOrNull()
         assertTrue(thrown is CancellationException)
         assertEquals(0, coordinator.consecutiveAutomaticFailures)
         assertFalse(coordinator.isFallbackVisible)
     }
 
-    @Test fun manual_probe_does_not_require_session_host_event() = runBlocking {
+    @Test fun manual_probe_requires_dynamic_student_selection_landing() = runBlocking {
         var calls = 0
-        val coordinator = coordinator { calls++ }
+        var fail = true
+        val coordinator = coordinator {
+            calls++
+            if (fail) throw SyncError.AuthenticationExpired.asFailure()
+        }
+        assertEquals(
+            LoginCompletionResult.Ignored,
+            coordinator.onPageFinished("https://session.fixture.example/home"),
+        )
+        assertEquals(0, calls)
+        assertEquals(LoginCompletionResult.Ignored, coordinator.onManualProbe())
+        assertEquals(0, calls)
+        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
+        fail = false
         assertEquals(LoginCompletionResult.Verified, coordinator.onManualProbe())
-        assertEquals(1, calls)
+        assertEquals(2, calls)
     }
 
     private fun coordinator(capture: suspend () -> Unit): LoginCompletionCoordinator =
         LoginCompletionCoordinator(descriptor(), capture)
 
-    private fun descriptor(): PortalDescriptor = object : PortalDescriptor {
-        override val loginUrl = "https://session.fixture.example/login"
-        override val probeUrl = "https://session.fixture.example/probe"
-        override val selectionUrl = "https://session.fixture.example/selection"
-        override val timetableUrl = "https://session.fixture.example/timetable"
-        override val sessionHosts = listOf("session.fixture.example")
-    }
+    private fun descriptor(): PortalDescriptor = UstcPortalDescriptor("https://session.fixture.example/")
+
+    private fun landing(id: Long = 101): String =
+        "https://session.fixture.example/for-std/course-select/turns/$id"
 }

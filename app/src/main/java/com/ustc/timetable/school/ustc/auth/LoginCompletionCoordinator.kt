@@ -19,6 +19,9 @@ class LoginCompletionCoordinator(
     private val completed = AtomicBoolean(false)
 
     @Volatile
+    private var manualProbeEligible = false
+
+    @Volatile
     var consecutiveAutomaticFailures: Int = 0
         private set
 
@@ -30,13 +33,18 @@ class LoginCompletionCoordinator(
     }
 
     suspend fun onPageFinished(rawUrl: String): LoginCompletionResult {
-        if (!PortalDescriptorRules.isAutomaticCompletionNavigation(descriptor, rawUrl)) {
+        val isEligible = PortalDescriptorRules.isAutomaticCompletionNavigation(descriptor, rawUrl)
+        manualProbeEligible = isEligible
+        if (!isEligible) {
             return LoginCompletionResult.Ignored
         }
         return probe(isAutomatic = true)
     }
 
-    suspend fun onManualProbe(): LoginCompletionResult = probe(isAutomatic = false)
+    suspend fun onManualProbe(): LoginCompletionResult {
+        if (!manualProbeEligible) return LoginCompletionResult.Ignored
+        return probe(isAutomatic = false)
+    }
 
     private suspend fun probe(isAutomatic: Boolean): LoginCompletionResult {
         if (completed.get()) return LoginCompletionResult.Ignored

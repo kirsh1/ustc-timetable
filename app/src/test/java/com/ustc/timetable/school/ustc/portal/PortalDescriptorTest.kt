@@ -69,10 +69,16 @@ class PortalDescriptorTest {
         )
     }
 
-    @Test fun non_login_route_on_session_host_is_an_automatic_completion_navigation() {
+    @Test fun generic_descriptor_denies_automatic_navigation_by_default() {
         val descriptor = descriptor()
-        assertTrue(
+        assertFalse(
             PortalDescriptorRules.isAutomaticCompletionNavigation(
+                descriptor,
+                "https://fixture.example/home",
+            ),
+        )
+        assertFalse(
+            PortalDescriptorRules.isAutomaticModuleBootstrapNavigation(
                 descriptor,
                 "https://fixture.example/home",
             ),

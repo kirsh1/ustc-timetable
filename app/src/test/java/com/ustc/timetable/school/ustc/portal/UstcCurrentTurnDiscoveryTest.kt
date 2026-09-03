@@ -30,6 +30,20 @@ class UstcCurrentTurnDiscoveryTest {
         )
     }
 
+    @Test fun descriptor_accepts_only_the_evidenced_post_login_home_scope() {
+        assertEquals(
+            true,
+            descriptor.isPostLoginPortalHomeUrl("https://portal.fixture.invalid/home"),
+        )
+        listOf(
+            "https://portal.fixture.invalid/home/",
+            "https://portal.fixture.invalid/home?next=1",
+            "https://portal.fixture.invalid/home#section",
+            "https://student@portal.fixture.invalid/home",
+            "https://other.fixture.invalid/home",
+        ).forEach { url -> assertEquals(false, descriptor.isPostLoginPortalHomeUrl(url)) }
+    }
+
     @Test fun descriptor_accepts_only_the_evidenced_dynamic_landing_scope() {
         assertEquals(
             true,
@@ -39,6 +53,9 @@ class UstcCurrentTurnDiscoveryTest {
         )
         listOf(
             "https://portal.fixture.invalid/for-std/course-select/turns/101?next=1",
+            "https://portal.fixture.invalid/for-std/course-select/turns/101#section",
+            "https://portal.fixture.invalid/for-std/course-select/turns/0",
+            "https://portal.fixture.invalid/for-std/course-select/turns/-1",
             "https://portal.fixture.invalid/for-std/course-select/turns/not-an-id",
             "https://portal.fixture.invalid/for-std/course-select/101/turn/202/select",
             "https://other.fixture.invalid/for-std/course-select/turns/101",

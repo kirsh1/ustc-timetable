@@ -12,6 +12,8 @@ interface PortalDescriptor {
     val sessionCookieUrls: List<String>
         get() = listOf(probeUrl, selectionUrl, timetableUrl)
 
+    fun isPostLoginPortalHomeUrl(rawUrl: String): Boolean = false
+
     fun isDynamicSessionCookieUrl(rawUrl: String): Boolean = false
 }
 
@@ -53,6 +55,30 @@ internal object PortalDescriptorRules {
     }
 
     fun isAutomaticCompletionNavigation(
+        descriptor: PortalDescriptor,
+        rawUrl: String,
+    ): Boolean {
+        if (!isSafeAutomaticNavigation(descriptor, rawUrl)) return false
+        return try {
+            descriptor.isDynamicSessionCookieUrl(rawUrl)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun isAutomaticModuleBootstrapNavigation(
+        descriptor: PortalDescriptor,
+        rawUrl: String,
+    ): Boolean {
+        if (!isSafeAutomaticNavigation(descriptor, rawUrl)) return false
+        return try {
+            descriptor.isPostLoginPortalHomeUrl(rawUrl)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun isSafeAutomaticNavigation(
         descriptor: PortalDescriptor,
         rawUrl: String,
     ): Boolean {

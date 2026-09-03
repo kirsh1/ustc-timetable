@@ -3,6 +3,7 @@ package com.ustc.timetable.school.ustc.auth
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -47,6 +48,7 @@ class WebViewLoginActivity : ComponentActivity() {
         val coordinator = LoginCompletionCoordinator(dependencies.descriptor) {
             dependencies.sessionManager.captureAndVerify()
         }
+        val bootstrapGate = ModuleBootstrapGate(dependencies.descriptor)
         val fallback = Button(this).apply {
             text = "我已完成登录"
             visibility = View.GONE
@@ -73,7 +75,14 @@ class WebViewLoginActivity : ComponentActivity() {
                 override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
                     !isHttp(Uri.parse(url))
 
+                override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    bootstrapGate.onPageStarted()
+                }
+
                 override fun onPageFinished(view: WebView, url: String) {
+                    if (bootstrapGate.shouldBootstrap(url)) {
+                        view.loadUrl(dependencies.descriptor.probeUrl)
+                    }
                     lifecycleScope.launch {
                         handleResult(coordinator.onPageFinished(url), coordinator)
                     }
@@ -126,6 +135,33 @@ class WebViewLoginActivity : ComponentActivity() {
 
     private fun isHttp(uri: Uri): Boolean =
         uri.scheme.equals("http", ignoreCase = true) || uri.scheme.equals("https", ignoreCase = true)
+
+    private class ModuleBootstrapGate(
+        private val descriptor: PortalDescriptor,
+    ) {
+        private var navigationGeneration = 0
+        private var handledHomeGeneration = -1
+        private var attempts = 0
+
+        fun onPageStarted() {
+            navigationGeneration++
+        }
+
+        fun shouldBootstrap(rawUrl: String): Boolean {
+            if (!PortalDescriptorRules.isAutomaticModuleBootstrapNavigation(descriptor, rawUrl)) {
+                return false
+            }
+            if (handledHomeGeneration == navigationGeneration) return false
+            handledHomeGeneration = navigationGeneration
+            if (attempts >= MAX_ATTEMPTS) return false
+            attempts++
+            return true
+        }
+
+        private companion object {
+            const val MAX_ATTEMPTS = 2
+        }
+    }
 }
 
 class WebViewLoginContract : ActivityResultContract<Unit, Boolean>() {
