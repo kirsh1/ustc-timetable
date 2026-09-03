@@ -1,6 +1,7 @@
 package com.ustc.timetable.semester
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.scheduleprofile.encodePeriods
 import com.ustc.timetable.school.ustc.parser.CourseSelectionPageParser
@@ -29,9 +30,13 @@ import com.ustc.timetable.timetable.domain.Term
 import java.time.Clock
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 sealed interface ImportStep {
     data object AwaitingLogin : ImportStep
@@ -71,6 +76,8 @@ class ImportFlowViewModel(
     private val settings: SettingsStore,
     private val workingProfile: suspend () -> ScheduleProfile,
     private val clock: Clock,
+    private val setViewedSemesterId: suspend (String) -> Unit = settings::setViewedSemesterId,
+    private val importDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val provisionalSemesterId: () -> SemesterId = {
         SemesterId("semester.portal.${UUID.randomUUID()}")
     },
@@ -83,6 +90,21 @@ class ImportFlowViewModel(
     val step: StateFlow<ImportStep> = mutableStep.asStateFlow()
 
     private var pending: PendingImport? = null
+
+    fun startLoginImport() {
+        prepareForLogin()
+        viewModelScope.launch(importDispatcher) { onLoginResultOk() }
+    }
+
+    fun confirmMeta(meta: ConfirmedSemesterMeta) {
+        val current = claimMetaConfirmation() ?: return
+        viewModelScope.launch(importDispatcher) { completeMetaConfirmation(current, meta) }
+    }
+
+    fun prepareForLogin() {
+        val error = mutableStep.value as? ImportStep.Error ?: return
+        mutableStep.compareAndSet(error, ImportStep.AwaitingLogin)
+    }
 
     suspend fun onLoginResultOk() {
         if (!mutableStep.compareAndSet(ImportStep.AwaitingLogin, ImportStep.Fetching)) return
@@ -110,17 +132,34 @@ class ImportFlowViewModel(
             }
         } catch (failure: SyncFailure) {
             mutableStep.value = ImportStep.Error(failure.error)
+        } catch (cancelled: CancellationException) {
+            mutableStep.compareAndSet(ImportStep.Fetching, ImportStep.AwaitingLogin)
+            throw cancelled
         }
     }
 
     suspend fun onMetaConfirmed(meta: ConfirmedSemesterMeta) {
-        val current = mutableStep.value as? ImportStep.ConfirmMeta ?: return
-        if (!mutableStep.compareAndSet(current, ImportStep.Fetching)) return
+        val current = claimMetaConfirmation() ?: return
+        completeMetaConfirmation(current, meta)
+    }
+
+    private fun claimMetaConfirmation(): ImportStep.ConfirmMeta? {
+        val current = mutableStep.value as? ImportStep.ConfirmMeta ?: return null
+        return current.takeIf { mutableStep.compareAndSet(current, ImportStep.Fetching) }
+    }
+
+    private suspend fun completeMetaConfirmation(
+        current: ImportStep.ConfirmMeta,
+        meta: ConfirmedSemesterMeta,
+    ) {
         try {
             if (!meta.isValidSemesterConfirmation()) throw SyncError.ValidationFailed.asFailure()
             commit(meta)
         } catch (failure: SyncFailure) {
             mutableStep.value = ImportStep.Error(failure.error)
+        } catch (cancelled: CancellationException) {
+            mutableStep.compareAndSet(ImportStep.Fetching, current)
+            throw cancelled
         }
     }
 
@@ -179,7 +218,7 @@ class ImportFlowViewModel(
             fingerprint = fingerprint,
             syncedAt = now,
         )
-        settings.setViewedSemesterId(semester.id.value)
+        setViewedSemesterId(semester.id.value)
         pending = null
         mutableStep.value = ImportStep.Done(semester.id)
     }

@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -29,7 +28,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ustc.timetable.semester.ImportFlowViewModel
 import com.ustc.timetable.semester.ImportStep
 import com.ustc.timetable.semester.SemesterConfirmSheet
-import kotlinx.coroutines.launch
 
 @Composable
 fun FirstLaunchRoute(
@@ -39,7 +37,6 @@ fun FirstLaunchRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val importStep = importFlow?.step?.collectAsStateWithLifecycle()?.value
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -49,8 +46,14 @@ fun FirstLaunchRoute(
     }
     FirstLaunchScreen(
         state = state,
-        onLoginAndImport = viewModel::onLoginAndImport,
+        onLoginAndImport = {
+            importFlow?.prepareForLogin()
+            viewModel.onLoginAndImport()
+        },
         onSkipManualCreation = viewModel::onSkipManualCreation,
+        importErrorMessage = (importStep as? ImportStep.Error)?.let {
+            "导入失败，请重试登录并导入"
+        },
         snackbarHostState = snackbar,
     )
     if (importFlow != null) {
@@ -58,7 +61,7 @@ fun FirstLaunchRoute(
         if (confirmation != null) {
             SemesterConfirmSheet(
                 draft = confirmation.draft,
-                onConfirm = { confirmed -> scope.launch { importFlow.onMetaConfirmed(confirmed) } },
+                onConfirm = importFlow::confirmMeta,
                 onCancel = importFlow::onMetaCancelled,
             )
         }
@@ -70,6 +73,7 @@ fun FirstLaunchScreen(
     state: FirstLaunchUiState,
     onLoginAndImport: () -> Unit,
     onSkipManualCreation: () -> Unit,
+    importErrorMessage: String? = null,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     Scaffold(
@@ -90,6 +94,15 @@ fun FirstLaunchScreen(
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (importErrorMessage != null) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    importErrorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("first_launch_import_error"),
+                )
+            }
             Spacer(Modifier.height(32.dp))
             Button(
                 onClick = onLoginAndImport,

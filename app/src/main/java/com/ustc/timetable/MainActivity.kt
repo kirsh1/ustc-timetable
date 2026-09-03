@@ -12,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import com.ustc.timetable.notification.NotificationPermissionController
 import com.ustc.timetable.scheduleprofile.ProfileEditorScreen
 import com.ustc.timetable.settings.NotificationsEnabledChecker
@@ -33,14 +32,13 @@ import com.ustc.timetable.timetable.ui.TimetableViewModel
 import com.ustc.timetable.timetable.ui.minuteTicks
 import java.time.Clock
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val container: AppContainer
         get() = (application as TimetableApp).container
     private val clock: Clock = Clock.systemDefaultZone()
     private val firstLaunchLoginLauncher = registerForActivityResult(WebViewLoginContract()) { successful ->
-        if (successful) lifecycleScope.launch { importFlowViewModel.onLoginResultOk() }
+        if (successful) importFlowViewModel.startLoginImport()
     }
     private val activityViewModelFactory: ViewModelProvider.Factory by lazy {
         MainActivityViewModelFactory(
@@ -71,7 +69,7 @@ class MainActivity : ComponentActivity() {
             ),
         )
         // Preserve the existing eager Activity-scoped graph while making ViewModelStore
-        // the lifecycle owner. Activity destruction now clears all three viewModelScopes.
+        // the lifecycle owner. Activity destruction now clears its ViewModelStore scopes.
         val timetable = timetableViewModel
         val firstLaunch = firstLaunchViewModel
         val settings = settingsViewModel

@@ -2,13 +2,23 @@ package com.ustc.timetable.semester
 
 import android.app.Application
 import android.content.Context
+import androidx.activity.ComponentActivity
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.ustc.timetable.scheduleprofile.OfficialProfileLoader
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
+import com.ustc.timetable.scheduleprofile.ScheduleProfileRepository
 import com.ustc.timetable.scheduleprofile.toEntity
 import com.ustc.timetable.school.ustc.dto.UstcCourseSummary
 import com.ustc.timetable.school.ustc.dto.UstcPortalPage
@@ -23,6 +33,7 @@ import com.ustc.timetable.school.ustc.portal.SchoolPortalSource
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.asFailure
 import com.ustc.timetable.timetable.data.SettingsStore
+import com.ustc.timetable.timetable.data.SemesterRepository
 import com.ustc.timetable.timetable.data.db.Mappers
 import com.ustc.timetable.timetable.data.db.TimetableDatabase
 import com.ustc.timetable.timetable.domain.FingerprintedSchoolContent
@@ -30,11 +41,15 @@ import com.ustc.timetable.timetable.domain.SchoolSnapshotFingerprint
 import com.ustc.timetable.timetable.domain.SemesterDefaults
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.Term
+import com.ustc.timetable.timetable.ui.FirstLaunchRoute
+import com.ustc.timetable.timetable.ui.FirstLaunchViewModel
+import com.ustc.timetable.timetable.ui.LoginImportLauncher
 import java.nio.file.Files
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,17 +64,22 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36])
 class ImportFlowTest {
+
+    @get:Rule val compose = createComposeRule()
 
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val now = Instant.parse("2026-09-01T02:03:04Z")
@@ -231,6 +251,84 @@ class ImportFlowTest {
         assertEquals("old", settings.viewedSemesterId.first())
     }
 
+    @Test fun confirmation_commit_survives_composition_disposal_after_room_commit() {
+        val viewedWriteEntered = AtomicBoolean(false)
+        val viewedWriteFinished = AtomicBoolean(false)
+        val releaseViewedWrite = CompletableDeferred<Unit>()
+        val fixture = fixture(
+            meta = completePartial(),
+            confident = false,
+            viewedSemesterWriter = { id ->
+                viewedWriteEntered.set(true)
+                releaseViewedWrite.await()
+                settings.setViewedSemesterId(id)
+                viewedWriteFinished.set(true)
+            },
+        )
+        runBlocking { fixture.vm.onLoginResultOk() }
+        val showRoute = mutableStateOf(true)
+        val firstLaunch = firstLaunchVm(LoginImportLauncher {})
+
+        compose.setContent {
+            if (showRoute.value) FirstLaunchRoute(firstLaunch, fixture.vm)
+        }
+        compose.onNodeWithTag("semester_confirm_submit").assertExists()
+        compose.runOnIdle { fixture.vm.confirmMeta(confirmed()) }
+        compose.waitUntil(timeoutMillis = 5_000) { viewedWriteEntered.get() }
+        assertNotNull(runBlocking { db.semesterDao().byId("new") })
+
+        compose.runOnIdle { showRoute.value = false }
+        releaseViewedWrite.complete(Unit)
+        compose.waitUntil(timeoutMillis = 5_000) { viewedWriteFinished.get() }
+
+        assertEquals("new", runBlocking { settings.viewedSemesterId.first() })
+        assertEquals(ImportStep.Done(SemesterId("new")), fixture.vm.step.value)
+    }
+
+    @Test fun typed_failure_is_actionable_and_composed_retry_succeeds() {
+        runBlocking {
+            db.clearAllTables()
+            db.scheduleProfileDao().insert(working.toEntity())
+        }
+        val fixture = fixture(
+            portalErrors = listOf(SyncError.NetworkFailed, null),
+        )
+        runBlocking { fixture.vm.onLoginResultOk() }
+        assertEquals(ImportStep.Error(SyncError.NetworkFailed), fixture.vm.step.value)
+        val firstLaunch = firstLaunchVm(LoginImportLauncher(fixture.vm::startLoginImport))
+
+        compose.setContent { FirstLaunchRoute(firstLaunch, fixture.vm) }
+        compose.onNodeWithText("导入失败，请重试登录并导入").assertIsDisplayed()
+        compose.onNodeWithTag("first_launch_import").performClick()
+        compose.waitUntil(timeoutMillis = 5_000) { fixture.vm.step.value is ImportStep.Done }
+
+        assertEquals(ImportStep.Done(SemesterId("new")), fixture.vm.step.value)
+        assertEquals("new", runBlocking { settings.viewedSemesterId.first() })
+    }
+
+    @Test fun activity_recreation_during_suspended_fetch_does_not_strand_retained_import() {
+        val fetchGate = CompletableDeferred<Unit>()
+        val fixture = fixture(selectionGate = fetchGate)
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = fixture.vm as T
+        }
+        val retained = ViewModelProvider(controller.get(), factory)[ImportFlowViewModel::class.java]
+
+        retained.startLoginImport()
+        compose.waitUntil(timeoutMillis = 5_000) { retained.step.value == ImportStep.Fetching }
+
+        controller.configurationChange()
+        val afterRecreation = ViewModelProvider(controller.get(), factory)[ImportFlowViewModel::class.java]
+        assertSame(retained, afterRecreation)
+        fetchGate.complete(Unit)
+        compose.waitUntil(timeoutMillis = 5_000) { retained.step.value is ImportStep.Done }
+
+        assertEquals(ImportStep.Done(SemesterId("new")), retained.step.value)
+        controller.pause().stop().destroy()
+    }
+
     @Test fun successful_import_creates_portal_linked_semester() = runBlocking {
         val fixture = fixture()
 
@@ -400,11 +498,13 @@ class ImportFlowTest {
         selection: List<UstcCourseSummary> = selectionRows(),
         timetable: List<UstcTimetableEntry> = timetableRows(),
         portalError: SyncError? = null,
+        portalErrors: List<SyncError?>? = null,
         parserError: SyncError? = null,
         selectionGate: CompletableDeferred<Unit>? = null,
         provisionalId: String = "new",
+        viewedSemesterWriter: suspend (String) -> Unit = settings::setViewedSemesterId,
     ): Fixture {
-        val portal = FakePortal(portalError, selectionGate)
+        val portal = FakePortal(ArrayDeque(portalErrors ?: listOf(portalError)), selectionGate)
         val selectionParser = FakeSelectionParser(selection, parserError)
         val timetableParser = FakeTimetableParser(timetable)
         val metaParser = FakeMetaParser(meta, confident)
@@ -420,8 +520,21 @@ class ImportFlowTest {
             clock = clock,
             provisionalSemesterId = { SemesterId(provisionalId) },
             privateProfileId = { "profile.import" },
+            setViewedSemesterId = viewedSemesterWriter,
+            importDispatcher = Dispatchers.Default,
         )
         return Fixture(vm, portal, selectionParser, timetableParser, metaParser)
+    }
+
+    private fun firstLaunchVm(launcher: LoginImportLauncher): FirstLaunchViewModel {
+        val profiles = ScheduleProfileRepository(db, settings, working)
+        return FirstLaunchViewModel(
+            semesters = SemesterRepository(db, profiles),
+            settings = settings,
+            bundledOfficial = working,
+            clock = clock,
+            loginImportLauncher = launcher,
+        )
     }
 
     private fun completePartial() = UstcSemesterMetaPartial(
@@ -477,7 +590,7 @@ class ImportFlowTest {
     private enum class FailureStage { PORTAL, PARSE, NORMALIZE }
 
     private class FakePortal(
-        private val error: SyncError?,
+        private val errors: ArrayDeque<SyncError?>,
         private val selectionGate: CompletableDeferred<Unit>?,
     ) : SchoolPortalSource {
         var selectionCalls = 0
@@ -486,7 +599,7 @@ class ImportFlowTest {
         override suspend fun fetchCourseSelectionPage(): UstcPortalPage {
             selectionCalls++
             selectionGate?.await()
-            error?.let { throw it.asFailure() }
+            errors.removeFirstOrNull()?.let { throw it.asFailure() }
             return UstcPortalPage("selection", "fixture://selection")
         }
 
