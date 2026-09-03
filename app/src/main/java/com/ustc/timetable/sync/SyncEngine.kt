@@ -34,14 +34,17 @@ class SyncEngine(
 ) {
     private val syncMutex = Mutex()
 
-    suspend fun syncCurrentAcademicSemester(): SyncResult = syncMutex.withLock {
-        syncCurrentAcademicSemesterLocked()
+    suspend fun syncCurrentAcademicSemester(): SyncResult =
+        executeCurrentAcademicSemester().result
+
+    suspend fun executeCurrentAcademicSemester(): SyncExecutionReport = syncMutex.withLock {
+        executeCurrentAcademicSemesterLocked()
     }
 
-    private suspend fun syncCurrentAcademicSemesterLocked(): SyncResult {
+    private suspend fun executeCurrentAcademicSemesterLocked(): SyncExecutionReport {
         val target = db.semesterDao().academicCurrentPortalLinked()?.let(Mappers::toDomain)
-            ?: return SyncResult.NoChange
-        return try {
+            ?: return SyncExecutionReport(SyncResult.NoChange, portalAttempted = false, finishedAt = null)
+        val result = try {
             val selectionPage = portal.fetchCourseSelectionPage()
             val timetablePage = portal.fetchTimetablePage()
             val selection = selectionParser.parse(selectionPage)
@@ -52,7 +55,9 @@ class SyncEngine(
 
             val newContent = FingerprintedSchoolContent.of(target, normalized.courses, normalized.meetings)
             val newFingerprint = SchoolSnapshotFingerprint.compute(newContent)
-            if (target.sourceFingerprint == newFingerprint) return SyncResult.NoChange
+            if (target.sourceFingerprint == newFingerprint) {
+                return SyncExecutionReport(SyncResult.NoChange, portalAttempted = true, finishedAt = clock.instant())
+            }
 
             val (oldCourses, oldMeetings) = loadTargetSchoolSnapshot(target.id)
             val changes = if (target.sourceFingerprint == null) {
@@ -75,6 +80,7 @@ class SyncEngine(
         } catch (failure: SyncFailure) {
             SyncResult.Failed(failure.error)
         }
+        return SyncExecutionReport(result, portalAttempted = true, finishedAt = clock.instant())
     }
 
     private suspend fun loadTargetSchoolSnapshot(

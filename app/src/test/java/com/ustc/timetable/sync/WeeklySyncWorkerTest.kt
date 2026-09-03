@@ -73,7 +73,7 @@ class WeeklySyncWorkerTest {
         storeScope.cancel()
     }
 
-    @Test fun disabled_worker_returns_success_without_runner_call() = runBlocking {
+    @Test fun disabled_worker_does_not_record_time() = runBlocking {
         settings.setWeeklySyncEnabled(false)
         settings.setNeedReauth(false)
         val runner = RecordingRunner(SyncResult.Failed(SyncError.AuthenticationExpired))

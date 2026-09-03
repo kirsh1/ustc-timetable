@@ -108,6 +108,51 @@ class SyncEngineTest {
         assertEquals(before, snapshot())
     }
 
+    @Test fun no_target_does_not_report_a_finished_portal_attempt() = runBlocking {
+        replaceSemester(target.copy(portalLinked = false))
+        val fixture = EngineFixture(db)
+
+        assertEquals(
+            SyncExecutionReport(SyncResult.NoChange, portalAttempted = false, finishedAt = null),
+            fixture.engine().executeCurrentAcademicSemester(),
+        )
+    }
+
+    @Test fun actual_nochange_reports_finished_time() = runBlocking {
+        val fixture = EngineFixture(db)
+
+        assertEquals(
+            SyncExecutionReport(SyncResult.NoChange, portalAttempted = true, finishedAt = syncTime),
+            fixture.engine().executeCurrentAcademicSemester(),
+        )
+    }
+
+    @Test fun success_reports_finished_time() = runBlocking {
+        val fixture = EngineFixture(db, location = "TH-C204")
+
+        val report = fixture.engine().executeCurrentAcademicSemester()
+
+        assertTrue(report.result is SyncResult.Success)
+        assertTrue(report.portalAttempted)
+        assertEquals(syncTime, report.finishedAt)
+    }
+
+    @Test fun typed_failure_reports_finished_time() = runBlocking {
+        listOf(
+            SyncError.AuthenticationExpired,
+            SyncError.NetworkFailed,
+            SyncError.ParseFailed,
+            SyncError.ValidationFailed,
+        ).forEach { error ->
+            val fixture = EngineFixture(db, failure = Stage.SELECTION_FETCH to error.asFailure())
+
+            assertEquals(
+                SyncExecutionReport(SyncResult.Failed(error), portalAttempted = true, finishedAt = syncTime),
+                fixture.engine().executeCurrentAcademicSemester(),
+            )
+        }
+    }
+
     @Test fun sync_ignores_viewed_and_targets_academic_current_portal_linked() = runBlocking {
         val historical = target.copy(
             id = SemesterId("historical"),

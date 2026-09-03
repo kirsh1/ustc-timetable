@@ -1,6 +1,7 @@
 package com.ustc.timetable.sync
 
 import com.ustc.timetable.timetable.domain.ScheduleChange
+import java.time.Instant
 
 sealed class SyncResult {
     data object NoChange : SyncResult()
@@ -13,3 +14,9 @@ sealed class SyncResult {
         val error: SyncError,
     ) : SyncResult()
 }
+
+data class SyncExecutionReport(
+    val result: SyncResult,
+    val portalAttempted: Boolean,
+    val finishedAt: Instant?,
+)

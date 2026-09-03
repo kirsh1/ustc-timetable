@@ -29,6 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.ustc.timetable.school.ustc.auth.WebViewLoginContract
+import com.ustc.timetable.sync.ManualSyncController
+import com.ustc.timetable.sync.ManualSyncState
+import com.ustc.timetable.timetable.ui.AuthExpiredDialog
+import com.ustc.timetable.timetable.ui.handleManualSyncLoginResult
 
 data class SettingsCallbacks(
     val onBack: () -> Unit = {},
@@ -46,14 +51,20 @@ data class SettingsCallbacks(
 @Composable
 fun SettingsRoute(
     viewModel: SettingsViewModel,
+    manualSyncController: ManualSyncController? = null,
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
-    onRequestRelogin: () -> Unit = {},
+    onRequestRelogin: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val manualSyncState = manualSyncController?.state?.collectAsState()?.value ?: ManualSyncState.Idle
     val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.onNotificationPermissionResult()
+    }
+    val reloginLauncher = rememberLauncherForActivityResult(WebViewLoginContract()) { successful ->
+        if (successful) viewModel.onReloginResult(true)
+        manualSyncController?.let { handleManualSyncLoginResult(it, successful) }
     }
     LaunchedEffect(Unit) { viewModel.onSyncSectionEntered() }
     LaunchedEffect(viewModel) {
@@ -66,7 +77,9 @@ fun SettingsRoute(
                 SettingsEvent.OpenNotificationSettings -> context.startActivity(
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
                 )
-                SettingsEvent.RequestRelogin -> onRequestRelogin()
+                SettingsEvent.RequestRelogin -> {
+                    onRequestRelogin?.invoke() ?: reloginLauncher.launch(Unit)
+                }
             }
         }
     }
@@ -85,6 +98,12 @@ fun SettingsRoute(
             onApplyWorking = viewModel::applyWorkingToAcademicCurrent,
         ),
     )
+    if (manualSyncState == ManualSyncState.AwaitingReauth && manualSyncController != null) {
+        AuthExpiredDialog(
+            onCancel = manualSyncController::onCancelAuthExpired,
+            onRelogin = { reloginLauncher.launch(Unit) },
+        )
+    }
 }
 
 @Composable

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ApplicationProvider
 import com.ustc.timetable.settings.SettingsViewModel
+import com.ustc.timetable.semester.ImportFlowViewModel
 import com.ustc.timetable.timetable.domain.SemesterDefaults
 import com.ustc.timetable.timetable.ui.FirstLaunchViewModel
 import com.ustc.timetable.timetable.ui.TimetableViewModel
@@ -53,6 +54,7 @@ class MainActivityLifecycleTest {
         assertNotNull(provider[TimetableViewModel::class.java])
         assertNotNull(provider[FirstLaunchViewModel::class.java])
         assertNotNull(provider[SettingsViewModel::class.java])
+        assertNotNull(provider[ImportFlowViewModel::class.java])
 
         controller.pause().stop().destroy()
         shadowOf(Looper.getMainLooper()).idle()

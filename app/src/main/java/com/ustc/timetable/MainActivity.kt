@@ -12,23 +12,36 @@ import androidx.compose.runtime.getValue
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.ustc.timetable.notification.NotificationPermissionController
 import com.ustc.timetable.scheduleprofile.ProfileEditorScreen
 import com.ustc.timetable.settings.NotificationsEnabledChecker
 import com.ustc.timetable.settings.SettingsRoute
 import com.ustc.timetable.settings.SettingsViewModel
+import com.ustc.timetable.settings.SettingsManualSync
+import com.ustc.timetable.settings.SettingsSessionAccess
+import com.ustc.timetable.settings.WeeklySyncScheduling
+import com.ustc.timetable.semester.ImportFlowViewModel
+import com.ustc.timetable.school.ustc.auth.WebViewLoginContract
+import com.ustc.timetable.sync.SyncScheduler
 import com.ustc.timetable.timetable.ui.AppRoot
 import com.ustc.timetable.timetable.ui.FirstLaunchRoute
 import com.ustc.timetable.timetable.ui.FirstLaunchViewModel
+import com.ustc.timetable.timetable.ui.LoginImportLauncher
 import com.ustc.timetable.timetable.ui.TimetableRoute
 import com.ustc.timetable.timetable.ui.TimetableViewModel
 import com.ustc.timetable.timetable.ui.minuteTicks
 import java.time.Clock
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val container: AppContainer
         get() = (application as TimetableApp).container
     private val clock: Clock = Clock.systemDefaultZone()
+    private val firstLaunchLoginLauncher = registerForActivityResult(WebViewLoginContract()) { successful ->
+        if (successful) lifecycleScope.launch { importFlowViewModel.onLoginResultOk() }
+    }
     private val activityViewModelFactory: ViewModelProvider.Factory by lazy {
         MainActivityViewModelFactory(
             container = container,
@@ -36,11 +49,14 @@ class MainActivity : ComponentActivity() {
             notificationsEnabled = {
                 NotificationManagerCompat.from(this).areNotificationsEnabled()
             },
+            loginImportLauncher = { firstLaunchLoginLauncher.launch(Unit) },
+            weeklyScheduling = WeeklySyncScheduling { enabled -> SyncScheduler.setEnabled(this, enabled) },
         )
     }
     private val timetableViewModel: TimetableViewModel by viewModels { activityViewModelFactory }
     private val firstLaunchViewModel: FirstLaunchViewModel by viewModels { activityViewModelFactory }
     private val settingsViewModel: SettingsViewModel by viewModels { activityViewModelFactory }
+    private val importFlowViewModel: ImportFlowViewModel by viewModels { activityViewModelFactory }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,20 +75,23 @@ class MainActivity : ComponentActivity() {
         val timetable = timetableViewModel
         val firstLaunch = firstLaunchViewModel
         val settings = settingsViewModel
+        val importFlow = importFlowViewModel
         setContent {
             MaterialTheme {
                 val firstLaunchState by firstLaunch.state.collectAsState()
                 AppRoot(
                     gate = firstLaunchState.gate,
-                    firstLaunchContent = { FirstLaunchRoute(firstLaunch) },
+                    firstLaunchContent = { FirstLaunchRoute(firstLaunch, importFlow) },
                     timetableContent = { openSettings -> TimetableRoute(
                         viewModel = timetable,
                         manualRepository = container.manual,
                         clock = clock,
+                        manualSyncController = container.ustcPortalRuntime.manualSyncController,
                         onSettingsClick = openSettings,
                     ) },
                     settingsContent = { back, openProfile -> SettingsRoute(
                         viewModel = settings,
+                        manualSyncController = container.ustcPortalRuntime.manualSyncController,
                         onBack = back,
                         onOpenProfile = openProfile,
                     ) },
@@ -96,6 +115,8 @@ private class MainActivityViewModelFactory(
     private val container: AppContainer,
     private val clock: Clock,
     private val notificationsEnabled: () -> Boolean,
+    private val loginImportLauncher: LoginImportLauncher,
+    private val weeklyScheduling: WeeklySyncScheduling,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
@@ -113,18 +134,35 @@ private class MainActivityViewModelFactory(
             settings = container.settings,
             bundledOfficial = container.bundledOfficial,
             clock = clock,
-            loginImportLauncher = null,
+            loginImportLauncher = loginImportLauncher,
         )
+        modelClass.isAssignableFrom(ImportFlowViewModel::class.java) -> {
+            val runtime = container.ustcPortalRuntime
+            ImportFlowViewModel(
+                portal = runtime.portalSource,
+                selectionParser = runtime.courseParser,
+                timetableParser = runtime.timetableParser,
+                metaParser = runtime.semesterMetaParser,
+                normalizer = runtime.normalizer,
+                db = container.db,
+                settings = container.settings,
+                workingProfile = { container.profiles.observeWorking().first() },
+                clock = Clock.systemUTC(),
+            )
+        }
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(
             settings = container.settings,
             profiles = container.profiles,
             semesters = container.semesters,
             permission = NotificationPermissionController(container.settings),
             notifications = NotificationsEnabledChecker(notificationsEnabled),
-            session = null,
-            weeklyScheduling = null,
-            manualSync = null,
-            reloginRuntimeAvailable = false,
+            session = object : SettingsSessionAccess {
+                override suspend fun load() = container.ustcPortalRuntime.sessionStore.load()
+                override suspend fun clear() = container.ustcPortalRuntime.sessionStore.clear()
+            },
+            weeklyScheduling = weeklyScheduling,
+            manualSync = SettingsManualSync(container.ustcPortalRuntime.manualSyncController::start),
+            reloginRuntimeAvailable = true,
             zoneId = java.time.ZoneId.systemDefault(),
             appVersion = BuildConfig.VERSION_NAME,
         )

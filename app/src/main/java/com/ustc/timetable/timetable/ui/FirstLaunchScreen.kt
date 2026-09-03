@@ -19,17 +19,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ustc.timetable.semester.ImportFlowViewModel
+import com.ustc.timetable.semester.ImportStep
+import com.ustc.timetable.semester.SemesterConfirmSheet
+import kotlinx.coroutines.launch
 
 @Composable
-fun FirstLaunchRoute(viewModel: FirstLaunchViewModel) {
+fun FirstLaunchRoute(
+    viewModel: FirstLaunchViewModel,
+    importFlow: ImportFlowViewModel? = null,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val importStep = importFlow?.step?.collectAsStateWithLifecycle()?.value
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -43,6 +53,16 @@ fun FirstLaunchRoute(viewModel: FirstLaunchViewModel) {
         onSkipManualCreation = viewModel::onSkipManualCreation,
         snackbarHostState = snackbar,
     )
+    if (importFlow != null) {
+        val confirmation = importStep as? ImportStep.ConfirmMeta
+        if (confirmation != null) {
+            SemesterConfirmSheet(
+                draft = confirmation.draft,
+                onConfirm = { confirmed -> scope.launch { importFlow.onMetaConfirmed(confirmed) } },
+                onCancel = importFlow::onMetaCancelled,
+            )
+        }
+    }
 }
 
 @Composable
