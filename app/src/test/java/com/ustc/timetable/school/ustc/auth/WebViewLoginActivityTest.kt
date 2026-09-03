@@ -273,6 +273,42 @@ class WebViewLoginActivityTest {
         assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
     }
 
+    @Test fun disallowed_navigation_start_immediately_revokes_manual_fallback_eligibility() {
+        var probeCookieReads = 0
+        val descriptor = descriptor()
+        app.dependencies = dependencies(
+            descriptor,
+            cookies = CookieRetriever { url ->
+                if (url == descriptor.probeUrl) probeCookieReads++
+                null
+            },
+        )
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        repeat(3) {
+            finishPage(activity, dynamicLanding())
+            awaitCondition { probeCookieReads == it + 1 }
+        }
+        val fallback = findFallback(activity)!!
+        val disallowedUrls = listOf(
+            "https://evil.example/done",
+            descriptor.loginUrl,
+            server.url("/ucas-sso/login?ticket=%3Credacted%3E").toString(),
+            server.url("/dashboard").toString(),
+        )
+
+        disallowedUrls.forEach { url ->
+            finishPage(activity, dynamicLanding())
+            val readsBeforeNavigation = probeCookieReads
+            startPage(activity, url)
+            fallback.performClick()
+            settleAsyncWork()
+
+            assertEquals(readsBeforeNavigation, probeCookieReads)
+            assertFalse(activity.isFinishing)
+            assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
+        }
+    }
+
     @Test fun result_ok_parses_true() {
         assertTrue(WebViewLoginContract().parseResult(Activity.RESULT_OK, null))
     }

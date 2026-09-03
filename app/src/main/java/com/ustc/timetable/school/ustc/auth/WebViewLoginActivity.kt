@@ -76,6 +76,7 @@ class WebViewLoginActivity : ComponentActivity() {
                     !isHttp(Uri.parse(url))
 
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    coordinator.onPageStarted()
                     bootstrapGate.onPageStarted()
                 }
 

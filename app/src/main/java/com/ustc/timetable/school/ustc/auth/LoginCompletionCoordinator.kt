@@ -41,6 +41,10 @@ class LoginCompletionCoordinator(
         return probe(isAutomatic = true)
     }
 
+    fun onPageStarted() {
+        manualProbeEligible = false
+    }
+
     suspend fun onManualProbe(): LoginCompletionResult {
         if (!manualProbeEligible) return LoginCompletionResult.Ignored
         return probe(isAutomatic = false)
