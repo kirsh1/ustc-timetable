@@ -43,6 +43,9 @@ class WeeklyTimetableGridTest {
         LocalTime.of(14, 0), LocalTime.of(14, 50), LocalTime.of(15, 55), LocalTime.of(16, 45), LocalTime.of(17, 35),
         LocalTime.of(19, 30), LocalTime.of(20, 20), LocalTime.of(21, 10),
     )
+    private val periods = periodStarts.mapIndexed { index, start ->
+        PeriodTime(index + 1, start, start.plusMinutes(45))
+    }
     // weekDates 周一 = 2026-09-07 → 周日 09-13；header 为中文星期 + M-dd 两行。
     private fun weekDatesMonday(start: LocalDate = LocalDate.of(2026, 9, 7)) =
         LocalDateRange(start, start.plusDays(6))
@@ -105,6 +108,7 @@ class WeeklyTimetableGridTest {
                     weekDates, axis, periodStarts, school, manual, showNonCurrentWeek,
                     viewedWeek, nowLine, today, onSchool, onManual, onEmpty,
                     segmentedAxis = segmentedAxis,
+                    periods = periods,
                 )
             }
             if (width != null && height != null) {
@@ -433,9 +437,6 @@ class WeeklyTimetableGridTest {
     }
 
     @Test fun teaching_groups_are_derived_from_profile_breaks() {
-        val periods = periodStarts.mapIndexed { index, start ->
-            PeriodTime(index + 1, start, start.plusMinutes(45))
-        }
         assertEquals(
             listOf(
                 LocalTime.of(7, 50) to LocalTime.of(9, 25),
@@ -446,6 +447,20 @@ class WeeklyTimetableGridTest {
             ),
             teachingTimeGroups(periods).map { it.start to it.endInclusive },
         )
+    }
+
+    @Test fun gutter_renders_five_nonoverlapping_teaching_range_labels() {
+        setContentGrid(segmentedAxis = SegmentedTimelineAxis.from(
+            com.ustc.timetable.scheduleprofile.ScheduleProfile("segmented", "segmented", false, periods),
+        ))
+        listOf(
+            "07:50-09:25", "09:45-12:10", "14:00-15:35", "15:55-18:20", "19:30-21:55",
+        ).forEach { range ->
+            rule.onAllNodesWithTag("time_group:$range").assertCountEquals(1)
+        }
+        listOf("time_label:12:10", "time_label:14:00", "time_label:18:20", "time_label:19:30").forEach {
+            rule.onAllNodesWithTag(it).assertCountEquals(0)
+        }
     }
 
     // ---- today / now line ----

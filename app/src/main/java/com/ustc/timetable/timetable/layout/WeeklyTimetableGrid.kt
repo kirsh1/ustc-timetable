@@ -24,7 +24,6 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -111,6 +110,9 @@ fun WeeklyTimetableGrid(
             val bodyHeight = maxHeight
             val gridWidth = (maxWidth - gutterWidth).coerceAtLeast(0.dp)
             val teachingGroups = teachingTimeGroups(periods)
+            val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)
+            val compressedGapColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.045f)
             val renderingAxis: ReversibleTimelineAxis = segmentedAxis?.resolve(
                 viewportHeightDp = bodyHeight.value,
                 compressedGapDp = compressedGapDpForHeight(bodyHeight.value),
@@ -132,21 +134,19 @@ fun WeeklyTimetableGrid(
                         .fillMaxHeight()
                         .testTag("timetable_grid")
                         .drawBehind {
-                            val lineColor = Color(0xFF64748B).copy(alpha = 0.16f)
-                            val dividerColor = Color(0xFF64748B).copy(alpha = 0.12f)
                             for (day in 1..6) {
                                 val x = size.width * day / 7f
                                 drawLine(dividerColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1f)
                             }
                             periodStarts.forEach { time ->
                                 val y = size.height * renderingAxis.fractionOf(time)
-                                drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1f)
+                                drawLine(gridLineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1f)
                             }
                             teachingGroups.zipWithNext().forEach { (before, after) ->
                                 val top = size.height * renderingAxis.fractionOf(before.endInclusive)
                                 val bottom = size.height * renderingAxis.fractionOf(after.start)
                                 drawRect(
-                                    color = Color(0xFF94A3B8).copy(alpha = 0.07f),
+                                    color = compressedGapColor,
                                     topLeft = androidx.compose.ui.geometry.Offset(0f, top),
                                     size = androidx.compose.ui.geometry.Size(size.width, (bottom - top).coerceAtLeast(0f)),
                                 )
@@ -303,35 +303,58 @@ private fun TimeGutter(
     modifier: Modifier,
 ) {
     Box(modifier) {
-        val primaryLabels = if (teachingGroups.isEmpty()) {
-            periodStarts
-        } else {
-            teachingGroups.flatMap { listOf(it.start, it.endInclusive) }
-        }
-        val labels = (primaryLabels + axis.start + axis.endInclusive)
-            .toSet()
-            .sorted()
-        for (time in labels) {
-            Layout(
-                content = {
-                Text(
-                    time.toString(),
-                        Modifier.testTag("time_label:$time"),
-                    style = MaterialTheme.typography.labelSmall,
+        if (teachingGroups.isNotEmpty()) {
+            teachingGroups.forEach { group ->
+                val centerFraction = (
+                    axis.fractionOf(group.start) + axis.fractionOf(group.endInclusive)
+                    ) / 2f
+                PositionedGutterLabel(
+                    text = "${group.start}\n–\n${group.endInclusive}",
+                    tag = "time_group:${group.start}-${group.endInclusive}",
+                    anchorFraction = centerFraction,
+                    bodyHeight = bodyHeight,
                 )
-                },
-                modifier = Modifier.fillMaxSize(),
-            ) { measurables, constraints ->
-                val label = measurables.single().measure(
-                    constraints.copy(minWidth = 0, minHeight = 0),
-                )
-                val anchor = (bodyHeight.roundToPx() * axis.fractionOf(time)).roundToInt()
-                val y = (anchor - label.height / 2)
-                    .coerceIn(0, (bodyHeight.roundToPx() - label.height).coerceAtLeast(0))
-                layout(constraints.maxWidth, constraints.maxHeight) {
-                    label.placeRelative(4.dp.roundToPx(), y)
-                }
             }
+        } else {
+            val labels = (periodStarts + axis.start + axis.endInclusive).toSet().sorted()
+            labels.forEach { time ->
+                PositionedGutterLabel(
+                    text = time.toString(),
+                    tag = "time_label:$time",
+                    anchorFraction = axis.fractionOf(time),
+                    bodyHeight = bodyHeight,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PositionedGutterLabel(
+    text: String,
+    tag: String,
+    anchorFraction: Float,
+    bodyHeight: Dp,
+) {
+    Layout(
+        content = {
+                Text(
+                    text,
+                    Modifier.testTag(tag),
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                )
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { measurables, constraints ->
+        val label = measurables.single().measure(
+            constraints.copy(minWidth = 0, minHeight = 0),
+        )
+        val anchor = (bodyHeight.roundToPx() * anchorFraction).roundToInt()
+        val y = (anchor - label.height / 2)
+            .coerceIn(0, (bodyHeight.roundToPx() - label.height).coerceAtLeast(0))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            label.placeRelative(4.dp.roundToPx(), y)
         }
     }
 }
