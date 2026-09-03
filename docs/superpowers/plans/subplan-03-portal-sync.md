@@ -819,5 +819,6 @@ E2 测试中的 `fixture.example` URL、合成 HTML 和 fake detector 只证明�
 ## 本子计划完成判定
 
 - Phase 0 audited the nine evidence rows. The evidence record remains authoritative for its explicit unknowns and does not qualify runtime/device behavior.
-- Gated 分支 F2→F3→F4→F6→G1 may now use the documented sanitized evidence; G1 合入后只替换注入实现并重跑 G1 步骤 5 的定向回归。
-- `./gradlew :app:testDebugUnitTest` 全绿；`./gradlew :app:lintDebug` 无 error。
+- Gated 分支 F2→F3→F4→F6→G1 已按审计后的脱敏证据实现；真实 runtime 通过 `AppContainer` 统一组合，H1/G2 domain 与 transaction authority 未被复制或改写。
+- 2026-09-03 API 36 实机路径已验证 CAS/WebView 自动完成、current-turn discovery、四个真实 XHR、metadata confirmation、原子导入、冷启动持久化、无变化手动同步与 local-session reauth orchestration。详见 [2026-09-03-real-portal.md](../qualification/2026-09-03-real-portal.md)。该记录不把本地 session 缺失测试冒充为 server-expired CAS cookie 证据。
+- 最终资格链：portal boundary 241/241、sync+semester 161/161、full unit serial/default-worker 均 991/991、connected 14/14；`lintDebug` 0 error，debug/release assemble GREEN。
