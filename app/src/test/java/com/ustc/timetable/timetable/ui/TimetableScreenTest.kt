@@ -1,9 +1,11 @@
 package com.ustc.timetable.timetable.ui
 
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.ustc.timetable.scheduleprofile.PeriodTime
@@ -27,7 +29,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [36], qualifiers = "w400dp-h800dp")
 class TimetableScreenTest {
 
     private val profile = ScheduleProfile(
@@ -59,6 +61,7 @@ class TimetableScreenTest {
         placedManual: List<PlacedBlock> = emptyList(),
         isAcademicCurrentViewed: Boolean = false,
         canSyncViewed: Boolean = false,
+        naturalWeek: Int? = null,
     ): TimetableUiState {
         val semester = SemesterDefaults.AUTUMN_2026(id = "s", profileId = "p")
         val weekDates2 = LocalDateRange(LocalDate.of(2026, 9, 7), LocalDate.of(2026, 9, 13))
@@ -73,7 +76,7 @@ class TimetableScreenTest {
         return TimetableUiState(
             semester = semester,
             viewedWeek = 2,
-            naturalWeek = null,
+            naturalWeek = naturalWeek,
             profile = profile,
             weekPages = pages,
             showNonCurrentWeek = false,
@@ -86,18 +89,20 @@ class TimetableScreenTest {
 
     @get:Rule val rule = createComposeRule()
 
-    @Test fun screen_renders_semester_week_and_date_range() {
+    @Test fun compact_top_bar_leads_with_week_and_inline_date_range() {
         rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
-        rule.onAllNodesWithText("2026-2027 秋季 ▼").assertCountEquals(1)
+        rule.onAllNodesWithText("2026-2027 秋季 ▼").assertCountEquals(0)
         rule.onAllNodesWithText("第 2 周").assertCountEquals(1)
         rule.onAllNodesWithText("9.7 - 9.13").assertCountEquals(1)
+        rule.onAllNodesWithTag("timetable_top_bar").assertCountEquals(1)
     }
 
     @Test fun screen_renders_weekly_grid() {
         rule.setContent { TimetableScreen(state = fullState(placedSchool = placedSchool()), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
         rule.onAllNodesWithTag("timetable_grid").assertCountEquals(1)
         rule.onAllNodesWithTag("school_block:m1").assertCountEquals(1)
-        rule.onAllNodesWithText("一 7").assertCountEquals(1)  // 七列 header 由 Grid 提供
+        rule.onAllNodesWithText("周一").assertCountEquals(1)
+        rule.onAllNodesWithText("9-07").assertCountEquals(1)
     }
 
     @Test fun arrows_fire_prev_next_callbacks() {
@@ -109,15 +114,14 @@ class TimetableScreenTest {
         assertTrue(prev == 1 && next == 1)
     }
 
-    @Test fun manual_academic_current_hides_refresh() {
-        // 纯手动 academic-current：isCurrent=true 但 canSync=false → 完全隐藏 ↻
+    @Test fun refresh_is_absent_from_timetable_for_manual_semester() {
         rule.setContent { TimetableScreen(state = fullState(isAcademicCurrentViewed = true, canSyncViewed = false), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
         rule.onAllNodesWithTag("refresh").assertCountEquals(0)
     }
 
-    @Test fun portal_current_with_runtime_shows_refresh() {
+    @Test fun refresh_is_absent_from_timetable_for_portal_semester() {
         rule.setContent { TimetableScreen(state = fullState(isAcademicCurrentViewed = true, canSyncViewed = true), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}, manualSyncAvailable = true) }
-        rule.onAllNodesWithTag("refresh").assertCountEquals(1)
+        rule.onAllNodesWithTag("refresh").assertCountEquals(0)
     }
 
     @Test fun timetable_gear_opens_settings() {
@@ -129,13 +133,49 @@ class TimetableScreenTest {
         assertEquals(1, calls)
     }
 
+    @Test fun top_bar_actions_expose_vector_icon_semantics() {
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        rule.onNodeWithTag("prev_week").assertContentDescriptionEquals("上一周")
+        rule.onNodeWithTag("next_week").assertContentDescriptionEquals("下一周")
+        rule.onNodeWithTag("week_overview_toggle").assertContentDescriptionEquals("展开周缩略图")
+        rule.onNodeWithTag("settings").assertContentDescriptionEquals("设置")
+        rule.onAllNodesWithText("‹").assertCountEquals(0)
+        rule.onAllNodesWithText("›").assertCountEquals(0)
+        rule.onAllNodesWithText("▦").assertCountEquals(0)
+        rule.onAllNodesWithText("⚙").assertCountEquals(0)
+        rule.onAllNodesWithText("↻").assertCountEquals(0)
+    }
+
+    @Test fun return_to_current_week_fab_only_appears_when_viewed_week_differs() {
+        var selected = 0
+        rule.setContent {
+            TimetableScreen(
+                state = fullState(naturalWeek = 5),
+                onPrevWeek = {},
+                onNextWeek = {},
+                onWeekSelected = { selected = it },
+            )
+        }
+        rule.onNodeWithContentDescription("返回本周").performClick()
+        rule.waitForIdle()
+        assertEquals(5, selected)
+    }
+
+    @Test fun return_to_current_week_fab_is_hidden_on_current_or_outside_semester() {
+        val current = androidx.compose.runtime.mutableStateOf(fullState(naturalWeek = 2))
+        rule.setContent { TimetableScreen(current.value, {}, {}, {}) }
+        rule.onAllNodesWithTag("return_to_current_week").assertCountEquals(0)
+        current.value = fullState(naturalWeek = null)
+        rule.waitForIdle()
+        rule.onAllNodesWithTag("return_to_current_week").assertCountEquals(0)
+    }
+
     @Test fun screen_school_block_click_forwards_exact_meeting_id() {
         var got: MeetingId? = null
         rule.setContent {
             TimetableScreen(
                 state = fullState(placedSchool = placedSchool("m9")),
                 onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
-                onSemesterTitleClick = {},
                 onSchoolBlockClick = { got = it },
             )
         }

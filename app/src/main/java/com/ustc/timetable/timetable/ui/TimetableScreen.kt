@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -21,13 +23,16 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -39,6 +44,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.ustc.timetable.ui.AppIcons
+import com.ustc.timetable.ui.theme.LocalTimetableSpacing
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.ustc.timetable.school.ustc.auth.WebViewLoginContract
 import com.ustc.timetable.sync.ManualSyncController
@@ -55,6 +62,8 @@ import com.ustc.timetable.manual.createNewManualEditorTarget
 import com.ustc.timetable.manual.resolveManualEditorInitial
 import com.ustc.timetable.timetable.layout.WeeklyTimetableGrid
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import com.ustc.timetable.timetable.layout.LongPressDraft
+import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import java.time.Clock
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -90,7 +99,6 @@ fun TimetableRoute(
             snackbarHostState.showSnackbar(manualSyncEventMessage(event))
         }
     }
-    var semesterSheetOpen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
     val overlays = remember(state.semester?.id) { ManualOverlayState() }
     Box(Modifier.fillMaxSize()) {
         TimetableScreen(
@@ -98,14 +106,13 @@ fun TimetableRoute(
             onPrevWeek = viewModel::onPrevWeek,
             onNextWeek = viewModel::onNextWeek,
             onWeekSelected = viewModel::onWeekSelected,
-            onSemesterTitleClick = { semesterSheetOpen = true },
             onSchoolBlockClick = overlays::openSchool,
             onManualBlockClick = { id, pageWeek ->
                 val target = createEditManualEditorTarget(state, id, pageWeek)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
             },
-            onEmptyLongPress = { pageWeek, columnFraction, yFraction ->
-                val target = createNewManualEditorTarget(state, pageWeek, columnFraction, yFraction)
+            onEmptyLongPress = { pageWeek, draft ->
+                val target = createNewManualEditorTarget(state, pageWeek, draft)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
             },
             manualSyncAvailable = manualSyncController != null,
@@ -116,17 +123,6 @@ fun TimetableRoute(
             onSettingsClick = onSettingsClick,
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
-    }
-    if (semesterSheetOpen && state.semester != null) {
-        com.ustc.timetable.semester.SemesterSwitcherSheet(
-            semesters = state.availableSemesters,
-            viewedSemesterId = state.semester!!.id,
-            onSelect = {
-                semesterSheetOpen = false
-                viewModel.onSemesterSelected(it)
-            },
-            onDismiss = { semesterSheetOpen = false },
-        )
     }
     val target = overlays.manualTarget
     val editorInitial = target?.let { resolveManualEditorInitial(it, state) }
@@ -162,10 +158,9 @@ fun TimetableScreen(
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
     onWeekSelected: (Int) -> Unit,
-    onSemesterTitleClick: () -> Unit = {},
     onSchoolBlockClick: (MeetingId) -> Unit = {},
     onManualBlockClick: (ManualItemId, pageWeek: Int) -> Unit = { _, _ -> },
-    onEmptyLongPress: (pageWeek: Int, columnFraction: Float, yFraction: Float) -> Unit = { _, _, _ -> },
+    onEmptyLongPress: (pageWeek: Int, draft: LongPressDraft) -> Unit = { _, _ -> },
     manualSyncAvailable: Boolean = false,
     manualSyncState: ManualSyncState = ManualSyncState.Idle,
     onRefreshClick: () -> Unit = {},
@@ -184,100 +179,55 @@ fun TimetableScreen(
         return
     }
     var sheetOpen by remember { mutableStateOf(false) }
-    var overviewExpanded by rememberSaveable(semester.id.value) { mutableStateOf(false) }
+    var overviewExpanded by remember(semester.id) { mutableStateOf(false) }
     val axis = WeeklyTimetableLayout.axisOf(profile)
+    val segmentedAxis = remember(profile) { SegmentedTimelineAxis.from(profile) }
+    val spacing = LocalTimetableSpacing.current
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
-        // 顶栏
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-                .testTag("timetable_top_header"),
-            verticalAlignment = Alignment.CenterVertically,
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("timetable_top_bar"),
         ) {
-            Text(
-                "${semester.displayName} ▼",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.testTag("semester_name").clickable { onSemesterTitleClick() },
-            )
-            Spacer(Modifier.weight(1f))
-            if (state.canSyncViewed && manualSyncAvailable) {
-                val refreshEnabled = manualSyncState == ManualSyncState.Idle
-                Box(
-                    modifier = Modifier
-                        .testTag("refresh")
-                        .clickable(enabled = refreshEnabled, onClick = onRefreshClick)
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (manualSyncState == ManualSyncState.Syncing) {
-                        CircularProgressIndicator(Modifier.size(20.dp).testTag("refresh_progress"), strokeWidth = 2.dp)
-                    } else {
-                        Text(
-                            "↻",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = if (refreshEnabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                            },
-                        )
+            val showArrows = maxWidth >= 360.dp
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = spacing.compactHorizontal),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showArrows) {
+                    IconButton(onClick = onPrevWeek, enabled = state.viewedWeek > 1, modifier = Modifier.testTag("prev_week")) {
+                        Icon(AppIcons.ChevronLeft, contentDescription = "上一周")
                     }
+                } else {
+                    Box(Modifier.testTag("prev_week_compact_hidden"))
                 }
-            }
-            Text(
-                "⚙",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.testTag("settings").clickable(onClick = onSettingsClick).padding(start = 8.dp),
-            )
-        }
-        // 周标题行
-        Column(Modifier.fillMaxWidth().padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "‹",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = if (state.viewedWeek > 1) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    modifier = Modifier
-                        .testTag("prev_week")
-                        .clickable(enabled = state.viewedWeek > 1) { onPrevWeek() }
-                        .padding(horizontal = 20.dp, vertical = 4.dp),
-                )
-                Text(
-                    "第 ${state.viewedWeek} 周",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .testTag("viewed_week")
-                        .clickable { sheetOpen = true },
-                )
-                Text(
-                    "▦",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier
-                        .testTag("week_overview_toggle")
-                        .semantics {
-                            contentDescription = if (overviewExpanded) "收起周缩略图" else "展开周缩略图"
-                        }
-                        .clickable { overviewExpanded = !overviewExpanded }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-                Text(
-                    "›",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = if (state.viewedWeek < semester.totalWeeks) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    modifier = Modifier
-                        .testTag("next_week")
-                        .clickable(enabled = state.viewedWeek < semester.totalWeeks) { onNextWeek() }
-                        .padding(horizontal = 20.dp, vertical = 4.dp),
-                )
-            }
-            state.weekDates?.let {
-                Text(
-                    "${it.start.monthValue}.${it.start.dayOfMonth} - ${it.endInclusive.monthValue}.${it.endInclusive.dayOfMonth}",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.testTag("week_dates"),
-                )
+                TextButton(onClick = { sheetOpen = true }, modifier = Modifier.testTag("viewed_week")) {
+                    Text("第 ${state.viewedWeek} 周", style = MaterialTheme.typography.titleMedium)
+                }
+                state.weekDates?.let {
+                    Text(
+                        "${it.start.monthValue}.${it.start.dayOfMonth} - ${it.endInclusive.monthValue}.${it.endInclusive.dayOfMonth}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("week_dates"),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (showArrows) {
+                    IconButton(onClick = onNextWeek, enabled = state.viewedWeek < semester.totalWeeks, modifier = Modifier.testTag("next_week")) {
+                        Icon(AppIcons.ChevronRight, contentDescription = "下一周")
+                    }
+                } else {
+                    Box(Modifier.testTag("next_week_compact_hidden"))
+                }
+                IconButton(
+                    onClick = { overviewExpanded = !overviewExpanded },
+                    modifier = Modifier.testTag("week_overview_toggle"),
+                ) {
+                    Icon(AppIcons.WeekOverview, contentDescription = if (overviewExpanded) "收起周缩略图" else "展开周缩略图")
+                }
+                IconButton(onClick = onSettingsClick, modifier = Modifier.testTag("settings")) {
+                    Icon(AppIcons.Settings, contentDescription = "设置")
+                }
             }
         }
         if (overviewExpanded) {
@@ -286,6 +236,7 @@ fun TimetableScreen(
                 viewedWeek = state.viewedWeek,
                 naturalWeek = state.naturalWeek,
                 onWeekSelected = onWeekSelected,
+                axis = segmentedAxis,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
             )
         }
@@ -327,8 +278,9 @@ fun TimetableScreen(
                         today = state.today,
                         onSchoolBlockClick = onSchoolBlockClick,
                         onManualBlockClick = { id -> onManualBlockClick(id, page.week) },
-                        onEmptyLongPress = { x, y -> onEmptyLongPress(page.week, x, y) },
+                        onEmptyLongPress = { draft -> onEmptyLongPress(page.week, draft) },
                         periods = profile.periods,
+                        segmentedAxis = segmentedAxis,
                     )
                 }
             }
@@ -345,6 +297,15 @@ fun TimetableScreen(
             },
             onDismiss = { sheetOpen = false },
         )
+    }
+        if (state.naturalWeek != null && state.viewedWeek != state.naturalWeek) {
+            SmallFloatingActionButton(
+                onClick = { onWeekSelected(state.naturalWeek) },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).testTag("return_to_current_week"),
+            ) {
+                Icon(AppIcons.MyLocation, contentDescription = "返回本周")
+            }
+        }
     }
     if (manualSyncState == ManualSyncState.AwaitingReauth) {
         AuthExpiredDialog(onCancel = onCancelAuthExpired, onRelogin = onReloginClick)

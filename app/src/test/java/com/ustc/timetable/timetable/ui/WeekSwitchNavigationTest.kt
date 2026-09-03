@@ -63,7 +63,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [36], qualifiers = "w400dp-h800dp")
 class WeekSwitchNavigationTest {
 
     // ---- VM harness（与 B3 相同模式：真实 A6 仓库 + in-memory Room + temp DataStore） ----

@@ -43,7 +43,7 @@ class WeeklyTimetableGridTest {
         LocalTime.of(14, 0), LocalTime.of(14, 50), LocalTime.of(15, 55), LocalTime.of(16, 45), LocalTime.of(17, 35),
         LocalTime.of(19, 30), LocalTime.of(20, 20), LocalTime.of(21, 10),
     )
-    // weekDates 周一 = 2026-09-07 → 周日 09-13；header 文本为 "一 7".."日 13"
+    // weekDates 周一 = 2026-09-07 → 周日 09-13；header 为中文星期 + M-dd 两行。
     private fun weekDatesMonday(start: LocalDate = LocalDate.of(2026, 9, 7)) =
         LocalDateRange(start, start.plusDays(6))
 
@@ -96,11 +96,16 @@ class WeeklyTimetableGridTest {
         height: androidx.compose.ui.unit.Dp? = null,
         onSchool: (MeetingId) -> Unit = {},
         onManual: (ManualItemId) -> Unit = {},
-        onEmpty: (Float, Float) -> Unit = { _, _ -> },
+        onEmpty: (LongPressDraft) -> Unit = {},
+        segmentedAxis: SegmentedTimelineAxis? = null,
     ) {
         rule.setContent {
             val grid: @Composable () -> Unit = {
-                WeeklyTimetableGrid(weekDates, axis, periodStarts, school, manual, showNonCurrentWeek, viewedWeek, nowLine, today, onSchool, onManual, onEmpty)
+                WeeklyTimetableGrid(
+                    weekDates, axis, periodStarts, school, manual, showNonCurrentWeek,
+                    viewedWeek, nowLine, today, onSchool, onManual, onEmpty,
+                    segmentedAxis = segmentedAxis,
+                )
             }
             if (width != null && height != null) {
                 Box(Modifier.requiredSize(width, height)) { grid() }
@@ -114,14 +119,18 @@ class WeeklyTimetableGridTest {
 
     @Test fun seven_columns_all_visible() {
         setContentGrid()
-        rule.onAllNodesWithText("一 7").assertCountEquals(1)
-        rule.onAllNodesWithText("日 13").assertCountEquals(1)
+        rule.onAllNodesWithText("周一").assertCountEquals(1)
+        rule.onAllNodesWithText("9-07").assertCountEquals(1)
+        rule.onAllNodesWithText("周日").assertCountEquals(1)
+        rule.onAllNodesWithText("9-13").assertCountEquals(1)
     }
 
     @Test fun weekend_columns_present_when_empty() {
         setContentGrid()
-        rule.onAllNodesWithText("六 12").assertCountEquals(1)
-        rule.onAllNodesWithText("日 13").assertCountEquals(1)
+        rule.onAllNodesWithText("周六").assertCountEquals(1)
+        rule.onAllNodesWithText("9-12").assertCountEquals(1)
+        rule.onAllNodesWithText("周日").assertCountEquals(1)
+        rule.onAllNodesWithText("9-13").assertCountEquals(1)
     }
 
     @Test fun seven_columns_use_entire_post_gutter_width() {
@@ -201,24 +210,24 @@ class WeeklyTimetableGridTest {
 
     // ---- long press（correction 7） ----
 
-    @Test fun empty_area_longpress_fires_fractions() {
-        var gotCf = -1f; var gotYf = -1f
-        setContentGrid(onEmpty = { cf, yf -> gotCf = cf; gotYf = yf })
+    @Test fun empty_area_longpress_resolves_bounded_draft() {
+        var draft: LongPressDraft? = null
+        setContentGrid(onEmpty = { draft = it })
         rule.onNodeWithTag("timetable_grid").performTouchInput {
             down(center)
             advanceEventTime(1_000L)  // 超过 long-press timeout
             up()
         }
         rule.waitForIdle()
-        assertTrue("columnFraction=$gotCf", gotCf >= 0f && gotCf < 1f)
-        assertTrue("yFraction=$gotYf", gotYf >= 0f && gotYf < 1f)
+        assertTrue(draft!!.weekday in 1..7)
+        assertTrue(draft!!.snappedStart in axis.start..axis.endInclusive)
     }
 
     @Test fun longpress_on_block_does_not_fire_empty_area_callback() {
         var fired = false
         setContentGrid(
             school = placed(schoolBlock("m3", 5, LocalTime.of(9, 45), LocalTime.of(10, 30))),
-            onEmpty = { _, _ -> fired = true },
+            onEmpty = { fired = true },
         )
         rule.onNodeWithTag("school_block:m3").performTouchInput {
             down(center)
@@ -445,7 +454,7 @@ class WeeklyTimetableGridTest {
         val today = LocalDate.of(2026, 9, 9)  // 周三
         val weekDatesState = androidx.compose.runtime.mutableStateOf(weekDatesMonday())
         rule.setContent {
-            WeeklyTimetableGrid(weekDatesState.value, axis, periodStarts, emptyList(), emptyList(), false, 2, null, today, {}, {}, { _, _ -> })
+            WeeklyTimetableGrid(weekDatesState.value, axis, periodStarts, emptyList(), emptyList(), false, 2, null, today, {}, {}, {})
         }
         rule.waitForIdle()
         rule.onAllNodesWithTag("today_header").assertCountEquals(1)
@@ -455,15 +464,39 @@ class WeeklyTimetableGridTest {
         rule.onAllNodesWithTag("today_header").assertCountEquals(0)
     }
 
-    @Test fun nowline_drawn_only_when_provided() {
+    @Test fun homepage_never_draws_now_line() {
         val nowState = androidx.compose.runtime.mutableStateOf<LocalTime?>(LocalTime.of(10, 0))
         rule.setContent {
-            WeeklyTimetableGrid(weekDatesMonday(), axis, periodStarts, emptyList(), emptyList(), false, 2, nowState.value, null, {}, {}, { _, _ -> })
+            WeeklyTimetableGrid(weekDatesMonday(), axis, periodStarts, emptyList(), emptyList(), false, 2, nowState.value, null, {}, {}, {})
         }
         rule.waitForIdle()
-        rule.onAllNodesWithTag("now_line").assertCountEquals(1)
+        rule.onAllNodesWithTag("now_line").assertCountEquals(0)
         nowState.value = null
         rule.waitForIdle()
         rule.onAllNodesWithTag("now_line").assertCountEquals(0)
+    }
+
+    @Test fun long_press_uses_resolved_segmented_axis() {
+        val periods = periodStarts.mapIndexed { index, start ->
+            PeriodTime(index + 1, start, start.plusMinutes(45))
+        }
+        val profile = com.ustc.timetable.scheduleprofile.ScheduleProfile(
+            "segmented", "segmented", false, periods,
+        )
+        var draft: LongPressDraft? = null
+        setContentGrid(
+            width = 400.dp,
+            height = 800.dp,
+            segmentedAxis = SegmentedTimelineAxis.from(profile),
+            onEmpty = { draft = it },
+        )
+        rule.onNodeWithTag("timetable_grid").performTouchInput {
+            down(center)
+            advanceEventTime(1_000L)
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals(4, draft?.weekday)
+        assertTrue(draft!!.snappedStart in axis.start..axis.endInclusive)
     }
 }

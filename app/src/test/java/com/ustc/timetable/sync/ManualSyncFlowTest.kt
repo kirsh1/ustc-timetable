@@ -219,9 +219,9 @@ class ManualSyncFlowTest {
         assertEquals(1, relogin)
     }
 
-    @Test fun refresh_visibility_current_portal_linked() {
+    @Test fun refresh_moved_out_of_home_for_current_portal_linked() {
         compose.setContent { screen(canSyncViewed = true, available = true) }
-        compose.onNodeWithTag("refresh").assertIsEnabled()
+        compose.onAllNodesWithTag("refresh").assertCountEquals(0)
     }
 
     @Test fun refresh_hidden_history() {
@@ -239,7 +239,7 @@ class ManualSyncFlowTest {
         compose.onAllNodesWithTag("refresh").assertCountEquals(0)
     }
 
-    @Test fun refresh_disabled_while_syncing() {
+    @Test fun syncing_does_not_restore_home_refresh() {
         var clicks = 0
         compose.setContent {
             screen(
@@ -250,8 +250,8 @@ class ManualSyncFlowTest {
             )
         }
 
-        compose.onNodeWithTag("refresh").assertIsNotEnabled()
-        compose.onAllNodesWithTag("refresh_progress").assertCountEquals(1)
+        compose.onAllNodesWithTag("refresh").assertCountEquals(0)
+        compose.onAllNodesWithTag("refresh_progress").assertCountEquals(0)
         assertEquals(0, clicks)
     }
 
@@ -270,7 +270,7 @@ class ManualSyncFlowTest {
 
         assertEquals(false, state.isLoading)
         compose.onAllNodesWithTag("timetable_grid").assertCountEquals(1)
-        compose.onAllNodesWithTag("refresh_progress").assertCountEquals(1)
+        compose.onAllNodesWithTag("refresh_progress").assertCountEquals(0)
     }
 
     @Test fun auth_expired_keeps_grid_state() {
@@ -287,16 +287,16 @@ class ManualSyncFlowTest {
         compose.onAllNodesWithText("登录状态已失效").assertCountEquals(1)
     }
 
-    @Test fun clicking_refresh_does_not_mutate_viewed_or_academic_current() {
+    @Test fun homepage_cannot_trigger_manual_sync_or_mutate_semester() {
         val state = timetableState(canSyncViewed = true)
         val semesterBefore = state.semester
         var clicks = 0
         compose.setContent { screen(state, available = true, onRefresh = { clicks++ }) }
 
-        compose.onNodeWithTag("refresh").performClick()
+        compose.onAllNodesWithTag("refresh").assertCountEquals(0)
         compose.waitForIdle()
 
-        assertEquals(1, clicks)
+        assertEquals(0, clicks)
         assertSame(semesterBefore, state.semester)
         assertEquals(true, state.semester!!.isCurrentAcademicSemester)
     }

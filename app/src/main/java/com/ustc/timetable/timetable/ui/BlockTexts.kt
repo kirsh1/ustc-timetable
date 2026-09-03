@@ -7,13 +7,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.layout.TimedBlock
 import androidx.compose.ui.unit.dp
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import com.ustc.timetable.ui.theme.TimetableTypography
 
 /**
  * 课表文案 formatter（SPEC §4.3/§4.4）。a11y 复现 meeting 自身 week pattern（不含 viewedWeek）；
@@ -59,10 +59,10 @@ object BlockTexts {
         showTime: Boolean,
         contentColor: Color,
     ) {
-        Column(Modifier.fillMaxSize().padding(3.dp)) {
+        Column(Modifier.fillMaxSize().padding(2.dp)) {
             Text(
                 block.title,
-                fontWeight = FontWeight.Bold,
+                style = TimetableTypography.courseTitle,
                 color = contentColor,
                 maxLines = titleMaxLines,
                 overflow = TextOverflow.Ellipsis,
@@ -70,6 +70,7 @@ object BlockTexts {
             if (showLocation && block.location.isNotBlank()) {
                 Text(
                     block.location,
+                    style = TimetableTypography.courseMetadata,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -78,6 +79,7 @@ object BlockTexts {
             if (showTeacher && block.teacherNames.isNotEmpty()) {
                 Text(
                     block.teacherNames.joinToString("、"),
+                    style = TimetableTypography.courseMetadata,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -86,6 +88,7 @@ object BlockTexts {
             if (showTime) {
                 Text(
                     timeText(block.start, block.endInclusive),
+                    style = TimetableTypography.courseMetadata,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

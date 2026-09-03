@@ -34,6 +34,7 @@ import com.ustc.timetable.timetable.domain.SemesterDefaults
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import com.ustc.timetable.timetable.layout.LongPressDraft
 import com.ustc.timetable.timetable.ui.TimetableScreen
 import com.ustc.timetable.timetable.ui.TimetableUiState
 import com.ustc.timetable.timetable.ui.TimetableViewModel
@@ -207,9 +208,11 @@ class ManualItemFlowTest {
         db.manualItemDao().itemsForSemester(semester.id.value).map(Mappers::toDomain)
 
     private fun newTarget(state: TimetableUiState, week: Int = 5): ManualEditorTarget.New {
-        val axis = WeeklyTimetableLayout.axisOf(state.profile!!)
-        val y = axis.fractionOf(LocalTime.of(14, 23))
-        return createNewManualEditorTarget(state, week, columnFraction = 0.8f, yFraction = y)!!
+        return createNewManualEditorTarget(
+            state,
+            week,
+            LongPressDraft(weekday = 6, snappedStart = LocalTime.of(14, 20)),
+        )!!
     }
 
     private fun editTarget(state: TimetableUiState, id: String, week: Int = 5): ManualEditorTarget.Edit =
@@ -262,7 +265,7 @@ class ManualItemFlowTest {
             TimetableScreen(
                 state = state,
                 onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
-                onEmptyLongPress = { week, _, _ -> capturedWeek = week },
+                onEmptyLongPress = { week, _ -> capturedWeek = week },
             )
         }
         rule.onNodeWithTag("timetable_grid").performTouchInput { longClick(center) }
@@ -510,7 +513,7 @@ class ManualItemFlowTest {
         rule.setContent {
             TimetableScreen(
                 state, {}, {}, {},
-                onEmptyLongPress = { _, _, _ -> emptyPresses++ },
+                onEmptyLongPress = { _, _ -> emptyPresses++ },
             )
         }
         rule.onNodeWithTag("manual_block:hold-manual").performTouchInput { longClick(center) }
@@ -524,7 +527,7 @@ class ManualItemFlowTest {
         rule.setContent {
             TimetableScreen(
                 state, {}, {}, {},
-                onEmptyLongPress = { _, _, _ -> emptyPresses++ },
+                onEmptyLongPress = { _, _ -> emptyPresses++ },
             )
         }
         rule.onNodeWithTag("school_block:hold-school").performTouchInput { longClick(center) }

@@ -21,8 +21,7 @@ import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.domain.ProfileId
 import com.ustc.timetable.timetable.domain.Semester
 import com.ustc.timetable.timetable.domain.SemesterId
-import com.ustc.timetable.timetable.layout.LongPressResolver
-import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import com.ustc.timetable.timetable.layout.LongPressDraft
 import com.ustc.timetable.timetable.ui.TimetableUiState
 import java.time.Clock
 import java.time.LocalTime
@@ -54,22 +53,16 @@ internal sealed interface ManualEditorTarget {
 internal fun createNewManualEditorTarget(
     state: TimetableUiState,
     pageWeek: Int,
-    columnFraction: Float,
-    yFraction: Float,
+    draft: LongPressDraft,
 ): ManualEditorTarget.New? {
     val semester = state.semester ?: return null
     val profile = state.profile ?: return null
-    val resolved = LongPressResolver.resolve(
-        columnFraction = columnFraction,
-        yFraction = yFraction,
-        axis = WeeklyTimetableLayout.axisOf(profile),
-    )
     return ManualEditorTarget.New(
         semesterId = semester.id,
         profileId = ProfileId(profile.id),
         viewedWeek = pageWeek,
-        weekday = resolved.weekday,
-        startTime = resolved.snappedStart,
+        weekday = draft.weekday,
+        startTime = draft.snappedStart,
     )
 }
 

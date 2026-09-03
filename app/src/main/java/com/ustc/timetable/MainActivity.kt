@@ -6,7 +6,6 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.core.app.NotificationManagerCompat
@@ -32,6 +31,8 @@ import com.ustc.timetable.timetable.ui.TimetableViewModel
 import com.ustc.timetable.timetable.ui.minuteTicks
 import java.time.Clock
 import kotlinx.coroutines.flow.first
+import com.ustc.timetable.ui.theme.AppBackgroundLayer
+import com.ustc.timetable.ui.theme.TimetableTheme
 
 class MainActivity : ComponentActivity() {
     private val container: AppContainer
@@ -75,7 +76,8 @@ class MainActivity : ComponentActivity() {
         val settings = settingsViewModel
         val importFlow = importFlowViewModel
         setContent {
-            MaterialTheme {
+            TimetableTheme {
+                AppBackgroundLayer {
                 val firstLaunchState by firstLaunch.state.collectAsState()
                 AppRoot(
                     gate = firstLaunchState.gate,
@@ -104,6 +106,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+                }
             }
         }
     }

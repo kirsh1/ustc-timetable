@@ -73,7 +73,7 @@ class WeeklyTimetableViewportTest {
                     today = null,
                     onSchoolBlockClick = {},
                     onManualBlockClick = {},
-                    onEmptyLongPress = { _, _ -> },
+                    onEmptyLongPress = {},
                 )
             }
         }
@@ -111,11 +111,9 @@ class WeeklyTimetableViewportTest {
         assertClose("custom tick", card.top, label.center.y)
     }
 
-    @Test fun now_line_uses_same_body_bounds() {
+    @Test fun homepage_does_not_render_now_line() {
         setViewport(nowLine = LocalTime.of(9, 45))
-        val line = rule.onNodeWithTag("now_line").fetchSemanticsNode().boundsInRoot
-        val label = rule.onNodeWithTag("time_label:09:45").fetchSemanticsNode().boundsInRoot
-        assertClose("now line", label.center.y, line.top)
+        rule.onAllNodesWithTag("now_line").assertCountEquals(0)
     }
 
     @Test fun axis_end_2155_label_exists_and_is_inside_body() {

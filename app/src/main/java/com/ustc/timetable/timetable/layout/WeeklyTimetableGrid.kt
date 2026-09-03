@@ -32,6 +32,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextAlign
 import kotlin.math.roundToInt
 import java.time.LocalDate
 import java.time.LocalTime
@@ -66,7 +67,7 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
 }
 
 private const val GUTTER_WIDTH_DP: Int = 44
-private const val HEADER_HEIGHT_DP: Int = 32
+private const val HEADER_HEIGHT_DP: Int = 36
 private const val TEACHER_MIN_HEIGHT_DP: Int = 60
 private const val TIME_MIN_HEIGHT_DP: Int = 90
 private const val OPTIONAL_TEXT_MIN_WIDTH_DP: Int = 52
@@ -91,8 +92,9 @@ fun WeeklyTimetableGrid(
     today: LocalDate?,
     onSchoolBlockClick: (MeetingId) -> Unit,
     onManualBlockClick: (ManualItemId) -> Unit,
-    onEmptyLongPress: (columnFraction: Float, yFraction: Float) -> Unit,
+    onEmptyLongPress: (LongPressDraft) -> Unit,
     periods: List<PeriodTime> = emptyList(),
+    segmentedAxis: SegmentedTimelineAxis? = null,
 ) {
     val gutterWidth = GUTTER_WIDTH_DP.dp
     Column(Modifier.fillMaxSize()) {
@@ -109,11 +111,15 @@ fun WeeklyTimetableGrid(
             val bodyHeight = maxHeight
             val gridWidth = (maxWidth - gutterWidth).coerceAtLeast(0.dp)
             val teachingGroups = teachingTimeGroups(periods)
+            val renderingAxis: ReversibleTimelineAxis = segmentedAxis?.resolve(
+                viewportHeightDp = bodyHeight.value,
+                compressedGapDp = compressedGapDpForHeight(bodyHeight.value),
+            ) ?: axis
             Row(Modifier.fillMaxSize()) {
                 TimeGutter(
                     periodStarts = periodStarts,
                     teachingGroups = teachingGroups,
-                    axis = axis,
+                    axis = renderingAxis,
                     bodyHeight = bodyHeight,
                     modifier = Modifier
                         .width(gutterWidth)
@@ -133,12 +139,12 @@ fun WeeklyTimetableGrid(
                                 drawLine(dividerColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1f)
                             }
                             periodStarts.forEach { time ->
-                                val y = size.height * axis.fractionOf(time)
+                                val y = size.height * renderingAxis.fractionOf(time)
                                 drawLine(lineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1f)
                             }
                             teachingGroups.zipWithNext().forEach { (before, after) ->
-                                val top = size.height * axis.fractionOf(before.endInclusive)
-                                val bottom = size.height * axis.fractionOf(after.start)
+                                val top = size.height * renderingAxis.fractionOf(before.endInclusive)
+                                val bottom = size.height * renderingAxis.fractionOf(after.start)
                                 drawRect(
                                     color = Color(0xFF94A3B8).copy(alpha = 0.07f),
                                     topLeft = androidx.compose.ui.geometry.Offset(0f, top),
@@ -149,8 +155,11 @@ fun WeeklyTimetableGrid(
                         .pointerInput(Unit) {
                             detectTapGestures(onLongPress = { press ->
                                 onEmptyLongPress(
-                                    (press.x / size.width.toFloat()).coerceIn(0f, 0.999f),
-                                    (press.y / size.height.toFloat()).coerceIn(0f, 0.999f),
+                                    LongPressResolver.resolve(
+                                        columnFraction = (press.x / size.width.toFloat()).coerceIn(0f, 0.999f),
+                                        yFraction = (press.y / size.height.toFloat()).coerceIn(0f, 0.999f),
+                                        axis = renderingAxis,
+                                    ),
                                 )
                             })
                         },
@@ -163,7 +172,7 @@ fun WeeklyTimetableGrid(
                         require(pb.block.manualItemId == null) {
                             "school list contains manual block: ${pb.block.colorKey}"
                         }
-                        SchoolBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, onSchoolBlockClick)
+                        SchoolBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, onSchoolBlockClick)
                     }
                     for (pb in placedManual) {
                         if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
@@ -173,17 +182,7 @@ fun WeeklyTimetableGrid(
                         require(pb.block.meetingId == null) {
                             "manual list contains school block: ${pb.block.colorKey}"
                         }
-                        ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, onManualBlockClick)
-                    }
-                    if (nowLine != null) {
-                        Box(
-                            Modifier
-                                .offset(y = bodyHeight * axis.fractionOf(nowLine))
-                                .fillMaxWidth()
-                                .height(2.dp)
-                                .background(Color(0xFFB3261E))
-                                .testTag("now_line"),
-                        )
+                        ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, onManualBlockClick)
                     }
                 }
             }
@@ -198,10 +197,11 @@ private fun BoxScope.SchoolBlockNode(
     showNonCurrentWeek: Boolean,
     gridW: Dp,
     gridH: Dp,
+    axis: ReversibleTimelineAxis,
     onClick: (MeetingId) -> Unit,
 ) {
     val id = pb.block.meetingId!!
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, "school_block:${id.value}") { onClick(id) }
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}") { onClick(id) }
 }
 
 @Composable
@@ -211,10 +211,11 @@ private fun BoxScope.ManualBlockNode(
     showNonCurrentWeek: Boolean,
     gridW: Dp,
     gridH: Dp,
+    axis: ReversibleTimelineAxis,
     onClick: (ManualItemId) -> Unit,
 ) {
     val id = pb.block.manualItemId!!
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, "manual_block:${id.value}") { onClick(id) }
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "manual_block:${id.value}") { onClick(id) }
 }
 
 /** 单块：绝对定位 + 稳定 tag + a11y 全描述 + 点击；onLongPress 空实现消费长按（不冒泡到空白区新建）。 */
@@ -225,14 +226,15 @@ private fun BoxScope.BlockNode(
     showNonCurrentWeek: Boolean,
     gridW: Dp,
     gridH: Dp,
+    axis: ReversibleTimelineAxis,
     tag: String,
     onClick: () -> Unit,
 ) {
     val columnWidth = gridW / 7f
     val groupWidth = columnWidth / pb.columnsInGroup
     val x = columnWidth * (pb.block.weekday - 1) + groupWidth * pb.column
-    val y = gridH * pb.topFraction
-    val h = gridH * pb.heightFraction
+    val y = gridH * axis.fractionOf(pb.block.start)
+    val h = gridH * (axis.fractionOf(pb.block.endInclusive) - axis.fractionOf(pb.block.start))
     val hasOptionalTextWidth = groupWidth > OPTIONAL_TEXT_MIN_WIDTH_DP.dp
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
@@ -267,17 +269,26 @@ private fun BoxScope.BlockNode(
 @Composable
 private fun WeekHeaderCells(weekDates: LocalDateRange, today: LocalDate?, modifier: Modifier) {
     Row(modifier) {
-        val names = listOf("一", "二", "三", "四", "五", "六", "日")
+        val names = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         for (dow in 0..6) {
             val date = weekDates.start.plusDays(dow.toLong())
-            Box(
+            Column(
                 Modifier
                     .weight(1f)
                     .height(HEADER_HEIGHT_DP.dp)
                     .testTag(if (date == today) "today_header" else "header_$dow")
                     .padding(2.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
             ) {
-                Text("${names[dow]} ${date.dayOfMonth}", style = MaterialTheme.typography.labelSmall)
+                val color = if (date == today) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                Text(names[dow], style = MaterialTheme.typography.labelSmall, color = color, textAlign = TextAlign.Center)
+                Text(
+                    "${date.monthValue}-${date.dayOfMonth.toString().padStart(2, '0')}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = color,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
@@ -287,12 +298,19 @@ private fun WeekHeaderCells(weekDates: LocalDateRange, today: LocalDate?, modifi
 private fun TimeGutter(
     periodStarts: List<LocalTime>,
     teachingGroups: List<TeachingTimeGroup>,
-    axis: TimelineAxis,
+    axis: ReversibleTimelineAxis,
     bodyHeight: Dp,
     modifier: Modifier,
 ) {
     Box(modifier) {
-        val labels = (periodStarts + teachingGroups.flatMap { listOf(it.start, it.endInclusive) } + axis.start + axis.endInclusive).toSet().sorted()
+        val primaryLabels = if (teachingGroups.isEmpty()) {
+            periodStarts
+        } else {
+            teachingGroups.flatMap { listOf(it.start, it.endInclusive) }
+        }
+        val labels = (primaryLabels + axis.start + axis.endInclusive)
+            .toSet()
+            .sorted()
         for (time in labels) {
             Layout(
                 content = {
@@ -317,3 +335,6 @@ private fun TimeGutter(
         }
     }
 }
+
+internal fun compressedGapDpForHeight(viewportHeightDp: Float): Float =
+    if (viewportHeightDp < 520f) 6f else 8f

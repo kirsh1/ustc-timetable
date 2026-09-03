@@ -32,6 +32,7 @@ import com.ustc.timetable.timetable.domain.Semester
 import com.ustc.timetable.timetable.layout.PlacedBlock
 import com.ustc.timetable.timetable.layout.TimedBlock
 import com.ustc.timetable.timetable.layout.TimelineAxis
+import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
 
 data class WeekOverviewPageUiState(
@@ -57,6 +58,7 @@ internal fun WeekOverviewStrip(
     viewedWeek: Int,
     naturalWeek: Int?,
     onWeekSelected: (Int) -> Unit,
+    axis: SegmentedTimelineAxis,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -66,7 +68,7 @@ internal fun WeekOverviewStrip(
     LazyRow(
         state = listState,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = modifier.fillMaxWidth().height(104.dp).testTag("week_overview_strip"),
+        modifier = modifier.fillMaxWidth().height(82.dp).testTag("week_overview_strip"),
     ) {
         items(pages, key = { it.week }) { page ->
             val selected = page.week == viewedWeek
@@ -77,7 +79,7 @@ internal fun WeekOverviewStrip(
                 shape = shape,
                 modifier = Modifier
                     .width(72.dp)
-                    .height(98.dp)
+                    .height(78.dp)
                     .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
                     .testTag("week_overview_card:${page.week}")
                     .clickable { onWeekSelected(page.week) },
@@ -97,7 +99,7 @@ internal fun WeekOverviewStrip(
                         }
                     }
                     if (selected) Box(Modifier.testTag("week_overview_selected:${page.week}"))
-                    WeekOverviewMiniMap(page)
+                    WeekOverviewMiniMap(page, axis)
                 }
             }
         }
@@ -105,22 +107,28 @@ internal fun WeekOverviewStrip(
 }
 
 @Composable
-internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState) {
+internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedTimelineAxis) {
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .height(70.dp)
+            .height(52.dp)
             .padding(top = 3.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
             .testTag("week_overview_minimap:${page.week}"),
     ) {
         val dayWidth = maxWidth / 7
+        val resolvedAxis = axis.resolve(maxHeight.value, compressedGapDp = 6f)
         page.placedBlocks.forEach { placed ->
             val groupWidth = dayWidth / placed.columnsInGroup
             val x = dayWidth * (placed.weekday - 1) + groupWidth * placed.column
-            val y = maxHeight * placed.topFraction
-            val height = (maxHeight * placed.heightFraction).coerceAtLeast(2.dp)
+            val y = maxHeight * resolvedAxis.fractionOf(placed.block.start)
+            val height = (
+                maxHeight * (
+                    resolvedAxis.fractionOf(placed.block.endInclusive) -
+                        resolvedAxis.fractionOf(placed.block.start)
+                    )
+                ).coerceAtLeast(2.dp)
             val identity = placed.block.meetingId?.let { "school:${it.value}" }
                 ?: placed.block.manualItemId?.let { "manual:${it.value}" }
                 ?: placed.block.colorKey
