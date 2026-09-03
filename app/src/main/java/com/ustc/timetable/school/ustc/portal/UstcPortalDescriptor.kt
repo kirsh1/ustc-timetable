@@ -40,10 +40,19 @@ class UstcPortalDescriptor(
     }
 
     override fun isDynamicSessionCookieUrl(rawUrl: String): Boolean {
+        return isCurrentTurnLandingUrl(rawUrl) || isCurrentTurnSelectionUrl(rawUrl)
+    }
+
+    override fun isCurrentTurnLandingUrl(rawUrl: String): Boolean {
         val uri = parseUrl(rawUrl) ?: return false
         if (!hasSameOrigin(uri) || uri.rawQuery != null || uri.rawFragment != null) return false
         val match = DYNAMIC_LANDING_PATH.matchEntire(uri.rawPath.orEmpty()) ?: return false
         return match.groupValues[1].toLongOrNull()?.let { it > 0 } == true
+    }
+
+    override fun isCurrentTurnSelectionUrl(rawUrl: String): Boolean {
+        val uri = parseUrl(rawUrl) ?: return false
+        return requestContextFrom(uri) != null
     }
 
     internal fun hasSameOrigin(uri: URI): Boolean {

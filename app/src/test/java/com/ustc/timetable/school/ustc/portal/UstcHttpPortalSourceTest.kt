@@ -116,6 +116,26 @@ class UstcHttpPortalSourceTest {
         assertEquals("application/json; charset=utf-8", selectedResponse.contentType)
     }
 
+    @Test fun verified_current_turn_session_skips_unrendered_discovery_document() = runBlocking {
+        enqueuePostResponses()
+        val verifiedTurnUrl = server.url("/for-std/course-select/101/turn/202/select").toString()
+        val source = sourceWithSession(
+            scopedHeaders() + SessionCookieHeader(verifiedTurnUrl, "COOKIE=verified-turn"),
+        )
+
+        source.fetchCourseSelectionPage()
+
+        val layout = server.takeRequest()
+        val selected = server.takeRequest()
+        val datum = server.takeRequest()
+        val digest = server.takeRequest()
+        assertRequest(layout, "POST", "/ws/schedule-table/timetable-layout", "application/json")
+        assertRequest(selected, "POST", "/ws/for-std/course-select/selected-lessons", "application/json")
+        assertRequest(datum, "POST", "/ws/schedule-table/datum", "application/json")
+        assertRequest(digest, "POST", "/ws/schedule-table/week-indices-digest", "application/json")
+        assertEquals(4, server.requestCount)
+    }
+
     @Test fun discovery_redirect_reselects_the_exact_target_cookie() = runBlocking {
         val redirectedUrl = server.url("/for-std/course-select/turns/101").toString()
         server.enqueue(

@@ -13,13 +13,13 @@ sealed interface LoginCompletionResult {
 
 class LoginCompletionCoordinator(
     private val descriptor: PortalDescriptor,
-    private val captureAndVerify: suspend () -> Unit,
+    private val captureAndVerify: suspend (String) -> Unit,
 ) {
     private val running = AtomicBoolean(false)
     private val completed = AtomicBoolean(false)
 
     @Volatile
-    private var manualProbeEligible = false
+    private var manualProbeUrl: String? = null
 
     @Volatile
     var consecutiveAutomaticFailures: Int = 0
@@ -34,27 +34,27 @@ class LoginCompletionCoordinator(
 
     suspend fun onPageFinished(rawUrl: String): LoginCompletionResult {
         val isEligible = PortalDescriptorRules.isAutomaticCompletionNavigation(descriptor, rawUrl)
-        manualProbeEligible = isEligible
+        manualProbeUrl = rawUrl.takeIf { isEligible }
         if (!isEligible) {
             return LoginCompletionResult.Ignored
         }
-        return probe(isAutomatic = true)
+        return probe(rawUrl, isAutomatic = true)
     }
 
     fun onPageStarted() {
-        manualProbeEligible = false
+        manualProbeUrl = null
     }
 
     suspend fun onManualProbe(): LoginCompletionResult {
-        if (!manualProbeEligible) return LoginCompletionResult.Ignored
-        return probe(isAutomatic = false)
+        val eligibleUrl = manualProbeUrl ?: return LoginCompletionResult.Ignored
+        return probe(eligibleUrl, isAutomatic = false)
     }
 
-    private suspend fun probe(isAutomatic: Boolean): LoginCompletionResult {
+    private suspend fun probe(url: String, isAutomatic: Boolean): LoginCompletionResult {
         if (completed.get()) return LoginCompletionResult.Ignored
         if (!running.compareAndSet(false, true)) return LoginCompletionResult.Ignored
         return try {
-            captureAndVerify()
+            captureAndVerify(url)
             consecutiveAutomaticFailures = 0
             if (completed.compareAndSet(false, true)) {
                 LoginCompletionResult.Verified

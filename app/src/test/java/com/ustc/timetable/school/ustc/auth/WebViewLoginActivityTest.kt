@@ -9,7 +9,6 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.Button
 import com.ustc.timetable.school.ustc.portal.CookieAwareFetcher
-import com.ustc.timetable.school.ustc.portal.PortalDescriptor
 import com.ustc.timetable.school.ustc.portal.PortalHttpClientFactory
 import com.ustc.timetable.school.ustc.portal.UstcPortalDescriptor
 import java.time.Clock
@@ -120,14 +119,46 @@ class WebViewLoginActivityTest {
         assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
     }
 
-    @Test fun dynamic_student_selection_landing_finishes_result_ok() {
+    @Test fun dynamic_student_selection_landing_enters_unique_turn_before_capturing() {
         server.enqueue(okPage("verified"))
         val descriptor = descriptor()
         app.dependencies = dependencies(descriptor)
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        val webView = findView(activity.window.decorView, WebView::class.java)!!
+
         finishPage(activity, dynamicLanding())
+
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(activity.isFinishing)
+        val selectUrl = currentTurnSelection()
+        val webViewShadow = shadowOf(webView)
+        assertNotNull(webViewShadow.lastEvaluatedJavascriptCallback)
+        webViewShadow.lastEvaluatedJavascriptCallback.onReceiveValue("\"$selectUrl\"")
+        assertEquals(selectUrl, webViewShadow.lastLoadedUrl)
+
+        startPage(activity, selectUrl)
+        finishPage(activity, selectUrl)
         awaitCondition { activity.isFinishing }
         assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
+    }
+
+    @Test fun stale_landing_dom_callback_cannot_override_a_new_navigation() {
+        val descriptor = descriptor()
+        app.dependencies = dependencies(descriptor)
+        val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
+        val webView = findView(activity.window.decorView, WebView::class.java)!!
+
+        finishPage(activity, dynamicLanding())
+        val callback = shadowOf(webView).lastEvaluatedJavascriptCallback
+        assertNotNull(callback)
+        val newerUrl = "https://outside.fixture.invalid/newer"
+        webView.loadUrl(newerUrl)
+        startPage(activity, newerUrl)
+
+        callback!!.onReceiveValue("\"${currentTurnSelection()}\"")
+
+        assertEquals(newerUrl, shadowOf(webView).lastLoadedUrl)
+        assertFalse(activity.isFinishing)
     }
 
     @Test fun login_ticket_and_external_routes_do_not_capture_or_finish() {
@@ -191,14 +222,14 @@ class WebViewLoginActivityTest {
         assertEquals(Activity.RESULT_CANCELED, shadowOf(activity).resultCode)
     }
 
-    @Test fun successful_dynamic_landing_capture_runs_only_once() {
+    @Test fun successful_current_turn_selection_capture_runs_only_once() {
         server.enqueue(okPage("verified"))
         val descriptor = descriptor()
         app.dependencies = dependencies(descriptor)
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
-        finishPage(activity, dynamicLanding())
+        finishPage(activity, currentTurnSelection())
         awaitCondition { activity.isFinishing }
-        finishPage(activity, dynamicLanding("202"))
+        finishPage(activity, currentTurnSelection(turnId = "303"))
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(1, server.requestCount)
         assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
@@ -208,7 +239,7 @@ class WebViewLoginActivityTest {
         val descriptor = descriptor()
         app.dependencies = dependencies(descriptor, cookies = CookieRetriever { null })
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
-        finishPage(activity, dynamicLanding())
+        finishPage(activity, currentTurnSelection())
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals(0, server.requestCount)
         assertFalse(activity.isFinishing)
@@ -222,7 +253,7 @@ class WebViewLoginActivityTest {
         app.dependencies = dependencies(descriptor, LoginPageDetector { _, _ -> attempts++; true })
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
         repeat(3) {
-            finishPage(activity, dynamicLanding())
+            finishPage(activity, currentTurnSelection())
             awaitCondition { attempts == it + 1 }
         }
         awaitCondition { findFallback(activity)?.visibility == View.VISIBLE }
@@ -238,7 +269,7 @@ class WebViewLoginActivityTest {
         app.dependencies = dependencies(descriptor, detector)
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
         repeat(3) {
-            finishPage(activity, dynamicLanding())
+            finishPage(activity, currentTurnSelection())
             awaitCondition { attempts == it + 1 }
         }
         val fallback = findFallback(activity)
@@ -248,7 +279,7 @@ class WebViewLoginActivityTest {
         assertEquals(Activity.RESULT_OK, shadowOf(activity).resultCode)
     }
 
-    @Test fun manual_fallback_cannot_bypass_dynamic_landing_gate() {
+    @Test fun manual_fallback_cannot_bypass_current_turn_selection_gate() {
         repeat(3) { server.enqueue(okPage("login")) }
         server.enqueue(okPage("verified"))
         var attempts = 0
@@ -259,7 +290,7 @@ class WebViewLoginActivityTest {
         )
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
         repeat(3) {
-            finishPage(activity, dynamicLanding())
+            finishPage(activity, currentTurnSelection())
             awaitCondition { attempts == it + 1 }
         }
         val fallback = findFallback(activity)!!
@@ -285,7 +316,7 @@ class WebViewLoginActivityTest {
         )
         val activity = Robolectric.buildActivity(WebViewLoginActivity::class.java).setup().get()
         repeat(3) {
-            finishPage(activity, dynamicLanding())
+            finishPage(activity, currentTurnSelection())
             awaitCondition { probeCookieReads == it + 1 }
         }
         val fallback = findFallback(activity)!!
@@ -297,7 +328,7 @@ class WebViewLoginActivityTest {
         )
 
         disallowedUrls.forEach { url ->
-            finishPage(activity, dynamicLanding())
+            finishPage(activity, currentTurnSelection())
             val readsBeforeNavigation = probeCookieReads
             startPage(activity, url)
             fallback.performClick()
@@ -342,10 +373,14 @@ class WebViewLoginActivityTest {
     }
 
     private fun dependencies(
-        descriptor: PortalDescriptor,
+        descriptor: UstcPortalDescriptor,
         detector: LoginPageDetector = LoginPageDetector { _, _ -> false },
         cookies: CookieRetriever = CookieRetriever { url ->
-            if (url == descriptor.probeUrl) "SESSION=fixture" else null
+            if (url == descriptor.probeUrl || descriptor.isCurrentTurnSelectionUrl(url)) {
+                "SESSION=fixture"
+            } else {
+                null
+            }
         },
     ): WebViewLoginDependencies {
         val storage = object : SessionStorage {
@@ -375,6 +410,9 @@ class WebViewLoginActivityTest {
 
     private fun dynamicLanding(id: String = "101"): String =
         server.url("/for-std/course-select/turns/$id").toString()
+
+    private fun currentTurnSelection(studentId: String = "101", turnId: String = "202"): String =
+        server.url("/for-std/course-select/$studentId/turn/$turnId/select").toString()
 
     private fun startPage(activity: WebViewLoginActivity, url: String) {
         val webView = findView(activity.window.decorView, WebView::class.java)!!

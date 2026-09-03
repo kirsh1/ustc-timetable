@@ -23,11 +23,19 @@ class UstcSessionManager(
 
     suspend fun clear() = store.clear()
 
-    suspend fun captureAndVerify(): SessionBlob {
-        val targets = descriptor.sessionCookieUrls.distinct()
+    suspend fun captureAndVerify(completionUrl: String? = null): SessionBlob {
+        if (completionUrl != null) {
+            require(
+                PortalDescriptorRules.isAutomaticCompletionNavigation(descriptor, completionUrl),
+            ) { "Completion URL is outside the verified portal scope" }
+        }
+        val targets = (descriptor.sessionCookieUrls + listOfNotNull(completionUrl)).distinct()
         val headers = targets.mapNotNull(::captureHeaderFor).distinct().toMutableList()
 
         if (SessionCookieHeader.pickFor(descriptor.probeUrl, headers) == null) {
+            throw SyncError.AuthenticationExpired.asFailure()
+        }
+        if (completionUrl != null && SessionCookieHeader.pickFor(completionUrl, headers) == null) {
             throw SyncError.AuthenticationExpired.asFailure()
         }
 

@@ -20,10 +20,12 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.lifecycle.lifecycleScope
 import com.ustc.timetable.school.ustc.portal.PortalDescriptor
 import com.ustc.timetable.school.ustc.portal.PortalDescriptorRules
+import com.ustc.timetable.school.ustc.portal.UstcCurrentTurnDiscovery
+import com.ustc.timetable.school.ustc.portal.UstcPortalDescriptor
 import kotlinx.coroutines.launch
 
 data class WebViewLoginDependencies(
-    val descriptor: PortalDescriptor,
+    val descriptor: UstcPortalDescriptor,
     val sessionManager: UstcSessionManager,
 )
 
@@ -45,10 +47,12 @@ class WebViewLoginActivity : ComponentActivity() {
             return
         }
 
-        val coordinator = LoginCompletionCoordinator(dependencies.descriptor) {
-            dependencies.sessionManager.captureAndVerify()
+        val coordinator = LoginCompletionCoordinator(dependencies.descriptor) { completionUrl ->
+            dependencies.sessionManager.captureAndVerify(completionUrl)
         }
         val bootstrapGate = ModuleBootstrapGate(dependencies.descriptor)
+        val currentTurnDiscovery = UstcCurrentTurnDiscovery(dependencies.descriptor)
+        val domNavigationGate = DomNavigationGate()
         val fallback = Button(this).apply {
             text = "我已完成登录"
             visibility = View.GONE
@@ -78,11 +82,20 @@ class WebViewLoginActivity : ComponentActivity() {
                 override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                     coordinator.onPageStarted()
                     bootstrapGate.onPageStarted()
+                    domNavigationGate.onPageStarted()
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
                     if (bootstrapGate.shouldBootstrap(url)) {
                         view.loadUrl(dependencies.descriptor.probeUrl)
+                    }
+                    if (dependencies.descriptor.isCurrentTurnLandingUrl(url)) {
+                        val generation = domNavigationGate.currentGeneration
+                        view.evaluateJavascript(currentTurnDiscovery.webViewLinkDiscoveryScript) { result ->
+                            if (!domNavigationGate.isCurrent(generation)) return@evaluateJavascript
+                            currentTurnDiscovery.selectionUrlFromWebViewResult(result)?.let(view::loadUrl)
+                        }
+                        return
                     }
                     lifecycleScope.launch {
                         handleResult(coordinator.onPageFinished(url), coordinator)
@@ -162,6 +175,17 @@ class WebViewLoginActivity : ComponentActivity() {
         private companion object {
             const val MAX_ATTEMPTS = 2
         }
+    }
+
+    private class DomNavigationGate {
+        var currentGeneration: Int = 0
+            private set
+
+        fun onPageStarted() {
+            currentGeneration++
+        }
+
+        fun isCurrent(generation: Int): Boolean = generation == currentGeneration
     }
 }
 

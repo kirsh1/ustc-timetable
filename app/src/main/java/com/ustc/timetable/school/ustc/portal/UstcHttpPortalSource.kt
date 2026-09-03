@@ -9,6 +9,7 @@ import com.ustc.timetable.school.ustc.dto.UstcPortalResponse
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.SyncFailure
 import com.ustc.timetable.sync.asFailure
+import java.net.URI
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -49,15 +50,17 @@ class UstcHttpPortalSource(
 
     private suspend fun fetchBundle(): PortalBundle {
         val headers = session.load()?.headers ?: throw SyncError.AuthenticationExpired.asFailure()
-        val discoveryResponse = fetchChecked(
-            Request.Builder()
-                .url(descriptor.currentTurnDiscoveryUrl)
-                .header("Accept", "text/html")
-                .get()
-                .build(),
-            headers,
-        )
-        val context = discovery.parse(discoveryResponse)
+        val context = requestContextFrom(headers) ?: run {
+            val discoveryResponse = fetchChecked(
+                Request.Builder()
+                    .url(descriptor.currentTurnDiscoveryUrl)
+                    .header("Accept", "text/html")
+                    .get()
+                    .build(),
+                headers,
+            )
+            discovery.parse(discoveryResponse)
+        }
 
         val layout = fetchJsonPost(
             descriptor.timetableLayoutUrl,
@@ -191,6 +194,14 @@ class UstcHttpPortalSource(
     }
 
     private fun requestParseFailure(): Nothing = throw SyncError.ParseFailed.asFailure()
+
+    private fun requestContextFrom(headers: List<SessionCookieHeader>): UstcRequestContext? {
+        val contexts = headers.mapNotNull { header ->
+            runCatching { descriptor.requestContextFrom(URI(header.requestUrl)) }.getOrNull()
+        }.distinct()
+        if (contexts.size > 1) requestParseFailure()
+        return contexts.singleOrNull()
+    }
 
     private data class PortalBundle(
         val selection: UstcPortalPage,

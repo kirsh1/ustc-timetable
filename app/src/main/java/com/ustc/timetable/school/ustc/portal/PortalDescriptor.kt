@@ -15,6 +15,10 @@ interface PortalDescriptor {
     fun isPostLoginPortalHomeUrl(rawUrl: String): Boolean = false
 
     fun isDynamicSessionCookieUrl(rawUrl: String): Boolean = false
+
+    fun isCurrentTurnLandingUrl(rawUrl: String): Boolean = false
+
+    fun isCurrentTurnSelectionUrl(rawUrl: String): Boolean = false
 }
 
 internal object PortalDescriptorRules {
@@ -60,7 +64,7 @@ internal object PortalDescriptorRules {
     ): Boolean {
         if (!isSafeAutomaticNavigation(descriptor, rawUrl)) return false
         return try {
-            descriptor.isDynamicSessionCookieUrl(rawUrl)
+            descriptor.isCurrentTurnSelectionUrl(rawUrl)
         } catch (_: Exception) {
             false
         }

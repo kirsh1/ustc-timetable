@@ -4,6 +4,9 @@ import com.ustc.timetable.school.ustc.dto.UstcPortalResponse
 import com.ustc.timetable.sync.SyncError
 import com.ustc.timetable.sync.asFailure
 import java.net.URI
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import org.jsoup.Jsoup
 
 @JvmInline
@@ -28,6 +31,19 @@ data class UstcRequestContext(
 class UstcCurrentTurnDiscovery(
     private val descriptor: UstcPortalDescriptor,
 ) {
+    val webViewLinkDiscoveryScript: String
+        get() = WEBVIEW_LINK_DISCOVERY_SCRIPT
+
+    fun selectionUrlFromWebViewResult(result: String?): String? {
+        val candidate = runCatching {
+            result
+                ?.let(Json::parseToJsonElement)
+                ?.jsonPrimitive
+                ?.contentOrNull
+        }.getOrNull() ?: return null
+        return candidate.takeIf(descriptor::isCurrentTurnSelectionUrl)
+    }
+
     fun parse(response: UstcPortalResponse): UstcRequestContext = try {
         val responseUri = URI(response.finalUrl)
         if (!descriptor.hasSameOrigin(responseUri)) parseFailure()
@@ -48,5 +64,13 @@ class UstcCurrentTurnDiscovery(
 
     private companion object {
         const val CURRENT_TURN_TEXT = "进入选课"
+        const val WEBVIEW_LINK_DISCOVERY_SCRIPT = """
+            (() => {
+              const candidates = Array.from(
+                document.querySelectorAll('div.col-sm-3.text-center > a.btn.btn-primary[href]')
+              ).filter((link) => (link.textContent || '').trim() === '进入选课');
+              return candidates.length === 1 ? candidates[0].href : null;
+            })()
+        """
     }
 }

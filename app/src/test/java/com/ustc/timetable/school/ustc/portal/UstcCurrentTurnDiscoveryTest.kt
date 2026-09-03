@@ -47,7 +47,7 @@ class UstcCurrentTurnDiscoveryTest {
     @Test fun descriptor_accepts_only_the_evidenced_dynamic_landing_scope() {
         assertEquals(
             true,
-            descriptor.isDynamicSessionCookieUrl(
+            descriptor.isCurrentTurnLandingUrl(
                 "https://portal.fixture.invalid/for-std/course-select/turns/101",
             ),
         )
@@ -59,7 +59,35 @@ class UstcCurrentTurnDiscoveryTest {
             "https://portal.fixture.invalid/for-std/course-select/turns/not-an-id",
             "https://portal.fixture.invalid/for-std/course-select/101/turn/202/select",
             "https://other.fixture.invalid/for-std/course-select/turns/101",
-        ).forEach { url -> assertEquals(false, descriptor.isDynamicSessionCookieUrl(url)) }
+        ).forEach { url -> assertEquals(false, descriptor.isCurrentTurnLandingUrl(url)) }
+    }
+
+    @Test fun descriptor_accepts_only_exact_current_turn_selection_scope() {
+        val valid = "https://portal.fixture.invalid/for-std/course-select/101/turn/202/select"
+        assertEquals(true, descriptor.isCurrentTurnSelectionUrl(valid))
+        assertEquals(true, descriptor.isDynamicSessionCookieUrl(valid))
+        listOf(
+            "$valid?next=1",
+            "$valid#section",
+            "https://portal.fixture.invalid/for-std/course-select/0/turn/202/select",
+            "https://portal.fixture.invalid/for-std/course-select/101/turn/0/select",
+            "https://portal.fixture.invalid/for-std/course-select/101/turn/202/all-course-takes",
+            "https://other.fixture.invalid/for-std/course-select/101/turn/202/select",
+        ).forEach { url ->
+            assertEquals(false, descriptor.isCurrentTurnSelectionUrl(url))
+        }
+    }
+
+    @Test fun webview_result_accepts_only_an_exact_current_turn_selection_url() {
+        val valid = "https://portal.fixture.invalid/for-std/course-select/101/turn/202/select"
+        assertEquals(valid, discovery.selectionUrlFromWebViewResult("\"$valid\""))
+        listOf(
+            "null",
+            "\"https://other.fixture.invalid/for-std/course-select/101/turn/202/select\"",
+            "\"https://portal.fixture.invalid/for-std/course-select/101/turn/202/select?token=redacted\"",
+            "\"javascript:alert(1)\"",
+            "not-json",
+        ).forEach { value -> assertEquals(null, discovery.selectionUrlFromWebViewResult(value)) }
     }
 
     @Test fun parses_typed_identifiers_from_the_unique_current_turn_link() {

@@ -85,6 +85,43 @@ class UstcSessionManagerTest {
         assertEquals(targets, cookies.urls)
     }
 
+    @Test fun capture_persists_the_verified_current_turn_scope() = runBlocking {
+        server.enqueue(okPage())
+        val descriptor = com.ustc.timetable.school.ustc.portal.UstcPortalDescriptor(
+            server.url("/").toString(),
+        )
+        val completionUrl = server.url(
+            "/for-std/course-select/101/turn/202/select",
+        ).toString()
+        val values = descriptor.sessionCookieUrls.associateWith { "STATIC=fixture" } +
+            (completionUrl to "TURN=fixture")
+        val cookies = RecordingCookies(values)
+
+        val blob = manager(descriptor, cookies).captureAndVerify(completionUrl)
+
+        assertEquals(descriptor.sessionCookieUrls + completionUrl, cookies.urls)
+        assertTrue(blob.headers.any { it.requestUrl == completionUrl })
+    }
+
+    @Test fun invalid_completion_scope_fails_before_cookie_or_network_access() = runBlocking {
+        val descriptor = com.ustc.timetable.school.ustc.portal.UstcPortalDescriptor(
+            server.url("/").toString(),
+        )
+        val cookies = RecordingCookies(emptyMap())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking {
+                manager(descriptor, cookies).captureAndVerify(
+                    server.url("/for-std/course-select/turns/101").toString(),
+                )
+            }
+        }
+
+        assertTrue(cookies.urls.isEmpty())
+        assertEquals(0, server.requestCount)
+        assertEquals(0, storage.writes)
+    }
+
     @Test fun capture_strips_query_values_before_persisting_request_scope() = runBlocking {
         server.enqueue(okPage())
         val probeWithQuery = server.url("/probe?ticket=%3Credacted%3E&mode=current").toString()

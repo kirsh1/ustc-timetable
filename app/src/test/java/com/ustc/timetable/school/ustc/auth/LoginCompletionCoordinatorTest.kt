@@ -22,11 +22,19 @@ class LoginCompletionCoordinatorTest {
         assertEquals(0, calls)
     }
 
-    @Test fun dynamic_student_selection_landing_probes() = runBlocking {
-        var calls = 0
-        val coordinator = coordinator { calls++ }
-        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(landing()))
-        assertEquals(1, calls)
+    @Test fun dynamic_student_selection_landing_does_not_probe() = runBlocking {
+        val captured = mutableListOf<String>()
+        val coordinator = coordinator { captured += it }
+        assertEquals(LoginCompletionResult.Ignored, coordinator.onPageFinished(landing()))
+        assertTrue(captured.isEmpty())
+    }
+
+    @Test fun verified_current_turn_selection_probes_with_exact_url() = runBlocking {
+        val captured = mutableListOf<String>()
+        val coordinator = coordinator { captured += it }
+        val target = selection()
+        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(target))
+        assertEquals(listOf(target), captured)
     }
 
     @Test fun arbitrary_same_host_page_does_not_probe() = runBlocking {
@@ -43,10 +51,9 @@ class LoginCompletionCoordinatorTest {
         var calls = 0
         val coordinator = coordinator { calls++ }
         listOf("0", "-1", "not-an-id").forEach { id ->
-            assertEquals(
-                LoginCompletionResult.Ignored,
-                coordinator.onPageFinished("https://session.fixture.example/for-std/course-select/turns/$id"),
-            )
+            assertEquals(LoginCompletionResult.Ignored, coordinator.onPageFinished(
+                "https://session.fixture.example/for-std/course-select/$id/turn/202/select",
+            ))
         }
         assertEquals(0, calls)
     }
@@ -65,14 +72,14 @@ class LoginCompletionCoordinatorTest {
         val entered = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         var calls = 0
-        val coordinator = coordinator {
+        val coordinator = coordinator { _ ->
             calls++
             entered.complete(Unit)
             release.await()
         }
-        val first = async { coordinator.onPageFinished(landing()) }
+        val first = async { coordinator.onPageFinished(selection()) }
         entered.await()
-        val second = async { coordinator.onPageFinished(landing(202)) }
+        val second = async { coordinator.onPageFinished(selection(turnId = 303)) }
         yield()
         assertEquals(LoginCompletionResult.Ignored, second.await())
         assertEquals(1, calls)
@@ -81,31 +88,31 @@ class LoginCompletionCoordinatorTest {
     }
 
     @Test fun ignored_event_does_not_increment_failure_count() = runBlocking {
-        val coordinator = coordinator { throw SyncError.AuthenticationExpired.asFailure() }
+        val coordinator = coordinator { _ -> throw SyncError.AuthenticationExpired.asFailure() }
         coordinator.onPageFinished("https://evil.example/done")
         assertEquals(0, coordinator.consecutiveAutomaticFailures)
         assertFalse(coordinator.isFallbackVisible)
     }
 
     @Test fun three_actual_failures_enable_fallback() = runBlocking {
-        val coordinator = coordinator { throw SyncError.AuthenticationExpired.asFailure() }
+        val coordinator = coordinator { _ -> throw SyncError.AuthenticationExpired.asFailure() }
         repeat(2) {
-            assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
+            assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(selection()))
             assertFalse(coordinator.isFallbackVisible)
         }
-        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
+        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(selection()))
         assertEquals(3, coordinator.consecutiveAutomaticFailures)
         assertTrue(coordinator.isFallbackVisible)
     }
 
     @Test fun success_returns_verified_and_resets_failure_count() = runBlocking {
         var fail = true
-        val coordinator = coordinator {
+        val coordinator = coordinator { _ ->
             if (fail) throw SyncError.AuthenticationExpired.asFailure()
         }
-        coordinator.onPageFinished(landing())
+        coordinator.onPageFinished(selection())
         fail = false
-        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(landing()))
+        assertEquals(LoginCompletionResult.Verified, coordinator.onPageFinished(selection()))
         assertEquals(0, coordinator.consecutiveAutomaticFailures)
         assertFalse(coordinator.isFallbackVisible)
     }
@@ -115,51 +122,55 @@ class LoginCompletionCoordinatorTest {
         val coordinator = coordinator { calls++ }
         assertEquals(
             LoginCompletionResult.Verified,
-            coordinator.onPageFinished(landing()),
+            coordinator.onPageFinished(selection()),
         )
         assertEquals(
             LoginCompletionResult.Ignored,
-            coordinator.onPageFinished(landing(202)),
+            coordinator.onPageFinished(selection(turnId = 303)),
         )
         assertEquals(LoginCompletionResult.Ignored, coordinator.onManualProbe())
         assertEquals(1, calls)
     }
 
     @Test fun cancellation_remains_cancellation_and_does_not_count_as_failure() = runBlocking {
-        val coordinator = coordinator { throw CancellationException("cancel-login") }
+        val coordinator = coordinator { _ -> throw CancellationException("cancel-login") }
         val thrown = runCatching {
-            coordinator.onPageFinished(landing())
+            coordinator.onPageFinished(selection())
         }.exceptionOrNull()
         assertTrue(thrown is CancellationException)
         assertEquals(0, coordinator.consecutiveAutomaticFailures)
         assertFalse(coordinator.isFallbackVisible)
     }
 
-    @Test fun manual_probe_requires_dynamic_student_selection_landing() = runBlocking {
-        var calls = 0
+    @Test fun manual_probe_requires_verified_current_turn_selection() = runBlocking {
+        val captured = mutableListOf<String>()
         var fail = true
-        val coordinator = coordinator {
-            calls++
+        val coordinator = coordinator { url ->
+            captured += url
             if (fail) throw SyncError.AuthenticationExpired.asFailure()
         }
         assertEquals(
             LoginCompletionResult.Ignored,
             coordinator.onPageFinished("https://session.fixture.example/home"),
         )
-        assertEquals(0, calls)
+        assertTrue(captured.isEmpty())
         assertEquals(LoginCompletionResult.Ignored, coordinator.onManualProbe())
-        assertEquals(0, calls)
-        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(landing()))
+        assertTrue(captured.isEmpty())
+        val target = selection()
+        assertEquals(LoginCompletionResult.Failed, coordinator.onPageFinished(target))
         fail = false
         assertEquals(LoginCompletionResult.Verified, coordinator.onManualProbe())
-        assertEquals(2, calls)
+        assertEquals(listOf(target, target), captured)
     }
 
-    private fun coordinator(capture: suspend () -> Unit): LoginCompletionCoordinator =
+    private fun coordinator(capture: suspend (String) -> Unit): LoginCompletionCoordinator =
         LoginCompletionCoordinator(descriptor(), capture)
 
     private fun descriptor(): PortalDescriptor = UstcPortalDescriptor("https://session.fixture.example/")
 
     private fun landing(id: Long = 101): String =
         "https://session.fixture.example/for-std/course-select/turns/$id"
+
+    private fun selection(studentId: Long = 101, turnId: Long = 202): String =
+        "https://session.fixture.example/for-std/course-select/$studentId/turn/$turnId/select"
 }
