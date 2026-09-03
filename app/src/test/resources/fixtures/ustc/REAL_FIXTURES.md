@@ -28,3 +28,22 @@ retaining any raw capture location.
 Authority remains deliberately disjoint: selected-lessons JSON supplies course
 basics, datum JSON plus its evidenced links supplies meetings, and this fixture
 set supplies no semantic semester metadata.
+
+## Current-turn discovery provenance
+
+The 2026-09-03 sanitized evidence supplement is retained outside the fixture
+tree and is not copied into tests. Its reviewed provenance is recorded here so
+synthetic discovery HTML can be traced without persisting any observed
+identifier or response body:
+
+| Evidence | SHA-256 |
+|---|---|
+| `README.md` | `339BC1AA78BAD833A814936FFBB0B31455BA33B344233EDD79B31D2BC569713E` |
+| `13-current-turn-discovery.md` | `104D30407D684D034E35E6085381A4B50D8BC7CCDA26499A66DC2284DD578BE3` |
+
+Supported structural facts are limited to stable authenticated path
+`/for-std/course-select`, iframe `e-home-iframe-1`, one observed `进入选课`
+primary anchor under `div.col-sm-3.text-center`, its redacted student/turn path
+shape, and the existing `button.my-course-table`/`.course-table-modal` trigger.
+Tests use synthetic positive identifiers and the implementation fails closed
+for missing, malformed, or ambiguous current-turn links.

@@ -35,13 +35,21 @@ class CookieAwareFetcher(
     suspend fun fetch(
         url: String,
         headers: List<SessionCookieHeader>,
-    ): UstcPortalPage {
-        var current = validatedHttpUrl(url)
-        val requestUrl = current.toString()
+    ): UstcPortalPage = UstcPortalPage(
+        document = fetch(Request.Builder().url(validatedHttpUrl(url)).build(), headers),
+    )
+
+    suspend fun fetch(
+        initialRequest: Request,
+        headers: List<SessionCookieHeader>,
+    ): UstcPortalResponse {
+        validatedHttpUrl(initialRequest.url.toString())
+        var currentRequest = initialRequest
+        val requestUrl = initialRequest.url.toString()
         var redirectCount = 0
         while (true) {
-            val request = Request.Builder().url(current).apply {
-                SessionCookieHeader.pickFor(current.toString(), headers)?.let {
+            val request = currentRequest.newBuilder().removeHeader("Cookie").apply {
+                SessionCookieHeader.pickFor(currentRequest.url.toString(), headers)?.let {
                     header("Cookie", it.cookieHeader)
                 }
             }.build()
@@ -60,7 +68,8 @@ class CookieAwareFetcher(
                 if (it.code in REDIRECT_CODES) {
                     if (redirectCount >= maxRedirects) throw SyncError.NetworkFailed.asFailure()
                     val location = it.header("Location") ?: throw SyncError.NetworkFailed.asFailure()
-                    current = resolveRedirect(current, location)
+                    val target = resolveRedirect(request.url, location)
+                    currentRequest = redirectRequest(request, target, it.code)
                     redirectCount++
                     continue
                 }
@@ -72,16 +81,30 @@ class CookieAwareFetcher(
                 } catch (io: IOException) {
                     throw SyncError.NetworkFailed.asFailure(io)
                 }
-                return UstcPortalPage(
-                    document = UstcPortalResponse(
-                        requestUrl = requestUrl,
-                        finalUrl = current.toString(),
-                        contentType = it.header("Content-Type"),
-                        body = html,
-                    ),
+                return UstcPortalResponse(
+                    requestUrl = requestUrl,
+                    finalUrl = request.url.toString(),
+                    contentType = it.header("Content-Type"),
+                    body = html,
                 )
             }
         }
+    }
+
+    private fun redirectRequest(request: Request, target: HttpUrl, statusCode: Int): Request {
+        val preserveMethod = statusCode in setOf(307, 308)
+        return request.newBuilder()
+            .url(target)
+            .removeHeader("Cookie")
+            .apply {
+                if (!preserveMethod && request.method != "GET" && request.method != "HEAD") {
+                    method("GET", null)
+                    removeHeader("Content-Type")
+                    removeHeader("Content-Length")
+                    removeHeader("Transfer-Encoding")
+                }
+            }
+            .build()
     }
 
     private fun resolveRedirect(current: HttpUrl, location: String): HttpUrl {

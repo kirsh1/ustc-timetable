@@ -12,7 +12,10 @@ import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.CookieJar
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -120,6 +123,38 @@ class CookieAwareFetcherTest {
         } finally {
             second.close()
         }
+    }
+
+    @Test fun post_redirect_reselects_cookie_and_follows_with_get() = runBlocking {
+        server.enqueue(redirect("/final"))
+        server.enqueue(response(body = "{\"result\":true}"))
+        val initialUrl = server.url("/submit").toString()
+        val finalUrl = server.url("/final").toString()
+        val request = Request.Builder()
+            .url(initialUrl)
+            .header("Accept", "application/json")
+            .post("{\"fixture\":1}".toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val portalResponse = fetcher().fetch(
+            request,
+            listOf(
+                SessionCookieHeader(initialUrl, "FIRST=scope"),
+                SessionCookieHeader(finalUrl, "SECOND=scope"),
+            ),
+        )
+
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertEquals("POST", first.method)
+        assertEquals("FIRST=scope", first.headers["Cookie"])
+        assertEquals("{\"fixture\":1}", first.body?.utf8())
+        assertEquals("GET", second.method)
+        assertEquals("SECOND=scope", second.headers["Cookie"])
+        assertEquals("application/json", second.headers["Accept"])
+        assertNull(second.headers["Content-Type"])
+        assertEquals(initialUrl, portalResponse.requestUrl)
+        assertEquals(finalUrl, portalResponse.finalUrl)
     }
 
     @Test fun first_origin_cookie_never_leaks_to_second_origin() = runBlocking {

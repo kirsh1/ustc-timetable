@@ -4,6 +4,24 @@
 **Binding requirements:** `docs/superpowers/specs/2026-08-30-ustc-timetable-design.md` §§6.1–7.4 and §13
 **Status:** evidence-audited for the documented portal surfaces. This record releases the §13 evidence gate for the staged implementation work; it does **not** claim real-device, real-login, or production-runtime qualification.
 
+## 2026-09-03 current-turn discovery supplement
+
+The reviewed sanitized supplement establishes `/for-std/course-select` as the
+stable authenticated discovery surface. The portal home loads that path in
+iframe `e-home-iframe-1`; the loaded page has route shape
+`/for-std/course-select/turns/<STUDENT_ID>` and exactly one observed current-turn
+anchor with visible text `进入选课`, classes `btn btn-primary`, parent
+`div.col-sm-3.text-center`, and path shape
+`/for-std/course-select/<STUDENT_ID>/turn/<TURN_ID>/select`. This resolves the
+runtime request-context gate: production may parse typed student/turn identifiers
+from that unique path, but must reject missing, malformed, or ambiguous matches.
+
+The supplement also corroborates `button.my-course-table` and the page-local
+`.course-table-modal` containing `#time-table`/`.time-table`; opening it does not
+navigate. It does not establish multiple-current-turn policy, session lifetime,
+kick-out behavior, or a low-cost probe guarantee. No supplemental evidence file
+is copied into the parser fixture set.
+
 ## Audit boundary and security result
 
 The audit read every file in the sanitized evidence set, including all six supplemental static assets. The set contains sanitized page/response material only. A combined scan for private keys, common cloud keys, bearer/basic values, authorization headers, Cookie/Set-Cookie headers, unredacted ticket/token query values, and assigned credential values found no reusable secret. The two lexical matches were reviewed as third-party UI-library strings (`COOKIE` date-format label and a password-input template), not credentials or headers.
@@ -14,7 +32,7 @@ The starting repository revision was clean, had no stash entries, and matched th
 
 | §13 row | Audited evidence and ruling |
 |---|---|
-| 1. Logged-in selection/timetable URLs | `01-selection-url.txt` and `04-timetable-url.txt` preserve both sanitized routes. Their scheme/host/path structure is implementation evidence; the redacted path identifier is never restored. |
+| 1. Logged-in selection/timetable URLs | `01-selection-url.txt` and `04-timetable-url.txt` preserve both sanitized routes. `13-current-turn-discovery.md` additionally establishes the stable discovery path and unique current-turn link shape from which typed student/turn identifiers can be parsed. Redacted identifiers are never restored. |
 | 2. Sanitized page contents | `02-selection-dom.html`, `03-selection-source.html`, `05-timetable-dom.html`, and `06-timetable-source.html` are complete sanitized captures for the two observed surfaces and their source/runtime forms. |
 | 3. CAS URLs, redirects, and success features | `07-login-url-and-redirects.md` documents the CAS service-ticket chain, the stable participating hosts, and the return to the portal host. `09-login-expired-dom.html` supplies the login-page structure, including allowed field names and captcha/password processing, with no values. |
 | 4. Four XHR URLs/methods/responses | `10-network-data-notes.md` records four same-origin POSTs and their trigger. The four `xhr/response-*.json` files preserve the sanitized response shapes; the static scripts prove the request body builders. |
@@ -71,7 +89,7 @@ All paths below are sanitized-relative paths. SHA-256 values identify the review
 
 | Sanitized relative path | SHA-256 | Purpose and supported fields/selectors/endpoints | Limitations |
 |---|---|---|---|
-| `README.md` | `B42DC3A1DF2538C859048924A2BDA467A7E41DC6FCCF24BA15363E5A783910EE` | Collection manifest, sanitization policy, static-asset provenance, observed surface summary | Narrative only; no runtime qualification or request payload capture |
+| `README.md` | `339BC1AA78BAD833A814936FFBB0B31455BA33B344233EDD79B31D2BC569713E` | Updated collection manifest, sanitization policy, static-asset provenance, and current-turn discovery summary | Narrative only; no runtime qualification or request payload capture |
 | `01-selection-url.txt` | `57E08629C2B44465215F2E1108F1112C6FEB7EAD289593FC309EB6C2AEC516B0` | Sanitized logged-in selection-result route | Redacted identifier; no reachability/performance result |
 | `02-selection-dom.html` | `9EDD7C4F5289A3CC00DDFAB540225C84B26BEB366FBC3978DB885BBB54342E43` | Selection runtime DOM; populated result-table content and source/runtime comparison | Runtime snapshot only; redundant for Phase 1 fixture intake |
 | `03-selection-source.html` | `717A264AC489301874349AB13281D2E70BA4F0FE816D2DA4F91105F244D9879D` | Selection source HTML; server-returned selection surface, Modal bootstrap configuration, selected-lessons route binding | No independent semester metadata authority |
@@ -84,6 +102,7 @@ All paths below are sanitized-relative paths. SHA-256 values identify the review
 | `10-network-data-notes.md` | `7F8EFEA20FB52630845ABA044A14108BEC1349935156ABE49C92249E549BBA0D` | Trigger, POST methods, routes, status/content type, and response-fixture mapping for four XHRs | No request headers, bodies, HAR, or cURL; static builders supply body evidence |
 | `11-week-switch-behavior.md` | `D6EE54B2B7DCADE229460A345C52E344A266BFC4E656858CD9BE4AD9C312C31D` | Modal/no-navigation behavior and observed week-range presentation | Independent week control, changed parameters, default week, and calendar metadata are unobserved/not applicable |
 | `12-session-behavior.md` | `06F6C44D1440BFB700DEF47DB1B69FA111F74D61825638FC694543B62D8C9687` | Explicitly records session-behavior unknowns | Supplies no TTL, persistence, logout, kick-out, or low-cost-probe proof |
+| `13-current-turn-discovery.md` | `104D30407D684D034E35E6085381A4B50D8BC7CCDA26499A66DC2284DD578BE3` | Stable authenticated discovery path, iframe name, unique current-turn link structure/path, and timetable Modal trigger/selectors | Current visible turn only; no ambiguity policy beyond fail-closed, session lifetime, kick-out, or low-cost-probe proof |
 | `xhr/response-01-timetable-layout.json` | `32FDD40785054A0A5851D1F9C0D21AB153F4479818683DD41A1F2078FA4A6B44` | Layout response: course-unit labels/order/time bounds used to construct period layout | Layout response only; no meetings or semester dates |
 | `xhr/response-02-selected-lessons.json` | `DF3CE391205CD4898AE2FCAA0C7B30CA98FC326CBE3BA4E1973C4E724E231E30` | Authoritative selection basics: lesson/course codes/names, credits, department/type, teacher summary, textual time/week/place | Does not authoritatively supply structured meeting assignments or semester metadata |
 | `xhr/response-03-datum.json` | `EA205C7C7215F9B29BC7D3ADF483B859FFEA766D183D70228B423260620BF3C2` | Authoritative structured meetings: lesson, schedule, group links; weekday, period/unit, time, room, teacher, week-index fields | No semester dates/display metadata; redacted/synthetic identifiers must not be treated as real values |
@@ -99,6 +118,7 @@ All paths below are sanitized-relative paths. SHA-256 values identify the review
 
 - Retain the Spec §7.1 probe candidate until measured; do not label it low-cost based solely on this audit.
 - Keep the documented session unknowns explicit in UX and sync policy.
+- Discover typed student/turn identifiers only from the unique evidenced current-turn link; reject absent, malformed, or ambiguous matches.
 - Keep the three authoritative payload domains disjoint; absence remains absence, and metadata must reach the existing confirmation path.
 - Treat source-only timetable HTML as the trigger for the existing `WebViewDomSource` fallback decision, not as an empty timetable.
 - Phase 1 must copy only the listed sanitized fixtures before parser/source tests; this Phase 0 commit deliberately contains documentation only.
