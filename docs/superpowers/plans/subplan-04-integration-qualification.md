@@ -152,6 +152,17 @@ class SettingsViewModel(
 
 ## Task J1 — 全测试套件 + lint（模拟器）【验证型任务】
 
+### UI-R4 reconciliation（2026-09-04）
+
+- 资格记录：[2026-09-04-ui-r4.md](../qualification/2026-09-04-ui-r4.md)。
+- 所有 teaching-group gap 使用同一固定视觉高度；时间换算和 long-press 反算共享同一 reversible segmented axis。
+- `FixedTimeRail` 位于 `HorizontalPager` 外；weekday/date header 与课程 grid 留在 page 内共同滑动。
+- 固定 rail 表达绑定 profile 的全部 period start/end；课程 visual rect 内缩 1dp，但 logical interval 不变。
+- 课程信息优先级为名称 > 地点 > 教师 > 时间。
+- `AppearanceMode` 为 `LIGHT / DARK / SYSTEM`，默认 `LIGHT + solid`；主题前景色由最外层 theme 统一提供。
+- 可选壁纸只作用于 timetable destination；Photo Picker URI 与持久 read grant 分离管理，失效时回退为主题纯色。
+- 本轮没有改写 UI-R3 历史，也没有触碰 real portal、Room schema 或 sync/work semantics。
+
 - 资格记录：[2026-09-02-j1-emulator.md](../qualification/2026-09-02-j1-emulator.md)。
 - androidTest 使用 test-owned runner 强制基础 `TimetableApp`；完整 MainActivity 测试先准备 Room/DataStore fixture，再启动 `ActivityScenario`。`DebugSeed` 只由测试显式调用，每个场景先关闭 ActivityScenario 再 reset Room；reauth 使用 androidTest-only sequenced runner fake。
 - 若 connected test 暴露 production behavior defect，J1 停止并回到所属任务执行独立 TDD；Lifecycle-R1 即按此边界先独立修正，未在 J1 harness 中混入 production fix。
