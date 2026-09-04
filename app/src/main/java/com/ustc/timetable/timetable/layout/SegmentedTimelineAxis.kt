@@ -15,7 +15,7 @@ interface ReversibleTimelineAxis {
 }
 
 /**
- * 从学期绑定作息推导的分段轴定义。超过 [longGapThresholdMinutes] 的课间会在解析后占固定视觉高度，
+ * 从学期绑定作息推导的分段轴定义。达到 [teachingGroupThresholdMinutes] 的教学组间隔占固定视觉高度，
  * 其余教学时间与短课间共享同一真实分钟比例。
  */
 class SegmentedTimelineAxis private constructor(
@@ -33,17 +33,17 @@ class SegmentedTimelineAxis private constructor(
         )
 
     companion object {
-        const val LONG_GAP_THRESHOLD_MINUTES = 30L
+        const val TEACHING_GROUP_THRESHOLD_MINUTES = 20L
 
         fun from(
             profile: ScheduleProfile,
-            longGapThresholdMinutes: Long = LONG_GAP_THRESHOLD_MINUTES,
+            teachingGroupThresholdMinutes: Long = TEACHING_GROUP_THRESHOLD_MINUTES,
         ): SegmentedTimelineAxis {
-            require(longGapThresholdMinutes >= 0)
+            require(teachingGroupThresholdMinutes >= 0)
             val periods = profile.periods.sortedBy { it.number }
             val gaps = periods.zipWithNext().mapNotNull { (before, after) ->
                 val minutes = Duration.between(before.end, after.start).toMinutes()
-                if (minutes > longGapThresholdMinutes) {
+                if (minutes >= teachingGroupThresholdMinutes) {
                     LocalTimeRange(before.end, after.start)
                 } else {
                     null

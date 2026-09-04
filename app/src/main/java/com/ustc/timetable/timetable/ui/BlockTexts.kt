@@ -70,7 +70,7 @@ object BlockTexts {
             if (showLocation && block.location.isNotBlank()) {
                 Text(
                     block.location,
-                    style = TimetableTypography.courseMetadata,
+                    style = TimetableTypography.courseLocation,
                     color = contentColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

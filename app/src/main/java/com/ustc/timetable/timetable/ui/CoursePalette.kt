@@ -15,7 +15,7 @@ object CoursePalette {
     const val NON_CURRENT_WEEK_ALPHA: Float = 0.35f
     const val PALETTE_SIZE: Int = 12
 
-    private val pairs: List<Pair<Color, Color>> = listOf(
+    private val lightPairs: List<Pair<Color, Color>> = listOf(
         Color(0xFFB9DCFF) to Color(0xFF102A43),
         Color(0xFFE0C7F2) to Color(0xFF32164A),
         Color(0xFFBFE3C4) to Color(0xFF17351C),
@@ -30,8 +30,17 @@ object CoursePalette {
         Color(0xFFF1C5B9) to Color(0xFF4A1E14),
     )
 
+    private val darkPairs: List<Pair<Color, Color>> = listOf(
+        Color(0xFF284760) to Color(0xFFE3F2FF), Color(0xFF4B365B) to Color(0xFFF4E5FF),
+        Color(0xFF284D31) to Color(0xFFE0F7E4), Color(0xFF5A3A22) to Color(0xFFFFE8D5),
+        Color(0xFF204B50) to Color(0xFFD9F7FA), Color(0xFF57313E) to Color(0xFFFFE2EA),
+        Color(0xFF514821) to Color(0xFFFFF2BC), Color(0xFF35464D) to Color(0xFFE7F1F5),
+        Color(0xFF384269) to Color(0xFFE7EAFF), Color(0xFF4B3931) to Color(0xFFFFEAE0),
+        Color(0xFF285048) to Color(0xFFDCF8F1), Color(0xFF58382E) to Color(0xFFFFE7DF),
+    )
+
     init {
-        require(pairs.size == PALETTE_SIZE)
+        require(lightPairs.size == PALETTE_SIZE && darkPairs.size == PALETTE_SIZE)
     }
 
     /** MD5 首字节按 unsigned（& 0xFF）对 12 取模。 */
@@ -46,13 +55,13 @@ object CoursePalette {
     fun alphaFor(isCurrentWeek: Boolean, showNonCurrentWeek: Boolean): Float =
         if (!isCurrentWeek && showNonCurrentWeek) NON_CURRENT_WEEK_ALPHA else 1f
 
-    fun containerColor(index: Int): Color = pairs[index].first
+    fun containerColor(index: Int, dark: Boolean = false): Color = (if (dark) darkPairs else lightPairs)[index].first
 
-    fun onContainerColor(index: Int): Color = pairs[index].second
+    fun onContainerColor(index: Int, dark: Boolean = false): Color = (if (dark) darkPairs else lightPairs)[index].second
 
-    fun contrastRatio(index: Int): Double {
-        val a = relativeLuminance(containerColor(index))
-        val b = relativeLuminance(onContainerColor(index))
+    fun contrastRatio(index: Int, dark: Boolean = false): Double {
+        val a = relativeLuminance(containerColor(index, dark))
+        val b = relativeLuminance(onContainerColor(index, dark))
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 

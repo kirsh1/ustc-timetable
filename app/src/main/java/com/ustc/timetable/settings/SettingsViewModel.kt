@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.ustc.timetable.appearance.AppearanceMode
 
 internal object SettingsTimeFormatter {
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT)
@@ -49,6 +50,8 @@ class SettingsViewModel(
         val last: Long?,
         val requested: Boolean,
         val viewedSemesterId: String? = null,
+        val appearanceMode: AppearanceMode = AppearanceMode.LIGHT,
+        val wallpaperUri: String? = null,
     )
     private data class SessionStatus(val loading: Boolean, val blob: SessionBlob?)
 
@@ -66,8 +69,13 @@ class SettingsViewModel(
         settings.lastSyncFinishedAt,
         settings.notificationRequestShown,
     ) { show, weekly, reauth, last, requested -> Persisted(show, weekly, reauth, last, requested) }
-    private val persisted = combine(persistedCore, settings.viewedSemesterId) { value, viewedId ->
-        value.copy(viewedSemesterId = viewedId)
+    private val persisted = combine(
+        persistedCore,
+        settings.viewedSemesterId,
+        settings.appearanceMode,
+        settings.timetableWallpaperUri,
+    ) { value, viewedId, appearance, wallpaper ->
+        value.copy(viewedSemesterId = viewedId, appearanceMode = appearance, wallpaperUri = wallpaper)
     }
 
     val state = combine(persisted, profiles.observeWorking(), semesters.observeSemesters(), sessionStatus, notificationsEnabled) {
@@ -78,6 +86,8 @@ class SettingsViewModel(
             else -> SchoolLoginUiState.NotLoggedIn
         }
         SettingsUiState(
+            appearanceMode = p.appearanceMode,
+            timetableWallpaperUri = p.wallpaperUri,
             showNonCurrentWeek = p.show,
             weeklySyncEnabled = p.weekly,
             notificationRequestShown = p.requested,
@@ -105,6 +115,9 @@ class SettingsViewModel(
     init { refreshSession() }
 
     fun onToggleShowNonCurrentWeek(value: Boolean) { viewModelScope.launch { settings.setShowNonCurrentWeek(value) } }
+    fun onAppearanceModeSelected(mode: AppearanceMode) { viewModelScope.launch { settings.setAppearanceMode(mode) } }
+    fun onWallpaperSelected(uri: String) { viewModelScope.launch { settings.setTimetableWallpaperUri(uri) } }
+    fun onWallpaperCleared() { viewModelScope.launch { settings.setTimetableWallpaperUri(null) } }
 
     fun onSemesterSelected(id: SemesterId) {
         if (state.value.availableSemesters.none { it.id == id }) return

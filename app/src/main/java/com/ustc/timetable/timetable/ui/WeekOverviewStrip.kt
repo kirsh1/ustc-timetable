@@ -38,6 +38,8 @@ import com.ustc.timetable.timetable.layout.TimedBlock
 import com.ustc.timetable.timetable.layout.TimelineAxis
 import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import com.ustc.timetable.appearance.ResolvedAppearance
+import com.ustc.timetable.ui.theme.LocalResolvedAppearance
 
 data class WeekOverviewPageUiState(
     val week: Int,
@@ -148,6 +150,7 @@ internal fun WeekOverviewStrip(
 
 @Composable
 internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedTimelineAxis) {
+    val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -178,7 +181,7 @@ internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedT
                     .width((groupWidth - 1.dp).coerceAtLeast(1.dp))
                     .height(height)
                     .clip(RoundedCornerShape(1.dp))
-                    .background(CoursePalette.containerColor(CoursePalette.colorIndexFor(placed.block.colorKey)))
+                    .background(CoursePalette.containerColor(CoursePalette.colorIndexFor(placed.block.colorKey), dark))
                     .testTag("week_overview_block:${page.week}:$identity"),
             )
         }

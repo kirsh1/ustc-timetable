@@ -5,6 +5,7 @@ import com.ustc.timetable.school.ustc.auth.SessionBlob
 import com.ustc.timetable.timetable.domain.Semester
 import com.ustc.timetable.timetable.domain.SemesterId
 import java.time.Instant
+import com.ustc.timetable.appearance.AppearanceMode
 
 internal fun shouldShowNotificationDeniedHint(sdk: Int, notificationsEnabled: Boolean, requestShown: Boolean): Boolean =
     sdk >= 33 && !notificationsEnabled && requestShown
@@ -31,6 +32,9 @@ sealed interface SchoolLoginUiState {
 }
 
 data class SettingsUiState(
+    val appearanceMode: AppearanceMode = AppearanceMode.LIGHT,
+    val timetableWallpaperUri: String? = null,
+    val wallpaperUnavailable: Boolean = false,
     val showNonCurrentWeek: Boolean = false,
     val weeklySyncEnabled: Boolean = true,
     val notificationRequestShown: Boolean = false,

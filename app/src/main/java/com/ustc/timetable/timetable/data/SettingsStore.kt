@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.ustc.timetable.appearance.AppearanceMode
 
 /**
  * 冻结设置键与默认值（SPEC §9.2）。activeWorkingProfileId 为 null 时解释为 bundled official。
@@ -23,6 +24,8 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         val NEED_REAUTH = booleanPreferencesKey("need_reauth")
         val LAST_SYNC_FINISHED_AT = longPreferencesKey("last_sync_finished_at")
         val NOTIFICATIONS_REQUEST_SHOWN = booleanPreferencesKey("notifications_request_shown")
+        val APPEARANCE_MODE = stringPreferencesKey("appearance_mode")
+        val TIMETABLE_WALLPAPER_URI = stringPreferencesKey("timetable_wallpaper_uri")
     }
 
     val viewedSemesterId: Flow<String?> = dataStore.data.map { it[Keys.VIEWED_SEMESTER_ID] }
@@ -32,6 +35,12 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
     val needReauth: Flow<Boolean> = dataStore.data.map { it[Keys.NEED_REAUTH] ?: false }
     val lastSyncFinishedAt: Flow<Long?> = dataStore.data.map { it[Keys.LAST_SYNC_FINISHED_AT] }
     val notificationRequestShown: Flow<Boolean> = dataStore.data.map { it[Keys.NOTIFICATIONS_REQUEST_SHOWN] ?: false }
+    val appearanceMode: Flow<AppearanceMode> = dataStore.data.map { preferences ->
+        preferences[Keys.APPEARANCE_MODE]
+            ?.let { stored -> AppearanceMode.entries.firstOrNull { it.name == stored } }
+            ?: AppearanceMode.LIGHT
+    }
+    val timetableWallpaperUri: Flow<String?> = dataStore.data.map { it[Keys.TIMETABLE_WALLPAPER_URI] }
 
     suspend fun setViewedSemesterId(id: String) = dataStore.edit { it[Keys.VIEWED_SEMESTER_ID] = id }
 
@@ -49,4 +58,10 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
     suspend fun setLastSyncFinishedAt(at: Long) = dataStore.edit { it[Keys.LAST_SYNC_FINISHED_AT] = at }
 
     suspend fun markNotificationRequestShown() = dataStore.edit { it[Keys.NOTIFICATIONS_REQUEST_SHOWN] = true }
+
+    suspend fun setAppearanceMode(mode: AppearanceMode) = dataStore.edit { it[Keys.APPEARANCE_MODE] = mode.name }
+
+    suspend fun setTimetableWallpaperUri(uri: String?) = dataStore.edit {
+        if (uri == null) it.remove(Keys.TIMETABLE_WALLPAPER_URI) else it[Keys.TIMETABLE_WALLPAPER_URI] = uri
+    }
 }

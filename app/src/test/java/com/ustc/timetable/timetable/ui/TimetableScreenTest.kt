@@ -110,12 +110,40 @@ class TimetableScreenTest {
         assertTrue(kotlin.math.abs((weekCenter - dateCenter).value) <= 1f)
     }
 
+    @Test fun week_number_and_range_text_visual_centers_match() {
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        val week = rule.onNodeWithTag("week_number_text", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val range = rule.onNodeWithTag("week_range_text", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val weekCenter = (week.top + week.bottom) / 2f
+        val rangeCenter = (range.top + range.bottom) / 2f
+        assertTrue(kotlin.math.abs((weekCenter - rangeCenter).value) <= 1f)
+    }
+
+    @Test fun previous_and_next_arrows_are_symmetric_around_week_and_range() {
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        val previous = rule.onNodeWithTag("prev_week").getUnclippedBoundsInRoot()
+        val week = rule.onNodeWithTag("viewed_week").getUnclippedBoundsInRoot()
+        val range = rule.onNodeWithTag("week_dates").getUnclippedBoundsInRoot()
+        val next = rule.onNodeWithTag("next_week").getUnclippedBoundsInRoot()
+        val leftGap = week.left - previous.right
+        val rightGap = next.left - range.right
+        assertTrue("leftGap=$leftGap rightGap=$rightGap", kotlin.math.abs((leftGap - rightGap).value) <= 1f)
+    }
+
     @Test fun screen_renders_weekly_grid() {
         rule.setContent { TimetableScreen(state = fullState(placedSchool = placedSchool()), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
         rule.onAllNodesWithTag("timetable_grid").assertCountEquals(1)
         rule.onAllNodesWithTag("school_block:m1").assertCountEquals(1)
         rule.onAllNodesWithText("周一").assertCountEquals(1)
         rule.onAllNodesWithText("9-07").assertCountEquals(1)
+    }
+
+    @Test fun time_rail_is_outside_horizontal_pager() {
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        val rail = rule.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot()
+        val pager = rule.onNodeWithTag("week_pager").getUnclippedBoundsInRoot()
+        assertTrue("rail=$rail pager=$pager", rail.right <= pager.left)
+        rule.onAllNodesWithTag("time_gutter", useUnmergedTree = true).assertCountEquals(1)
     }
 
     @Test fun arrows_fire_prev_next_callbacks() {

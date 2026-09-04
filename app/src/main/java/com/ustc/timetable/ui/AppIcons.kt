@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.ui.graphics.vector.ImageVector
 
 object AppIcons {
@@ -32,4 +33,5 @@ object AppIcons {
     val Schedule: ImageVector = Icons.Filled.Schedule
     val School: ImageVector = Icons.Filled.School
     val Sync: ImageVector = Icons.Filled.Sync
+    val Appearance: ImageVector = Icons.Filled.Palette
 }

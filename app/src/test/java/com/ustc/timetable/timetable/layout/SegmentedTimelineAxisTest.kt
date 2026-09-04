@@ -37,7 +37,9 @@ class SegmentedTimelineAxisTest {
     @Test fun long_breaks_are_derived_from_profile_and_not_hardcoded() {
         assertEquals(
             listOf(
+                LocalTime.of(9, 25) to LocalTime.of(9, 45),
                 LocalTime.of(12, 10) to LocalTime.of(14, 0),
+                LocalTime.of(15, 35) to LocalTime.of(15, 55),
                 LocalTime.of(18, 20) to LocalTime.of(19, 30),
             ),
             segmented.compressedIntervals.map { it.start to it.endInclusive },
@@ -65,8 +67,8 @@ class SegmentedTimelineAxisTest {
     @Test fun teaching_time_and_short_breaks_keep_one_linear_scale() {
         val axis = segmented.resolve(viewportHeightDp = 700f, compressedGapDp = 8f)
         val fortyFiveMinutes = axis.fractionOf(LocalTime.of(8, 35)) - axis.fractionOf(LocalTime.of(7, 50))
-        val twentyMinutes = axis.fractionOf(LocalTime.of(9, 45)) - axis.fractionOf(LocalTime.of(9, 25))
-        assertEquals(45f / 20f, fortyFiveMinutes / twentyMinutes, 0.001f)
+        val fiveMinutes = axis.fractionOf(LocalTime.of(8, 40)) - axis.fractionOf(LocalTime.of(8, 35))
+        assertEquals(45f / 5f, fortyFiveMinutes / fiveMinutes, 0.001f)
     }
 
     @Test fun compressed_interval_is_reversible_for_arbitrary_manual_minutes() {

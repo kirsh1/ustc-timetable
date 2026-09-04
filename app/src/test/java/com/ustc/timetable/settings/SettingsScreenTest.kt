@@ -33,6 +33,15 @@ class SettingsScreenTest {
         }
     }
 
+    @Test fun appearance_group_exposes_theme_and_wallpaper_rows() {
+        rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("settings_group:appearance"))
+        rule.onNodeWithTag("appearance_theme").assertExists()
+        rule.onNodeWithTag("timetable_wallpaper").assertExists()
+        rule.onAllNodesWithText("浅色").assertCountEquals(1)
+        rule.onAllNodesWithText("未设置").assertCountEquals(1)
+    }
+
     @Test fun forbidden_settings_entries_absent() {
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
         listOf("一周第一天", "周末", "日视图", "周视图", "五日", "七日").forEach { rule.onAllNodesWithText(it, substring = true).assertCountEquals(0) }
@@ -77,6 +86,7 @@ class SettingsScreenTest {
             )
         }
         rule.onNodeWithContentDescription("返回").assertExists()
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("sync_action"))
         rule.onNodeWithContentDescription("立即同步").assertExists()
         rule.onAllNodesWithText("‹").assertCountEquals(0)
         rule.onAllNodesWithText("↻").assertCountEquals(0)
@@ -90,6 +100,7 @@ class SettingsScreenTest {
                 manualSyncState = ManualSyncState.Syncing,
             )
         }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("sync_progress"))
         rule.onNodeWithTag("sync_progress").assertExists()
         rule.onAllNodesWithTag("sync_action").assertCountEquals(0)
     }

@@ -8,6 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -33,6 +35,10 @@ import java.time.Clock
 import kotlinx.coroutines.flow.first
 import com.ustc.timetable.ui.theme.AppBackgroundLayer
 import com.ustc.timetable.ui.theme.TimetableTheme
+import com.ustc.timetable.appearance.AppearanceMode
+import com.ustc.timetable.appearance.ResolvedAppearance
+import com.ustc.timetable.appearance.resolveAppearance
+import com.ustc.timetable.appearance.WallpaperRuntimeState
 
 class MainActivity : ComponentActivity() {
     private val container: AppContainer
@@ -76,19 +82,37 @@ class MainActivity : ComponentActivity() {
         val settings = settingsViewModel
         val importFlow = importFlowViewModel
         setContent {
-            TimetableTheme {
-                AppBackgroundLayer {
+            val appearanceMode by container.settings.appearanceMode.collectAsState(initial = AppearanceMode.LIGHT)
+            val wallpaperUri by container.settings.timetableWallpaperUri.collectAsState(initial = null)
+            val resolvedAppearance = resolveAppearance(appearanceMode, isSystemInDarkTheme())
+            SideEffect {
+                val style = if (resolvedAppearance == ResolvedAppearance.DARK) {
+                    SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                } else {
+                    SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            TimetableTheme(appearanceMode) {
                 val firstLaunchState by firstLaunch.state.collectAsState()
                 AppRoot(
                     gate = firstLaunchState.gate,
                     firstLaunchContent = { FirstLaunchRoute(firstLaunch, importFlow) },
-                    timetableContent = { openSettings -> TimetableRoute(
-                        viewModel = timetable,
-                        manualRepository = container.manual,
-                        clock = clock,
-                        manualSyncController = container.ustcPortalRuntime.manualSyncController,
-                        onSettingsClick = openSettings,
-                    ) },
+                    timetableContent = { openSettings ->
+                        AppBackgroundLayer(
+                            wallpaperUri = wallpaperUri,
+                            onWallpaperUnavailable = { wallpaperUri?.let(WallpaperRuntimeState::reportUnavailable) },
+                            onWallpaperAvailable = { wallpaperUri?.let(WallpaperRuntimeState::clear) },
+                        ) {
+                            TimetableRoute(
+                                viewModel = timetable,
+                                manualRepository = container.manual,
+                                clock = clock,
+                                manualSyncController = container.ustcPortalRuntime.manualSyncController,
+                                onSettingsClick = openSettings,
+                            )
+                        }
+                    },
                     settingsContent = { back, openProfile -> SettingsRoute(
                         viewModel = settings,
                         manualSyncController = container.ustcPortalRuntime.manualSyncController,
@@ -106,7 +130,6 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
-                }
             }
         }
     }

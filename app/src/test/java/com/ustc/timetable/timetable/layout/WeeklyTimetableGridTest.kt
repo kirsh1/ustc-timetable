@@ -312,6 +312,17 @@ class WeeklyTimetableGridTest {
         assertTrue("location must stay inside card: $locationBounds vs $card", locationBounds.left >= card.left && locationBounds.right <= card.right)
     }
 
+    @Test fun course_name_and_location_have_priority_over_teacher() {
+        setContentGrid(
+            school = placed(schoolBlock("priority", 2, LocalTime.of(9, 0), LocalTime.of(10, 30))),
+            width = 600.dp,
+            height = 500.dp,
+        )
+        rule.onAllNodesWithText("高等无机化学", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("TH-B301", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
+    }
+
     @Test fun course_title_uses_multiline_before_ellipsis() {
         assertEquals(3, BlockTexts.titleMaxLinesFor(cardHeightDp = 120f, hasLocation = true))
         assertEquals(2, BlockTexts.titleMaxLinesFor(cardHeightDp = 72f, hasLocation = true))
@@ -449,17 +460,12 @@ class WeeklyTimetableGridTest {
         )
     }
 
-    @Test fun gutter_renders_five_nonoverlapping_teaching_range_labels() {
+    @Test fun gutter_renders_every_period_boundary_once() {
         setContentGrid(segmentedAxis = SegmentedTimelineAxis.from(
             com.ustc.timetable.scheduleprofile.ScheduleProfile("segmented", "segmented", false, periods),
         ))
-        listOf(
-            "07:50-09:25", "09:45-12:10", "14:00-15:35", "15:55-18:20", "19:30-21:55",
-        ).forEach { range ->
-            rule.onAllNodesWithTag("time_group:$range").assertCountEquals(1)
-        }
-        listOf("time_label:12:10", "time_label:14:00", "time_label:18:20", "time_label:19:30").forEach {
-            rule.onAllNodesWithTag(it).assertCountEquals(0)
+        periods.flatMap { listOf(it.start, it.end) }.distinct().forEach { time ->
+            rule.onAllNodesWithTag("time_boundary:$time").assertCountEquals(1)
         }
     }
 

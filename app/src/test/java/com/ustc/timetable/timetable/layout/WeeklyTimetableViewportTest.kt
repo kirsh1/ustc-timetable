@@ -91,11 +91,18 @@ class WeeklyTimetableViewportTest {
         assertClose("bottom", grid.bottom, gutter.bottom)
     }
 
+    @Test fun time_labels_keep_a_small_inset_from_the_screen_edge() {
+        setViewport()
+        val viewport = rule.onNodeWithTag("viewport").fetchSemanticsNode().boundsInRoot
+        val label = rule.onNodeWithTag("time_boundary:07:50").fetchSemanticsNode().boundsInRoot
+        assertTrue("viewport=$viewport label=$label", label.left >= viewport.left + 4.dp.value)
+    }
+
     @Test fun period3_card_top_aligns_with_0945_label() {
         setViewport(blocks = listOf(block("period3", LocalTime.of(9, 45), LocalTime.of(10, 30))))
         val card = rule.onNodeWithTag("school_block:period3").fetchSemanticsNode().boundsInRoot
-        val label = rule.onNodeWithTag("time_label:09:45").fetchSemanticsNode().boundsInRoot
-        assertClose("09:45", card.top, label.center.y)
+        val label = rule.onNodeWithTag("time_boundary:09:45").fetchSemanticsNode().boundsInRoot
+        assertClose("09:45", card.top - 1f, label.center.y)
     }
 
     @Test fun custom_profile_card_and_tick_share_axis() {
@@ -107,8 +114,8 @@ class WeeklyTimetableViewportTest {
             blocks = listOf(block("custom", time, LocalTime.of(15, 8))),
         )
         val card = rule.onNodeWithTag("school_block:custom").fetchSemanticsNode().boundsInRoot
-        val label = rule.onNodeWithTag("time_label:14:23").fetchSemanticsNode().boundsInRoot
-        assertClose("custom tick", card.top, label.center.y)
+        val label = rule.onNodeWithTag("time_boundary:14:23").fetchSemanticsNode().boundsInRoot
+        assertClose("custom tick", card.top - 1f, label.center.y)
     }
 
     @Test fun homepage_does_not_render_now_line() {
@@ -119,7 +126,7 @@ class WeeklyTimetableViewportTest {
     @Test fun axis_end_2155_label_exists_and_is_inside_body() {
         setViewport()
         val body = rule.onNodeWithTag("timetable_body").fetchSemanticsNode().boundsInRoot
-        val label = rule.onNodeWithTag("time_label:21:55").fetchSemanticsNode().boundsInRoot
+        val label = rule.onNodeWithTag("time_boundary:21:55").fetchSemanticsNode().boundsInRoot
         assertTrue("body=$body label=$label", label.top >= body.top && label.bottom <= body.bottom)
     }
 
@@ -127,7 +134,7 @@ class WeeklyTimetableViewportTest {
         setViewport()
         val body = rule.onNodeWithTag("timetable_body").fetchSemanticsNode().boundsInRoot
         for (time in listOf("19:30", "20:20", "21:10", "21:55")) {
-            val label = rule.onNodeWithTag("time_label:$time").fetchSemanticsNode().boundsInRoot
+            val label = rule.onNodeWithTag("time_boundary:$time").fetchSemanticsNode().boundsInRoot
             assertTrue("$time body=$body label=$label", label.top >= body.top && label.bottom <= body.bottom)
         }
     }
@@ -146,8 +153,8 @@ class WeeklyTimetableViewportTest {
             blocks = listOf(block("compact", officialAxis.start, officialAxis.endInclusive)),
         )
         val body = rule.onNodeWithTag("timetable_body").fetchSemanticsNode().boundsInRoot
-        val top = rule.onNodeWithTag("time_label:07:50").fetchSemanticsNode().boundsInRoot
-        val bottom = rule.onNodeWithTag("time_label:21:55").fetchSemanticsNode().boundsInRoot
+        val top = rule.onNodeWithTag("time_boundary:07:50").fetchSemanticsNode().boundsInRoot
+        val bottom = rule.onNodeWithTag("time_boundary:21:55").fetchSemanticsNode().boundsInRoot
         val card = rule.onNodeWithTag("school_block:compact").fetchSemanticsNode().boundsInRoot
         assertTrue("body=$body top=$top bottom=$bottom card=$card", top.top >= body.top && bottom.bottom <= body.bottom && card.bottom <= body.bottom)
     }

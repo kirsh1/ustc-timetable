@@ -41,6 +41,8 @@ import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.ui.BlockTexts
 import com.ustc.timetable.timetable.ui.CoursePalette
 import com.ustc.timetable.scheduleprofile.PeriodTime
+import com.ustc.timetable.appearance.ResolvedAppearance
+import com.ustc.timetable.ui.theme.LocalResolvedAppearance
 
 data class TeachingTimeGroup(
     val start: LocalTime,
@@ -65,8 +67,8 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
     return groups
 }
 
-private const val GUTTER_WIDTH_DP: Int = 44
-private const val HEADER_HEIGHT_DP: Int = 36
+internal const val GUTTER_WIDTH_DP: Int = 44
+internal const val HEADER_HEIGHT_DP: Int = 36
 private const val TEACHER_MIN_HEIGHT_DP: Int = 60
 private const val TIME_MIN_HEIGHT_DP: Int = 90
 private const val OPTIONAL_TEXT_MIN_WIDTH_DP: Int = 52
@@ -94,11 +96,12 @@ fun WeeklyTimetableGrid(
     onEmptyLongPress: (LongPressDraft) -> Unit,
     periods: List<PeriodTime> = emptyList(),
     segmentedAxis: SegmentedTimelineAxis? = null,
+    showTimeRail: Boolean = true,
 ) {
-    val gutterWidth = GUTTER_WIDTH_DP.dp
+    val gutterWidth = if (showTimeRail) GUTTER_WIDTH_DP.dp else 0.dp
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.width(gutterWidth))
+            if (showTimeRail) Spacer(Modifier.width(gutterWidth))
             WeekHeaderCells(weekDates, today, Modifier.weight(1f))
         }
         BoxWithConstraints(
@@ -112,22 +115,24 @@ fun WeeklyTimetableGrid(
             val teachingGroups = teachingTimeGroups(periods)
             val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
             val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)
-            val compressedGapColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.045f)
+            val compressedGapColor = teachingGroupGapColor(MaterialTheme.colorScheme.outlineVariant)
             val renderingAxis: ReversibleTimelineAxis = segmentedAxis?.resolve(
                 viewportHeightDp = bodyHeight.value,
                 compressedGapDp = compressedGapDpForHeight(bodyHeight.value),
             ) ?: axis
             Row(Modifier.fillMaxSize()) {
-                TimeGutter(
-                    periodStarts = periodStarts,
-                    teachingGroups = teachingGroups,
-                    axis = renderingAxis,
-                    bodyHeight = bodyHeight,
-                    modifier = Modifier
-                        .width(gutterWidth)
-                        .fillMaxHeight()
-                        .testTag("time_gutter"),
-                )
+                if (showTimeRail) {
+                    TimeGutter(
+                        periods = periods,
+                        fallbackPeriodStarts = periodStarts,
+                        axis = renderingAxis,
+                        bodyHeight = bodyHeight,
+                        modifier = Modifier
+                            .width(gutterWidth)
+                            .fillMaxHeight()
+                            .testTag("time_gutter"),
+                    )
+                }
                 Box(
                     Modifier
                         .weight(1f)
@@ -233,19 +238,24 @@ private fun BoxScope.BlockNode(
     val columnWidth = gridW / 7f
     val groupWidth = columnWidth / pb.columnsInGroup
     val x = columnWidth * (pb.block.weekday - 1) + groupWidth * pb.column
-    val y = gridH * axis.fractionOf(pb.block.start)
-    val h = gridH * (axis.fractionOf(pb.block.endInclusive) - axis.fractionOf(pb.block.start))
+    val logicalY = gridH * axis.fractionOf(pb.block.start)
+    val logicalBottom = gridH * axis.fractionOf(pb.block.endInclusive)
+    val visual = courseCardVisualBounds(logicalY.value, logicalBottom.value, insetDp = 1f)
+    val y = visual.topDp.dp
+    val h = (visual.bottomDp - visual.topDp).dp
+    val horizontalInset = 1.dp.coerceAtMost(groupWidth / 2f)
     val hasOptionalTextWidth = groupWidth > OPTIONAL_TEXT_MIN_WIDTH_DP.dp
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
+    val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
     val shape = RoundedCornerShape(6.dp)
     Box(
         Modifier
-            .offset(x = x, y = y)
-            .size(width = groupWidth, height = h)
+            .offset(x = x + horizontalInset, y = y)
+            .size(width = (groupWidth - horizontalInset * 2f).coerceAtLeast(0.dp), height = h)
             .graphicsLayer { this.alpha = alpha }
             .clip(shape)
-            .background(CoursePalette.containerColor(paletteIndex), shape)
+            .background(CoursePalette.containerColor(paletteIndex, dark), shape)
             .pointerInput(tag) {
                 detectTapGestures(
                     onTap = { onClick() },
@@ -261,7 +271,7 @@ private fun BoxScope.BlockNode(
             showLocation = h > 42.dp,
             showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
             showTime = h > TIME_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
-            contentColor = CoursePalette.onContainerColor(paletteIndex),
+            contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
         )
     }
 }
@@ -295,37 +305,68 @@ private fun WeekHeaderCells(weekDates: LocalDateRange, today: LocalDate?, modifi
 }
 
 @Composable
+fun FixedTimeRail(
+    periods: List<PeriodTime>,
+    segmentedAxis: SegmentedTimelineAxis,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.width(GUTTER_WIDTH_DP.dp).testTag("fixed_time_rail")) {
+        Spacer(Modifier.height(HEADER_HEIGHT_DP.dp))
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val resolved = segmentedAxis.resolve(maxHeight.value, compressedGapDpForHeight(maxHeight.value))
+            TimeGutter(
+                periods = periods,
+                fallbackPeriodStarts = periods.map { it.start },
+                axis = resolved,
+                bodyHeight = maxHeight,
+                modifier = Modifier.fillMaxSize().testTag("time_gutter"),
+            )
+        }
+    }
+}
+
+@Composable
 private fun TimeGutter(
-    periodStarts: List<LocalTime>,
-    teachingGroups: List<TeachingTimeGroup>,
+    periods: List<PeriodTime>,
+    fallbackPeriodStarts: List<LocalTime>,
     axis: ReversibleTimelineAxis,
     bodyHeight: Dp,
     modifier: Modifier,
 ) {
     Box(modifier) {
-        if (teachingGroups.isNotEmpty()) {
-            teachingGroups.forEach { group ->
-                val centerFraction = (
-                    axis.fractionOf(group.start) + axis.fractionOf(group.endInclusive)
-                    ) / 2f
-                PositionedGutterLabel(
-                    text = "${group.start}\n–\n${group.endInclusive}",
-                    tag = "time_group:${group.start}-${group.endInclusive}",
-                    anchorFraction = centerFraction,
-                    bodyHeight = bodyHeight,
-                )
-            }
+        val marks = if (periods.isEmpty()) {
+            (fallbackPeriodStarts + axis.start + axis.endInclusive).distinct().sorted().map(TimeBoundaryMark::AxisStart)
         } else {
-            val labels = (periodStarts + axis.start + axis.endInclusive).toSet().sorted()
-            labels.forEach { time ->
-                PositionedGutterLabel(
-                    text = time.toString(),
-                    tag = "time_label:$time",
-                    anchorFraction = axis.fractionOf(time),
-                    bodyHeight = bodyHeight,
-                )
-            }
+            timeBoundaryMarks(periods)
         }
+        marks.forEach { mark ->
+            val anchor = mark.times.map(axis::fractionOf).average().toFloat()
+            PositionedGutterMark(mark, anchor, bodyHeight)
+        }
+    }
+}
+
+@Composable
+private fun PositionedGutterMark(mark: TimeBoundaryMark, anchorFraction: Float, bodyHeight: Dp) {
+    Layout(
+        content = {
+            Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                mark.times.forEach { time ->
+                    Text(
+                        time.toString(),
+                        Modifier.testTag("time_boundary:$time"),
+                        style = MaterialTheme.typography.labelSmall,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { measurables, constraints ->
+        val label = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val anchor = (bodyHeight.roundToPx() * anchorFraction).roundToInt()
+        val y = (anchor - label.height / 2).coerceIn(0, (bodyHeight.roundToPx() - label.height).coerceAtLeast(0))
+        layout(constraints.maxWidth, constraints.maxHeight) { label.placeRelative(4.dp.roundToPx(), y) }
     }
 }
 
@@ -361,3 +402,6 @@ private fun PositionedGutterLabel(
 
 internal fun compressedGapDpForHeight(viewportHeightDp: Float): Float =
     if (viewportHeightDp < 520f) 6f else 8f
+
+internal fun teachingGroupGapColor(outlineVariant: androidx.compose.ui.graphics.Color) =
+    outlineVariant.copy(alpha = 0.18f)

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,6 +50,10 @@ import com.ustc.timetable.timetable.ui.AuthExpiredDialog
 import com.ustc.timetable.timetable.ui.handleManualSyncLoginResult
 import com.ustc.timetable.ui.AppIcons
 import com.ustc.timetable.ui.theme.LocalTimetableSpacing
+import com.ustc.timetable.appearance.AppearanceMode
+import com.ustc.timetable.appearance.AndroidWallpaperUriGrants
+import com.ustc.timetable.appearance.WallpaperSelection
+import com.ustc.timetable.appearance.WallpaperRuntimeState
 
 data class SettingsCallbacks(
     val onBack: () -> Unit = {},
@@ -60,6 +67,9 @@ data class SettingsCallbacks(
     val onNotificationHint: () -> Unit = {},
     val onRestoreDefault: () -> Unit = {},
     val onApplyWorking: () -> Unit = {},
+    val onAppearanceSelected: (AppearanceMode) -> Unit = {},
+    val onChooseWallpaper: () -> Unit = {},
+    val onClearWallpaper: () -> Unit = {},
 )
 
 @Composable
@@ -71,9 +81,18 @@ fun SettingsRoute(
     onRequestRelogin: (() -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsState()
+    val unavailableWallpaperUri by WallpaperRuntimeState.unavailableUri.collectAsState()
     val manualSyncState = manualSyncController?.state?.collectAsState()?.value ?: ManualSyncState.Idle
     val context = LocalContext.current
+    val wallpaperGrants = remember(context) { AndroidWallpaperUriGrants(context.contentResolver) }
     var semesterSheetOpen by remember { mutableStateOf(false) }
+    val wallpaperPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val selected = WallpaperSelection.resolve(state.timetableWallpaperUri, uri?.toString(), wallpaperGrants)
+        if (selected != null && selected != state.timetableWallpaperUri) {
+            WallpaperRuntimeState.clear()
+            viewModel.onWallpaperSelected(selected)
+        }
+    }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.onNotificationPermissionResult()
     }
@@ -98,7 +117,7 @@ fun SettingsRoute(
         }
     }
     SettingsScreen(
-        state = state,
+        state = state.copy(wallpaperUnavailable = state.timetableWallpaperUri != null && unavailableWallpaperUri == state.timetableWallpaperUri),
         callbacks = SettingsCallbacks(
             onBack = onBack,
             onOpenSemesterSwitcher = { semesterSheetOpen = true },
@@ -111,6 +130,13 @@ fun SettingsRoute(
             onNotificationHint = viewModel::onNotificationHintClick,
             onRestoreDefault = viewModel::restoreWorkingDefault,
             onApplyWorking = viewModel::applyWorkingToAcademicCurrent,
+            onAppearanceSelected = viewModel::onAppearanceModeSelected,
+            onChooseWallpaper = { wallpaperPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onClearWallpaper = {
+                WallpaperSelection.clear(state.timetableWallpaperUri, wallpaperGrants)
+                WallpaperRuntimeState.clear()
+                viewModel.onWallpaperCleared()
+            },
         ),
         manualSyncState = manualSyncState,
     )
@@ -135,11 +161,14 @@ fun SettingsRoute(
 }
 
 @Composable
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun SettingsScreen(
     state: SettingsUiState,
     callbacks: SettingsCallbacks,
     manualSyncState: ManualSyncState = ManualSyncState.Idle,
 ) {
+    var themeSheetOpen by remember { mutableStateOf(false) }
+    var wallpaperSheetOpen by remember { mutableStateOf(false) }
     val spacing = LocalTimetableSpacing.current
     val viewedSemester = state.availableSemesters.firstOrNull { it.id == state.viewedSemesterId }
         ?: state.availableSemesters.firstOrNull { it.isCurrentAcademicSemester }
@@ -155,6 +184,25 @@ fun SettingsScreen(
                     Icon(AppIcons.Back, contentDescription = "返回")
                 }
                 Text("设置", style = MaterialTheme.typography.titleLarge)
+            }
+        }
+        item {
+            SettingsSection("外观", "appearance", AppIcons.Appearance) {
+                SettingsNavigationRow(
+                    "主题",
+                    appearanceLabel(state.appearanceMode),
+                    "appearance_theme",
+                ) { themeSheetOpen = true }
+                SettingsDivider()
+                SettingsNavigationRow(
+                    "课表壁纸",
+                    when {
+                        state.wallpaperUnavailable -> "壁纸不可用，请重新选择"
+                        state.timetableWallpaperUri == null -> "未设置"
+                        else -> "已选择"
+                    },
+                    "timetable_wallpaper",
+                ) { if (state.timetableWallpaperUri == null) callbacks.onChooseWallpaper() else wallpaperSheetOpen = true }
             }
         }
         item {
@@ -207,6 +255,33 @@ fun SettingsScreen(
             }
         }
     }
+    if (themeSheetOpen) {
+        ModalBottomSheet(onDismissRequest = { themeSheetOpen = false }) {
+            Text("主题", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+            AppearanceMode.entries.forEach { mode ->
+                ListItem(
+                    headlineContent = { Text(appearanceLabel(mode)) },
+                    leadingContent = { RadioButton(selected = state.appearanceMode == mode, onClick = null) },
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        callbacks.onAppearanceSelected(mode)
+                        themeSheetOpen = false
+                    }.testTag("appearance_option:${mode.name}"),
+                )
+            }
+        }
+    }
+    if (wallpaperSheetOpen) {
+        ModalBottomSheet(onDismissRequest = { wallpaperSheetOpen = false }) {
+            SettingsActionRow("更换壁纸", "replace_wallpaper") { wallpaperSheetOpen = false; callbacks.onChooseWallpaper() }
+            SettingsActionRow("清除壁纸", "clear_wallpaper") { wallpaperSheetOpen = false; callbacks.onClearWallpaper() }
+        }
+    }
+}
+
+internal fun appearanceLabel(mode: AppearanceMode): String = when (mode) {
+    AppearanceMode.LIGHT -> "浅色"
+    AppearanceMode.DARK -> "深色"
+    AppearanceMode.SYSTEM -> "跟随系统"
 }
 
 @Composable
