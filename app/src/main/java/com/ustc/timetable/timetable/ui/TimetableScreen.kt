@@ -261,6 +261,9 @@ fun TimetableScreen(
                             onSchoolBlockClick = onSchoolBlockClick,
                             onManualBlockClick = { id -> onManualBlockClick(id, page.week) },
                             onEmptyLongPress = { draft -> onEmptyLongPress(page.week, draft) },
+                            onVerticalOverviewAction = { action ->
+                                overviewExpanded = action == VerticalOverviewAction.EXPAND
+                            },
                             periods = profile.periods,
                             segmentedAxis = segmentedAxis,
                             showTimeRail = false,

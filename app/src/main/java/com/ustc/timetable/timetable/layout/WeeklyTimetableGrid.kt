@@ -1,7 +1,8 @@
 package com.ustc.timetable.timetable.layout
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -27,9 +28,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -42,11 +46,17 @@ import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.ui.BlockTexts
 import com.ustc.timetable.timetable.ui.CourseCardTextMetrics
+import com.ustc.timetable.timetable.ui.GridGestureDecision
+import com.ustc.timetable.timetable.ui.GridGestureOwner
+import com.ustc.timetable.timetable.ui.GridPressTarget
+import com.ustc.timetable.timetable.ui.OverviewGestureArbitrator
+import com.ustc.timetable.timetable.ui.VerticalOverviewAction
 import com.ustc.timetable.timetable.ui.CoursePalette
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.appearance.ResolvedAppearance
 import com.ustc.timetable.ui.theme.LocalResolvedAppearance
 import com.ustc.timetable.ui.theme.TimetableTypography
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class TeachingTimeGroup(
     val start: LocalTime,
@@ -73,6 +83,12 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
 
 internal const val HEADER_HEIGHT_DP: Int = 36
 
+sealed interface GridHitTarget {
+    data class School(val meetingId: MeetingId) : GridHitTarget
+    data class Manual(val manualItemId: ManualItemId) : GridHitTarget
+    data class Empty(val draft: LongPressDraft) : GridHitTarget
+}
+
 /**
  * 每周七列课表网格（SPEC §4.1/§4.2/§5.1）。
  * 坐标系唯一：总宽 = 固定 gutter + weight(1f) 七列网格；gridW 即 BoxWithConstraints.maxWidth，
@@ -94,6 +110,7 @@ fun WeeklyTimetableGrid(
     onSchoolBlockClick: (MeetingId) -> Unit,
     onManualBlockClick: (ManualItemId) -> Unit,
     onEmptyLongPress: (LongPressDraft) -> Unit,
+    onVerticalOverviewAction: (VerticalOverviewAction) -> Unit = {},
     periods: List<PeriodTime> = emptyList(),
     segmentedAxis: SegmentedTimelineAxis? = null,
     showTimeRail: Boolean = true,
@@ -125,6 +142,7 @@ fun WeeklyTimetableGrid(
             val gridLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
             val dividerColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)
             val compressedGapColor = teachingGroupGapColor(MaterialTheme.colorScheme.outlineVariant)
+            val viewConfiguration = LocalViewConfiguration.current
             val renderingAxis: ReversibleTimelineAxis = segmentedAxis?.resolve(
                 viewportHeightDp = bodyHeight.value,
                 compressedGapDp = compressedGapDpForHeight(bodyHeight.value),
@@ -166,16 +184,88 @@ fun WeeklyTimetableGrid(
                                 )
                             }
                         }
-                        .pointerInput(Unit) {
-                            detectTapGestures(onLongPress = { press ->
-                                onEmptyLongPress(
-                                    LongPressResolver.resolve(
-                                        columnFraction = (press.x / size.width.toFloat()).coerceIn(0f, 0.999f),
-                                        yFraction = (press.y / size.height.toFloat()).coerceIn(0f, 0.999f),
-                                        axis = renderingAxis,
-                                    ),
+                        .pointerInput(
+                            placedSchool,
+                            placedManual,
+                            viewedWeek,
+                            showNonCurrentWeek,
+                            renderingAxis,
+                            viewConfiguration,
+                        ) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val target = hitTargetAt(
+                                    xPx = down.position.x,
+                                    yPx = down.position.y,
+                                    gridWidthPx = size.width.toFloat(),
+                                    bodyHeightPx = size.height.toFloat(),
+                                    school = placedSchool,
+                                    manual = placedManual,
+                                    viewedWeek = viewedWeek,
+                                    showNonCurrentWeek = showNonCurrentWeek,
+                                    axis = renderingAxis,
                                 )
-                            })
+                                val arbitrator = OverviewGestureArbitrator(viewConfiguration.touchSlop)
+                                arbitrator.onDown(target.pressTarget())
+                                val deadline = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+                                var eventTime = down.uptimeMillis
+                                var timeoutHandled = false
+                                var finished = false
+
+                                fun dispatch(decision: GridGestureDecision) {
+                                    when (decision) {
+                                        GridGestureDecision.Click -> when (target) {
+                                            is GridHitTarget.School -> onSchoolBlockClick(target.meetingId)
+                                            is GridHitTarget.Manual -> onManualBlockClick(target.manualItemId)
+                                            is GridHitTarget.Empty -> Unit
+                                        }
+                                        GridGestureDecision.LongPress -> {
+                                            if (target is GridHitTarget.Empty) onEmptyLongPress(target.draft)
+                                        }
+                                        is GridGestureDecision.ChangeOverview -> onVerticalOverviewAction(decision.action)
+                                        GridGestureDecision.ConsumeCardLongPress,
+                                        GridGestureDecision.None,
+                                        GridGestureDecision.YieldToHorizontalPager,
+                                        -> Unit
+                                    }
+                                }
+
+                                while (!finished) {
+                                    val remaining = (deadline - eventTime).coerceAtLeast(0L)
+                                    val event = if (timeoutHandled) {
+                                        awaitPointerEvent()
+                                    } else {
+                                        withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                                    }
+                                    if (event == null) {
+                                        dispatch(arbitrator.onLongPressTimeout())
+                                        timeoutHandled = true
+                                        continue
+                                    }
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null) {
+                                        arbitrator.onCancel()
+                                        break
+                                    }
+                                    eventTime = change.uptimeMillis
+                                    dispatch(
+                                        arbitrator.onMove(
+                                            totalDxPx = change.position.x - down.position.x,
+                                            totalDyPx = change.position.y - down.position.y,
+                                        ),
+                                    )
+                                    if (
+                                        arbitrator.owner == GridGestureOwner.VERTICAL_OWNED ||
+                                        arbitrator.owner == GridGestureOwner.LONG_PRESS_OWNED
+                                    ) {
+                                        change.consume()
+                                    }
+                                    if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                                        dispatch(arbitrator.onUp())
+                                        finished = true
+                                    }
+                                }
+                            }
                         },
                 ) {
                     for (pb in placedSchool) {
@@ -276,13 +366,13 @@ private fun BoxScope.BlockNode(
         Modifier
             .offset(x = x, y = logicalY)
             .size(width = groupWidth, height = logicalHeight)
-            .pointerInput(tag) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { /* 消费长按：块上长按不得触发空白区新建 */ },
-                )
+            .semantics {
+                contentDescription = BlockTexts.a11y(pb.block)
+                onClick {
+                    onClick()
+                    true
+                }
             }
-            .semantics { contentDescription = BlockTexts.a11y(pb.block) }
             .testTag(tag),
     ) {
         Box(
@@ -300,6 +390,46 @@ private fun BoxScope.BlockNode(
             )
         }
     }
+}
+
+private fun GridHitTarget.pressTarget(): GridPressTarget = when (this) {
+    is GridHitTarget.Empty -> GridPressTarget.EMPTY
+    is GridHitTarget.School -> GridPressTarget.SCHOOL_CARD
+    is GridHitTarget.Manual -> GridPressTarget.MANUAL_CARD
+}
+
+private fun hitTargetAt(
+    xPx: Float,
+    yPx: Float,
+    gridWidthPx: Float,
+    bodyHeightPx: Float,
+    school: List<PlacedBlock>,
+    manual: List<PlacedBlock>,
+    viewedWeek: Int,
+    showNonCurrentWeek: Boolean,
+    axis: ReversibleTimelineAxis,
+): GridHitTarget {
+    val visible = (school + manual).filter { placed ->
+        placed.block.weeks.contains(viewedWeek) || showNonCurrentWeek
+    }
+    val hit = visible.asReversed().firstOrNull { placed ->
+        val dayWidth = gridWidthPx / 7f
+        val groupWidth = dayWidth / placed.columnsInGroup
+        val left = dayWidth * (placed.block.weekday - 1) + groupWidth * placed.column
+        val right = left + groupWidth
+        val top = bodyHeightPx * axis.fractionOf(placed.block.start)
+        val bottom = bodyHeightPx * axis.fractionOf(placed.block.endInclusive)
+        xPx in left..right && yPx in top..bottom
+    }
+    hit?.block?.meetingId?.let { return GridHitTarget.School(it) }
+    hit?.block?.manualItemId?.let { return GridHitTarget.Manual(it) }
+    return GridHitTarget.Empty(
+        LongPressResolver.resolve(
+            columnFraction = (xPx / gridWidthPx).coerceIn(0f, 0.999f),
+            yFraction = (yPx / bodyHeightPx).coerceIn(0f, 0.999f),
+            axis = axis,
+        ),
+    )
 }
 
 @Composable
