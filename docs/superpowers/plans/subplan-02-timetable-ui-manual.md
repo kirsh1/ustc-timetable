@@ -211,6 +211,18 @@ class TimetableViewModel(
 
 WeekOverview-R1 reconciliation：主界面增加默认收起的横向周概览条；每周状态由同一 raw SCHOOL+MANUAL blocks 独立按该周投影，严禁复用含 ghost 的主网格 page projection。概览点击只调用既有 week-selection authority、保持展开；展开状态不进入 DataStore/SavedState，学期 id 变化时收起。该增量由独立 TDD 与 cross-layer ghost-isolation regression 锁定。
 
+UI-R3 reconciliation（2026-09-03）：
+
+- `SegmentedTimelineAxis` 是主页网格、时间栏、SCHOOL/MANUAL 卡片、空白长按反解与 WeekOverview 的共享几何 authority。它从绑定 `ScheduleProfile` 推导教学段；超过 30 分钟的间隔解析为固定 8dp，紧凑高度解析为 6dp，同时保留可逆的任意分钟映射。线性 `TimelineAxis` 仅保留为兼容实现。
+- 主页不再绘制 `nowLine`。自然周和当前时间的业务计算仍保留，供“返回本周”等行为使用。
+- 主页顶栏以“第 N 周 + 日期范围”为主信息，学期选择与手动同步迁入 Settings；周概览与 Settings 使用统一矢量图标。窄宽可隐藏前后周箭头，但周数、范围、周概览和 Settings 始终保留。
+- 星期头统一为两行“周一…周日 / M-dd”；时间栏统一为从 profile 连续节次推导的五类教学范围标签，末端 `21:55` 受边界测试保护。压缩间隔保留一条跟随主题色的轻量分隔带。
+- WeekOverview 默认收起、学期变化时收起、不持久化；仅投影目标周 active blocks，并使用同一分段轴的紧凑 6dp gap 解析。
+- 非自然周且 `naturalWeek != null` 时显示返回本周 FAB；点击复用既有 week-selection/pager authority，不创建第二套周状态。
+- 课程卡使用专属紧凑 typography：标题优先 1–3 行、地点独立行、教师/时间继续同时受卡高与 overlap 后实际宽度门控。
+- Settings 使用共享 `SettingsSection` 与 navigation/toggle/info/action/danger row 体系；学期选择仍只写 `SettingsStore.viewedSemesterId`，立即同步仍只消费既有 manual-sync controller。
+- `TimetableTheme`、颜色、字体、形状、间距与 `AppBackgroundLayer` 只建立 Daylight/Solid 主题边界；本轮没有壁纸读取、透明模式、暗色模式或新增 DataStore key。
+
 ---
 
 ## Task C2 — 学期切换（只写 viewedSemesterId）
