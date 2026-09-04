@@ -5,10 +5,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.ustc.timetable.ui.AppIcons
 import java.time.LocalTime
 
 data class EditablePeriod(val number: Int, val start: String, val end: String)
@@ -43,7 +45,9 @@ fun ProfileEditorScreen(profile: ScheduleProfile, onSave: (List<PeriodTime>) -> 
     var invalid by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.testTag("profile_editor_back").clickable(onClick = onBack).padding(end = 16.dp))
+            IconButton(onClick = onBack, modifier = Modifier.testTag("profile_editor_back")) {
+                Icon(AppIcons.Back, contentDescription = "返回")
+            }
             Text("学校作息时间", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             Button(onClick = {
                 val parsed = ProfileEditorValidator.parse(periods)

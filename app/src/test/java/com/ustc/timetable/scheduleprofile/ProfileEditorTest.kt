@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -52,6 +53,12 @@ class ProfileEditorTest {
     @Test fun editor_back_returns_settings() {
         var calls = 0; rule.setContent { ProfileEditorScreen(profile(), onSave = {}, onBack = { calls++ }) }
         rule.onNodeWithTag("profile_editor_back").performClick(); rule.waitForIdle(); assertEquals(1, calls)
+    }
+
+    @Test fun editor_back_uses_vector_icon_instead_of_unicode_glyph() {
+        rule.setContent { ProfileEditorScreen(profile(), onSave = {}, onBack = {}) }
+        rule.onNodeWithContentDescription("返回").assertExists()
+        rule.onAllNodesWithText("‹").assertCountEquals(0)
     }
 
     private fun profile() = ScheduleProfile("custom", "自定义", false, periods())
