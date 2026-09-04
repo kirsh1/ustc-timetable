@@ -264,6 +264,7 @@ fun TimetableScreen(
                             onVerticalOverviewAction = { action ->
                                 overviewExpanded = action == VerticalOverviewAction.EXPAND
                             },
+                            schoolMarkersByPresentationKey = page.schoolMarkersByPresentationKey,
                             periods = profile.periods,
                             segmentedAxis = segmentedAxis,
                             showTimeRail = false,

@@ -181,6 +181,45 @@ class ShowNonCurrentWeekTest {
         )
     }
 
+    private data class SchoolSeed(
+        val courseKey: String,
+        val meetingId: String,
+        val weeks: WeekPattern,
+        val teacher: String = "教师",
+        val location: String = "TH-B",
+        val weekday: Int = 2,
+        val startPeriod: Int = 6,
+        val endPeriod: Int = 6,
+    )
+
+    private suspend fun seedSchoolSnapshot(semesterId: SemesterId, seeds: List<SchoolSeed>) {
+        val courses = seeds.distinctBy { it.courseKey }.map { seed ->
+            Course(
+                id = CourseId("course-${seed.courseKey}"),
+                semesterId = semesterId,
+                sourceCourseKey = seed.courseKey,
+                courseCode = "CODE-${seed.courseKey}",
+                name = "name:${seed.courseKey}",
+                credits = 3.0,
+                courseType = null,
+            )
+        }
+        val courseIds = courses.associateBy { it.sourceCourseKey }
+        val meetings = seeds.map { seed ->
+            CourseMeeting(
+                MeetingId(seed.meetingId),
+                courseIds.getValue(seed.courseKey).id,
+                seed.weekday,
+                seed.startPeriod,
+                seed.endPeriod,
+                seed.weeks,
+                seed.location,
+                listOf(seed.teacher),
+            )
+        }
+        db.applySchoolSnapshot(semesterId, courses, meetings, "fp-projection", now)
+    }
+
     private suspend fun awaitUsable(model: TimetableViewModel): TimetableUiState {
         awaitUntil { !model.state.value.isLoading && model.state.value.semester != null }
         return model.state.value
@@ -345,6 +384,47 @@ class ShowNonCurrentWeekTest {
         awaitUntil { model.state.value.placedManual.isNotEmpty() }
         assertEquals(2, model.state.value.placedSchool.single().columnsInGroup)
         assertEquals(2, model.state.value.placedManual.single().columnsInGroup)
+    }
+
+    @Test fun attached_school_ghost_does_not_consume_active_column_and_adds_marker() = runBlocking {
+        val semester = seedSemester("A", current = true)
+        seedSchoolSnapshot(
+            semester.id,
+            listOf(
+                SchoolSeed("active-course", "active", WeekPattern.of(2)),
+                SchoolSeed("other-course", "ghost", WeekPattern.of(3)),
+            ),
+        )
+        val model = runningViewModel().model
+        awaitUntil { model.state.value.placedSchool.size == 1 }
+
+        model.onToggleShowNonCurrentWeek(true)
+        awaitUntil { model.state.value.showNonCurrentWeek }
+
+        val page = model.state.value.viewedPage!!
+        assertEquals(listOf("active"), page.placedSchool.map { it.block.meetingId!!.value })
+        assertEquals(1, page.placedSchool.single().columnsInGroup)
+        assertEquals(
+            setOf(SchoolMarkerKind.DIFFERENT_COURSE),
+            page.schoolMarkersByPresentationKey.values.single().kinds,
+        )
+    }
+
+    @Test fun week_pattern_only_school_ghost_has_no_variant_marker() = runBlocking {
+        val semester = seedSemester("A", current = true)
+        seedSchoolSnapshot(
+            semester.id,
+            listOf(
+                SchoolSeed("same-course", "active", WeekPattern.of(2)),
+                SchoolSeed("same-course", "ghost", WeekPattern.of(3)),
+            ),
+        )
+        settings.setShowNonCurrentWeek(true)
+        val model = runningViewModel().model
+        awaitUntil { !model.state.value.isLoading && model.state.value.placedSchool.isNotEmpty() }
+
+        assertEquals(listOf("active"), model.state.value.placedSchool.map { it.block.meetingId!!.value })
+        assertTrue(model.state.value.viewedPage!!.schoolMarkersByPresentationKey.isEmpty())
     }
 
     @Test fun toggle_does_not_change_viewed_week() = runBlocking {

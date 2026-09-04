@@ -1,6 +1,7 @@
 package com.ustc.timetable.timetable.layout
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
@@ -21,12 +22,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -52,6 +55,11 @@ import com.ustc.timetable.timetable.ui.GridPressTarget
 import com.ustc.timetable.timetable.ui.OverviewGestureArbitrator
 import com.ustc.timetable.timetable.ui.VerticalOverviewAction
 import com.ustc.timetable.timetable.ui.CoursePalette
+import com.ustc.timetable.timetable.ui.SchoolCanonicalPresentationKey
+import com.ustc.timetable.timetable.ui.SchoolCardMarkers
+import com.ustc.timetable.timetable.ui.SchoolGhostProjection
+import com.ustc.timetable.timetable.ui.SchoolMarkerKind
+import com.ustc.timetable.timetable.ui.SchoolTimedBlock
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.appearance.ResolvedAppearance
 import com.ustc.timetable.ui.theme.LocalResolvedAppearance
@@ -111,6 +119,7 @@ fun WeeklyTimetableGrid(
     onManualBlockClick: (ManualItemId) -> Unit,
     onEmptyLongPress: (LongPressDraft) -> Unit,
     onVerticalOverviewAction: (VerticalOverviewAction) -> Unit = {},
+    schoolMarkersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers> = emptyMap(),
     periods: List<PeriodTime> = emptyList(),
     segmentedAxis: SegmentedTimelineAxis? = null,
     showTimeRail: Boolean = true,
@@ -276,7 +285,16 @@ fun WeeklyTimetableGrid(
                         require(pb.block.manualItemId == null) {
                             "school list contains manual block: ${pb.block.colorKey}"
                         }
-                        SchoolBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, onSchoolBlockClick)
+                        SchoolBlockNode(
+                            pb = pb,
+                            viewedWeek = viewedWeek,
+                            showNonCurrentWeek = showNonCurrentWeek,
+                            gridW = gridWidth,
+                            gridH = bodyHeight,
+                            axis = renderingAxis,
+                            markersByPresentationKey = schoolMarkersByPresentationKey,
+                            onClick = onSchoolBlockClick,
+                        )
                     }
                     for (pb in placedManual) {
                         if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
@@ -302,10 +320,15 @@ private fun BoxScope.SchoolBlockNode(
     gridW: Dp,
     gridH: Dp,
     axis: ReversibleTimelineAxis,
+    markersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers>,
     onClick: (MeetingId) -> Unit,
 ) {
     val id = pb.block.meetingId!!
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}") { onClick(id) }
+    val schoolBlock = pb.block as SchoolTimedBlock
+    val markers = markersByPresentationKey[SchoolGhostProjection.canonicalPresentationKey(schoolBlock)]
+        ?.kinds
+        .orEmpty()
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}", markers) { onClick(id) }
 }
 
 @Composable
@@ -319,7 +342,7 @@ private fun BoxScope.ManualBlockNode(
     onClick: (ManualItemId) -> Unit,
 ) {
     val id = pb.block.manualItemId!!
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "manual_block:${id.value}") { onClick(id) }
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "manual_block:${id.value}", emptySet()) { onClick(id) }
 }
 
 /** 单块：绝对定位 + 稳定 tag + a11y 全描述 + 点击；onLongPress 空实现消费长按（不冒泡到空白区新建）。 */
@@ -332,6 +355,7 @@ private fun BoxScope.BlockNode(
     gridH: Dp,
     axis: ReversibleTimelineAxis,
     tag: String,
+    markerKinds: Set<SchoolMarkerKind>,
     onClick: () -> Unit,
 ) {
     val columnWidth = gridW / 7f
@@ -356,7 +380,7 @@ private fun BoxScope.BlockNode(
         ),
         hasLocation = pb.block.location.isNotBlank(),
         hasTeachers = pb.block.teacherNames.isNotEmpty(),
-        markerCount = 0,
+        markerCount = markerKinds.size,
     )
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
@@ -387,6 +411,54 @@ private fun BoxScope.BlockNode(
                 block = pb.block,
                 budget = textBudget,
                 contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
+            )
+            if (markerKinds.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(2.dp),
+                ) {
+                    markerKinds.sortedBy { it.ordinal }.forEach { kind ->
+                        SchoolMarker(
+                            kind = kind,
+                            tag = "school_marker:${kind.name.lowercase()}:${pb.block.meetingId!!.value}",
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SchoolMarker(kind: SchoolMarkerKind, tag: String) {
+    val color = MaterialTheme.colorScheme.primary
+    Canvas(
+        Modifier
+            .padding(start = 1.dp)
+            .size(7.dp)
+            .testTag(tag),
+    ) {
+        when (kind) {
+            SchoolMarkerKind.DIFFERENT_COURSE -> {
+                val side = size.minDimension * 0.62f
+                drawRect(
+                    color = color,
+                    topLeft = androidx.compose.ui.geometry.Offset(size.width - side, 0f),
+                    size = androidx.compose.ui.geometry.Size(side, side),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+                drawRect(
+                    color = color,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - side),
+                    size = androidx.compose.ui.geometry.Size(side, side),
+                    style = Stroke(width = 1.dp.toPx()),
+                )
+            }
+            SchoolMarkerKind.SAME_COURSE_VARIANT -> drawCircle(
+                color = color,
+                radius = size.minDimension * 0.36f,
+                style = Stroke(width = 1.dp.toPx()),
             )
         }
     }

@@ -82,7 +82,13 @@ data class TimetableWeekPageUiState(
     val placedSchool: List<PlacedBlock>,
     val placedManual: List<PlacedBlock>,
     val nowLine: LocalTime?,
+    val schoolMarkersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers> = emptyMap(),
+    val attachedSchoolGhostsByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolGhostAttachment> = emptyMap(),
 )
+
+enum class SchoolMarkerKind { DIFFERENT_COURSE, SAME_COURSE_VARIANT }
+
+data class SchoolCardMarkers(val kinds: Set<SchoolMarkerKind>)
 
 /** B3/C1 authoritative UI state。weekPages 是唯一 layout 真相；其余为 derived getters，无第二份 field。 */
 data class TimetableUiState(
@@ -174,18 +180,43 @@ internal data class UiTimedBlock(
     override val teacherNames: List<String>,
 ) : TimedBlock
 
+internal data class UiSchoolTimedBlock(
+    override val colorKey: String,
+    override val meetingId: MeetingId,
+    override val weekday: Int,
+    override val start: LocalTime,
+    override val endInclusive: LocalTime,
+    override val weeks: WeekPattern,
+    override val title: String,
+    override val location: String,
+    override val teacherNames: List<String>,
+) : SchoolTimedBlock
+
+internal data class UiManualTimedBlock(
+    override val colorKey: String,
+    override val manualItemId: ManualItemId,
+    override val weekday: Int,
+    override val start: LocalTime,
+    override val endInclusive: LocalTime,
+    override val weeks: WeekPattern,
+    override val title: String,
+    override val location: String,
+    override val teacherNames: List<String>,
+) : TimedBlock {
+    override val meetingId: MeetingId? = null
+}
+
 /** 学校 meeting → TimedBlock；时间换算唯一 authority = 学期绑定 profile。 */
 internal fun schoolTimedBlock(
     semesterId: SemesterId,
     course: Course,
     meeting: CourseMeeting,
     profile: ScheduleProfile,
-): UiTimedBlock {
+): UiSchoolTimedBlock {
     val range = profile.timeRange(meeting.startPeriod, meeting.endPeriod)
-    return UiTimedBlock(
+    return UiSchoolTimedBlock(
         colorKey = "${semesterId.value}:${course.sourceCourseKey}",
         meetingId = meeting.id,
-        manualItemId = null,
         weekday = meeting.weekday,
         start = range.start,
         endInclusive = range.endInclusive,
@@ -197,9 +228,8 @@ internal fun schoolTimedBlock(
 }
 
 /** 手动项 → TimedBlock；保留任意分钟，不反向吸附节次。 */
-internal fun manualTimedBlock(item: ManualScheduleItem): UiTimedBlock = UiTimedBlock(
+internal fun manualTimedBlock(item: ManualScheduleItem): UiManualTimedBlock = UiManualTimedBlock(
     colorKey = "manual:${item.id.value}",
-    meetingId = null,
     manualItemId = item.id,
     weekday = item.weekday,
     start = item.startTime,
@@ -316,18 +346,31 @@ class TimetableViewModel(
         val courseDetails = buildCourseDetailsByMeetingId(data.school.first, data.school.second)
         val manualItemsById = data.manual.associateBy { it.id }
 
-        // 每周独立 projection：weekFilter → 单次联合 place → 按 identity 拆分
+        // 每周独立 projection：SCHOOL ghost association + unchanged MANUAL filter → one joint placement.
         val weekPages = (1..semester.totalWeeks).map { week ->
+            val association = SchoolGhostProjection.associate(rawSchool, week, showNonCurrentWeek)
+            val manualForWeek = weekFilter(rawManual, week, showNonCurrentWeek)
+            val jointBlocks: List<TimedBlock> = association.retainedSchoolBlocks + manualForWeek
             val placed = WeeklyTimetableLayout.place(
-                weekFilter(rawSchool + rawManual, week, showNonCurrentWeek),
+                jointBlocks,
                 axis,
             )
+            val markers = association.attachmentsByRepresentativeKey.mapValues { (_, attachment) ->
+                SchoolCardMarkers(
+                    buildSet {
+                        if (attachment.differentCourses.isNotEmpty()) add(SchoolMarkerKind.DIFFERENT_COURSE)
+                        if (attachment.sameCourseVariants.isNotEmpty()) add(SchoolMarkerKind.SAME_COURSE_VARIANT)
+                    },
+                )
+            }
             TimetableWeekPageUiState(
                 week = week,
                 weekDates = WeekCalculator.weekRange(semester, week),
                 placedSchool = placed.filter { it.block.meetingId != null },
                 placedManual = placed.filter { it.block.manualItemId != null },
                 nowLine = NowLinePolicy.line(semester, week, WeekCalculator.weekRange(semester, week), today, now),
+                schoolMarkersByPresentationKey = markers,
+                attachedSchoolGhostsByPresentationKey = association.attachmentsByRepresentativeKey,
             )
         }
         val weekOverviewPages = buildWeekOverviewPages(semester, rawSchool + rawManual, axis)
