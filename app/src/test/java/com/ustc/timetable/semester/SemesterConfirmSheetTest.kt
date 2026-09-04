@@ -1,5 +1,6 @@
 package com.ustc.timetable.semester
 
+import android.app.Application
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -29,7 +30,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(application = Application::class, sdk = [36])
 class SemesterConfirmSheetTest {
 
     @get:Rule val rule = createComposeRule()
