@@ -2,12 +2,14 @@ package com.ustc.timetable.timetable.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.timetable.domain.LocalDateRange
@@ -95,6 +97,17 @@ class TimetableScreenTest {
         rule.onAllNodesWithText("第 2 周").assertCountEquals(1)
         rule.onAllNodesWithText("9.7 - 9.13").assertCountEquals(1)
         rule.onAllNodesWithTag("timetable_top_bar").assertCountEquals(1)
+    }
+
+    @Test fun top_bar_is_short_and_week_date_are_vertically_centered() {
+        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        val bar = rule.onNodeWithTag("timetable_top_bar").getUnclippedBoundsInRoot()
+        val week = rule.onNodeWithTag("viewed_week").getUnclippedBoundsInRoot()
+        val dates = rule.onNodeWithTag("week_dates").getUnclippedBoundsInRoot()
+        val weekCenter = (week.top + week.bottom) / 2f
+        val dateCenter = (dates.top + dates.bottom) / 2f
+        assertTrue(bar.bottom - bar.top <= 44.dp)
+        assertTrue(kotlin.math.abs((weekCenter - dateCenter).value) <= 1f)
     }
 
     @Test fun screen_renders_weekly_grid() {

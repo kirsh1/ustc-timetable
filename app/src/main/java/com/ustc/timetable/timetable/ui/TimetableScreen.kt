@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -186,7 +186,7 @@ fun TimetableScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         BoxWithConstraints(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("timetable_top_bar"),
+            Modifier.fillMaxWidth().height(44.dp).testTag("timetable_top_bar"),
         ) {
             val showArrows = maxWidth >= 360.dp
             Row(
