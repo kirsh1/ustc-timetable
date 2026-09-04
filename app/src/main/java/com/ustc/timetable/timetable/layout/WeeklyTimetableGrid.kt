@@ -71,7 +71,8 @@ internal const val GUTTER_WIDTH_DP: Int = 44
 internal const val HEADER_HEIGHT_DP: Int = 36
 private const val TEACHER_MIN_HEIGHT_DP: Int = 60
 private const val TIME_MIN_HEIGHT_DP: Int = 90
-private const val OPTIONAL_TEXT_MIN_WIDTH_DP: Int = 52
+private const val TEACHER_MIN_WIDTH_DP: Int = 40
+private const val TIME_MIN_WIDTH_DP: Int = 52
 
 /**
  * 每周七列课表网格（SPEC §4.1/§4.2/§5.1）。
@@ -244,7 +245,9 @@ private fun BoxScope.BlockNode(
     val y = visual.topDp.dp
     val h = (visual.bottomDp - visual.topDp).dp
     val horizontalInset = 1.dp.coerceAtMost(groupWidth / 2f)
-    val hasOptionalTextWidth = groupWidth > OPTIONAL_TEXT_MIN_WIDTH_DP.dp
+    val hasTeacherTextWidth = groupWidth > TEACHER_MIN_WIDTH_DP.dp
+    val hasTimeTextWidth = groupWidth > TIME_MIN_WIDTH_DP.dp
+    val hasUncontestedColumn = pb.columnsInGroup == 1
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
@@ -268,9 +271,10 @@ private fun BoxScope.BlockNode(
         BlockTexts.Content(
             block = pb.block,
             titleMaxLines = BlockTexts.titleMaxLinesFor(h.value, pb.block.location.isNotBlank()),
+            locationMaxLines = BlockTexts.locationMaxLinesFor(h.value),
             showLocation = h > 42.dp,
-            showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
-            showTime = h > TIME_MIN_HEIGHT_DP.dp && hasOptionalTextWidth,
+            showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasTeacherTextWidth && hasUncontestedColumn,
+            showTime = h > TIME_MIN_HEIGHT_DP.dp && hasTimeTextWidth && hasUncontestedColumn,
             contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
         )
     }

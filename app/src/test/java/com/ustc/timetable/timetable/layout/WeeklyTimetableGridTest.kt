@@ -101,6 +101,7 @@ class WeeklyTimetableGridTest {
         onManual: (ManualItemId) -> Unit = {},
         onEmpty: (LongPressDraft) -> Unit = {},
         segmentedAxis: SegmentedTimelineAxis? = null,
+        showTimeRail: Boolean = true,
     ) {
         rule.setContent {
             val grid: @Composable () -> Unit = {
@@ -109,6 +110,7 @@ class WeeklyTimetableGridTest {
                     viewedWeek, nowLine, today, onSchool, onManual, onEmpty,
                     segmentedAxis = segmentedAxis,
                     periods = periods,
+                    showTimeRail = showTimeRail,
                 )
             }
             if (width != null && height != null) {
@@ -291,6 +293,19 @@ class WeeklyTimetableGridTest {
         rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(1)
     }
 
+    @Test fun standard_portrait_tall_card_shows_teacher_but_keeps_time_width_gated() {
+        // 360dp viewport minus the fixed 44dp rail gives a normal single-day card width of about 45dp.
+        setContentGrid(
+            school = placed(schoolBlock("portrait", 5, LocalTime.of(9, 45), LocalTime.of(12, 10))),
+            width = 316.dp,
+            height = 650.dp,
+            showTimeRail = false,
+        )
+
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("09:45–12:10", useUnmergedTree = true).assertCountEquals(0)
+    }
+
     @Test fun narrow_block_keeps_title_and_location() {
         val title = "名字很长必须在窄卡中截断的课程"
         val location = "很长的教学楼房间名称"
@@ -323,9 +338,9 @@ class WeeklyTimetableGridTest {
         rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
     }
 
-    @Test fun course_title_uses_multiline_before_ellipsis() {
-        assertEquals(3, BlockTexts.titleMaxLinesFor(cardHeightDp = 120f, hasLocation = true))
-        assertEquals(2, BlockTexts.titleMaxLinesFor(cardHeightDp = 72f, hasLocation = true))
+    @Test fun course_title_uses_available_height_before_optional_metadata() {
+        assertEquals(5, BlockTexts.titleMaxLinesFor(cardHeightDp = 120f, hasLocation = true))
+        assertEquals(3, BlockTexts.titleMaxLinesFor(cardHeightDp = 72f, hasLocation = true))
     }
 
     @Test fun location_is_rendered_as_separate_line() {
@@ -337,6 +352,24 @@ class WeeklyTimetableGridTest {
         val title = rule.onNodeWithText("高等无机化学", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val location = rule.onNodeWithText("TH-B301", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue(title.bottom <= location.top)
+    }
+
+    @Test fun tall_card_wraps_complete_course_name_and_location_before_optional_metadata() {
+        val title = "新时代 中国特色 社会主义 理论与实践"
+        val location = "第五教学楼 东区 研讨教室"
+        setContentGrid(
+            school = placed(schoolBlock("complete", 1, LocalTime.of(9, 45), LocalTime.of(17, 30), title = title, location = location)),
+            width = 360.dp,
+            height = 900.dp,
+        )
+
+        val card = rule.onNodeWithTag("school_block:complete").fetchSemanticsNode().boundsInRoot
+        val titleBounds = rule.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val locationBounds = rule.onNodeWithText(location, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue(BlockTexts.titleMaxLinesFor(card.height, hasLocation = true) > 3)
+        assertTrue(BlockTexts.locationMaxLinesFor(card.height) > 1)
+        assertTrue("mandatory title precedes mandatory location: $titleBounds / $locationBounds", titleBounds.bottom <= locationBounds.top)
+        assertTrue("mandatory text stays inside the card: $titleBounds / $locationBounds / $card", locationBounds.bottom <= card.bottom)
     }
 
     @Test fun short_card_preserves_course_identity() {

@@ -43,10 +43,18 @@ object BlockTexts {
         if (block.teacherNames.isNotEmpty()) add(block.teacherNames.joinToString("、"))
     }.joinToString("，")
 
-    fun titleMaxLinesFor(cardHeightDp: Float, hasLocation: Boolean): Int = when {
-        cardHeightDp < 42f -> 1
-        cardHeightDp < if (hasLocation) 96f else 72f -> 2
-        else -> 3
+    fun titleMaxLinesFor(cardHeightDp: Float, hasLocation: Boolean): Int {
+        if (cardHeightDp < 42f) return 1
+        val availableLines = ((cardHeightDp - 4f) / 12.5f).toInt().coerceAtLeast(1)
+        val locationReserve = if (hasLocation) locationMaxLinesFor(cardHeightDp) else 0
+        return (availableLines - locationReserve).coerceAtLeast(2)
+    }
+
+    fun locationMaxLinesFor(cardHeightDp: Float): Int = when {
+        cardHeightDp < 42f -> 0
+        cardHeightDp < 72f -> 1
+        cardHeightDp < 120f -> 2
+        else -> 4
     }
 
     /** 卡片内容：名称优先；地点独立一行；教师、时间仅在高度与宽度同时足够时出现。 */
@@ -54,6 +62,7 @@ object BlockTexts {
     fun Content(
         block: TimedBlock,
         titleMaxLines: Int,
+        locationMaxLines: Int,
         showLocation: Boolean,
         showTeacher: Boolean,
         showTime: Boolean,
@@ -65,15 +74,15 @@ object BlockTexts {
                 style = TimetableTypography.courseTitle,
                 color = contentColor,
                 maxLines = titleMaxLines,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
             if (showLocation && block.location.isNotBlank()) {
                 Text(
                     block.location,
                     style = TimetableTypography.courseLocation,
                     color = contentColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = locationMaxLines.coerceAtLeast(1),
+                    overflow = TextOverflow.Clip,
                 )
             }
             if (showTeacher && block.teacherNames.isNotEmpty()) {
