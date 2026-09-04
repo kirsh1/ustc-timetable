@@ -1,5 +1,10 @@
 package com.ustc.timetable.timetable.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -10,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.timetable.domain.LocalDateRange
@@ -111,12 +117,51 @@ class TimetableScreenTest {
     }
 
     @Test fun week_number_and_range_text_visual_centers_match() {
-        rule.setContent { TimetableScreen(state = fullState(), onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {}) }
+        assertWeekTextCenters(widthDp = 400, fontScale = 1f)
+    }
+
+    @Test fun week_number_and_range_text_visual_centers_match_at_font_scale_1_3() {
+        assertWeekTextCenters(widthDp = 400, fontScale = 1.3f)
+    }
+
+    @Test fun week_number_and_range_text_visual_centers_match_at_compact_width() {
+        assertWeekTextCenters(widthDp = 320, fontScale = 1f)
+    }
+
+    @Test fun week_number_and_range_text_visual_centers_match_at_compact_width_and_font_scale_1_3() {
+        assertWeekTextCenters(widthDp = 320, fontScale = 1.3f)
+    }
+
+    @Test fun week_bar_typography_tokens_are_explicit() {
+        assertEquals(44, WEEK_BAR_CONTENT_HEIGHT_DP)
+        assertEquals(16, WEEK_NUMBER_FONT_SP)
+        assertEquals(20, WEEK_NUMBER_LINE_HEIGHT_SP)
+        assertEquals(12, WEEK_RANGE_FONT_SP)
+        assertEquals(16, WEEK_RANGE_LINE_HEIGHT_SP)
+    }
+
+    private fun assertWeekTextCenters(widthDp: Int, fontScale: Float) {
+        rule.setContent {
+            val baseDensity = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(baseDensity, fontScale)) {
+                Box(Modifier.width(widthDp.dp)) {
+                    TimetableScreen(
+                        state = fullState(),
+                        onPrevWeek = {},
+                        onNextWeek = {},
+                        onWeekSelected = {},
+                    )
+                }
+            }
+        }
         val week = rule.onNodeWithTag("week_number_text", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val range = rule.onNodeWithTag("week_range_text", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val weekCenter = (week.top + week.bottom) / 2f
         val rangeCenter = (range.top + range.bottom) / 2f
-        assertTrue(kotlin.math.abs((weekCenter - rangeCenter).value) <= 1f)
+        assertTrue(
+            "width=${widthDp}dp fontScale=$fontScale week=$week range=$range",
+            kotlin.math.abs((weekCenter - rangeCenter).value) <= 1f,
+        )
     }
 
     @Test fun previous_and_next_arrows_are_symmetric_around_week_and_range() {

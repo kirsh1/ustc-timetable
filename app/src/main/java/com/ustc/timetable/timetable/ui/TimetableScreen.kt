@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.PlatformTextStyle
 import com.ustc.timetable.ui.AppIcons
 import com.ustc.timetable.ui.theme.LocalTimetableSpacing
@@ -69,6 +70,12 @@ import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import java.time.Clock
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+
+internal const val WEEK_BAR_CONTENT_HEIGHT_DP = 44
+internal const val WEEK_NUMBER_FONT_SP = 16
+internal const val WEEK_NUMBER_LINE_HEIGHT_SP = 20
+internal const val WEEK_RANGE_FONT_SP = 12
+internal const val WEEK_RANGE_LINE_HEIGHT_SP = 16
 
 /** 详情选择只保存 MeetingId，并始终对当前 emission 重新查表；stale id 不保留旧 model。 */
 internal fun resolveSchoolCourseDetail(
@@ -302,10 +309,23 @@ private fun PrimaryWeekBar(
     onSettingsClick: () -> Unit,
     horizontalPadding: androidx.compose.ui.unit.Dp,
 ) {
-    BoxWithConstraints(Modifier.fillMaxWidth().height(44.dp).testTag("timetable_top_bar")) {
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .height(WEEK_BAR_CONTENT_HEIGHT_DP.dp)
+            .testTag("timetable_top_bar"),
+    ) {
         val showArrows = maxWidth >= 360.dp
-        val centeredTitle = MaterialTheme.typography.titleMedium.copy(platformStyle = PlatformTextStyle(includeFontPadding = false))
-        val centeredRange = MaterialTheme.typography.labelMedium.copy(platformStyle = PlatformTextStyle(includeFontPadding = false))
+        val centeredTitle = MaterialTheme.typography.titleMedium.copy(
+            fontSize = WEEK_NUMBER_FONT_SP.sp,
+            lineHeight = WEEK_NUMBER_LINE_HEIGHT_SP.sp,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        )
+        val centeredRange = MaterialTheme.typography.labelMedium.copy(
+            fontSize = WEEK_RANGE_FONT_SP.sp,
+            lineHeight = WEEK_RANGE_LINE_HEIGHT_SP.sp,
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+        )
         Row(
             Modifier.fillMaxSize().padding(horizontal = horizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
@@ -313,27 +333,35 @@ private fun PrimaryWeekBar(
             if (showArrows) IconButton(onPrevWeek, Modifier.size(44.dp).testTag("prev_week"), enabled = viewedWeek > 1) {
                 Icon(AppIcons.ChevronLeft, "上一周")
             } else Box(Modifier.testTag("prev_week_compact_hidden"))
-            Box(
-                modifier = Modifier
-                    .height(44.dp)
-                    .testTag("viewed_week")
-                    .clickable(onClick = onWeekClick)
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center,
+            Row(
+                modifier = Modifier.height(WEEK_BAR_CONTENT_HEIGHT_DP.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("第 $viewedWeek 周", modifier = Modifier.testTag("week_number_text"), style = centeredTitle)
-            }
-            weekDates?.let {
                 Box(
-                    Modifier.height(44.dp).testTag("week_dates").padding(horizontal = 8.dp),
+                    modifier = Modifier
+                        .height(WEEK_BAR_CONTENT_HEIGHT_DP.dp)
+                        .testTag("viewed_week")
+                        .clickable(onClick = onWeekClick)
+                        .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "${it.start.monthValue}.${it.start.dayOfMonth} - ${it.endInclusive.monthValue}.${it.endInclusive.dayOfMonth}",
-                        style = centeredRange,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.testTag("week_range_text"),
-                    )
+                    Text("第 $viewedWeek 周", modifier = Modifier.testTag("week_number_text"), style = centeredTitle)
+                }
+                weekDates?.let {
+                    Box(
+                        Modifier
+                            .height(WEEK_BAR_CONTENT_HEIGHT_DP.dp)
+                            .testTag("week_dates")
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "${it.start.monthValue}.${it.start.dayOfMonth} - ${it.endInclusive.monthValue}.${it.endInclusive.dayOfMonth}",
+                            style = centeredRange,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("week_range_text"),
+                        )
+                    }
                 }
             }
             if (showArrows) IconButton(onNextWeek, Modifier.size(44.dp).testTag("next_week"), enabled = viewedWeek < totalWeeks) {
