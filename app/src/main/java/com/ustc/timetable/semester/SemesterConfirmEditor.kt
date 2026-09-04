@@ -6,6 +6,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+enum class SemesterEndDateMode { AUTO, MANUAL }
+
 data class SemesterConfirmEditorState(
     val displayName: String,
     val academicYear: String,
@@ -13,7 +15,14 @@ data class SemesterConfirmEditorState(
     val startDate: LocalDate?,
     val week1Start: LocalDate?,
     val totalWeeksText: String,
+    @Deprecated("Task 2 removes this compatibility field; use manualEndDate/effectiveEndDate")
     val endDate: LocalDate?,
+    val manualEndDate: LocalDate? = endDate,
+    val endDateMode: SemesterEndDateMode = if (endDate == null) {
+        SemesterEndDateMode.AUTO
+    } else {
+        SemesterEndDateMode.MANUAL
+    },
 )
 
 data class SemesterConfirmErrors(
@@ -43,15 +52,56 @@ object SemesterConfirmEditor {
         week1Start = draft.week1Start,
         totalWeeksText = draft.totalWeeks?.toString().orEmpty(),
         endDate = draft.endDate,
+        manualEndDate = draft.endDate,
+        endDateMode = if (draft.endDate == null) SemesterEndDateMode.AUTO else SemesterEndDateMode.MANUAL,
     )
+
+    fun automaticEndDate(week1Start: LocalDate?, totalWeeksText: String): LocalDate? {
+        val totalWeeks = totalWeeksText.trim().toIntOrNull()
+        if (week1Start == null || totalWeeks == null || totalWeeks !in 1..63) return null
+        return week1Start.plusWeeks(totalWeeks.toLong()).minusDays(1)
+    }
+
+    fun effectiveEndDate(state: SemesterConfirmEditorState): LocalDate? =
+        when (state.endDateMode) {
+            SemesterEndDateMode.AUTO -> automaticEndDate(state.week1Start, state.totalWeeksText)
+            SemesterEndDateMode.MANUAL -> state.manualEndDate
+        }
+
+    fun withWeek1Start(
+        state: SemesterConfirmEditorState,
+        value: LocalDate,
+    ): SemesterConfirmEditorState = state.copy(week1Start = value)
+
+    fun withTotalWeeksText(
+        state: SemesterConfirmEditorState,
+        value: String,
+    ): SemesterConfirmEditorState = state.copy(totalWeeksText = value)
+
+    fun withManualEndDate(
+        state: SemesterConfirmEditorState,
+        value: LocalDate,
+    ): SemesterConfirmEditorState = state.copy(
+        endDate = value,
+        manualEndDate = value,
+        endDateMode = SemesterEndDateMode.MANUAL,
+    )
+
+    fun restoreAutomaticEndDate(state: SemesterConfirmEditorState): SemesterConfirmEditorState =
+        state.copy(
+            endDate = null,
+            manualEndDate = null,
+            endDateMode = SemesterEndDateMode.AUTO,
+        )
 
     fun validate(state: SemesterConfirmEditorState): SemesterConfirmValidation {
         val weeks = state.totalWeeksText.trim().toIntOrNull()
+        val effectiveEndDate = effectiveEndDate(state)
         val dateOrder = when {
-            state.startDate != null && state.endDate != null && state.startDate > state.endDate ->
+            state.startDate != null && effectiveEndDate != null && state.startDate > effectiveEndDate ->
                 "学期开始日期不得晚于结束日期"
-            state.startDate != null && state.endDate != null && state.week1Start != null &&
-                state.week1Start !in state.startDate..state.endDate ->
+            state.startDate != null && effectiveEndDate != null && state.week1Start != null &&
+                state.week1Start !in state.startDate..effectiveEndDate ->
                 "第1教学周日期必须位于学期起止日期内"
             else -> null
         }
@@ -66,7 +116,7 @@ object SemesterConfirmEditor {
                 else -> null
             },
             totalWeeks = if (weeks !in 1..63) "教学周数必须为 1–63" else null,
-            endDate = if (state.endDate == null) "请选择学期结束日期" else null,
+            endDate = if (effectiveEndDate == null) "请选择学期结束日期" else null,
             dateOrder = dateOrder,
         )
         val hasErrors = listOf(
@@ -86,7 +136,7 @@ object SemesterConfirmEditor {
             week1Start = requireNotNull(state.week1Start),
             totalWeeks = requireNotNull(weeks),
             startDate = requireNotNull(state.startDate),
-            endDate = requireNotNull(state.endDate),
+            endDate = requireNotNull(effectiveEndDate),
         )
         return SemesterConfirmValidation(confirmed, errors)
     }
@@ -102,6 +152,8 @@ internal fun ConfirmedSemesterMeta.isValidSemesterConfirmation(): Boolean =
             week1Start = week1Start,
             totalWeeksText = totalWeeks.toString(),
             endDate = endDate,
+            manualEndDate = endDate,
+            endDateMode = SemesterEndDateMode.MANUAL,
         ),
     ).canConfirm
 

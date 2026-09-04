@@ -12,6 +12,91 @@ import org.junit.Test
 
 class SemesterConfirmEditorTest {
 
+    @Test fun recognized_end_date_starts_manual() {
+        val state = SemesterConfirmEditor.fromDraft(
+            SemesterImportDraft(
+                displayName = "2026-2027 秋季",
+                academicYear = "2026-2027",
+                term = Term.AUTUMN,
+                week1Start = LocalDate.of(2026, 8, 31),
+                totalWeeks = 20,
+                startDate = LocalDate.of(2026, 8, 31),
+                endDate = LocalDate.of(2027, 1, 15),
+            ),
+        )
+
+        assertEquals(SemesterEndDateMode.MANUAL, state.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 15), state.manualEndDate)
+        assertEquals(LocalDate.of(2027, 1, 15), SemesterConfirmEditor.effectiveEndDate(state))
+    }
+
+    @Test fun missing_end_date_starts_auto() {
+        val state = SemesterConfirmEditor.fromDraft(
+            SemesterImportDraft(
+                displayName = "2026-2027 秋季",
+                academicYear = "2026-2027",
+                term = Term.AUTUMN,
+                week1Start = LocalDate.of(2026, 8, 31),
+                totalWeeks = 20,
+                startDate = LocalDate.of(2026, 8, 31),
+                endDate = null,
+            ),
+        )
+
+        assertEquals(SemesterEndDateMode.AUTO, state.endDateMode)
+        assertNull(state.manualEndDate)
+        assertEquals(LocalDate.of(2027, 1, 17), SemesterConfirmEditor.effectiveEndDate(state))
+    }
+
+    @Test fun auto_end_date_uses_week1_monday_and_inclusive_last_sunday() {
+        assertEquals(
+            LocalDate.of(2027, 1, 17),
+            SemesterConfirmEditor.automaticEndDate(LocalDate.of(2026, 8, 31), "20"),
+        )
+        assertNull(SemesterConfirmEditor.automaticEndDate(LocalDate.of(2026, 8, 31), "0"))
+        assertNull(SemesterConfirmEditor.automaticEndDate(null, "20"))
+
+        val result = SemesterConfirmEditor.validate(
+            validState().copy(
+                week1Start = LocalDate.of(2026, 8, 31),
+                startDate = LocalDate.of(2026, 8, 31),
+                manualEndDate = null,
+                endDateMode = SemesterEndDateMode.AUTO,
+            ),
+        )
+        assertEquals(LocalDate.of(2027, 1, 17), result.confirmed?.endDate)
+    }
+
+    @Test fun manual_end_date_survives_week_or_week_count_changes() {
+        val initial = validState().copy(
+            manualEndDate = LocalDate.of(2027, 1, 15),
+            endDateMode = SemesterEndDateMode.MANUAL,
+        )
+
+        val changedWeek = SemesterConfirmEditor.withWeek1Start(
+            initial,
+            LocalDate.of(2026, 9, 7),
+        )
+        val changedCount = SemesterConfirmEditor.withTotalWeeksText(changedWeek, "21")
+
+        assertEquals(SemesterEndDateMode.MANUAL, changedCount.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 15), changedCount.manualEndDate)
+        assertEquals(LocalDate.of(2027, 1, 15), SemesterConfirmEditor.effectiveEndDate(changedCount))
+    }
+
+    @Test fun restore_auto_recomputes_end_date() {
+        val manual = validState().copy(
+            week1Start = LocalDate.of(2026, 8, 31),
+            manualEndDate = LocalDate.of(2027, 1, 15),
+            endDateMode = SemesterEndDateMode.MANUAL,
+        )
+
+        val restored = SemesterConfirmEditor.restoreAutomaticEndDate(manual)
+
+        assertEquals(SemesterEndDateMode.AUTO, restored.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 17), SemesterConfirmEditor.effectiveEndDate(restored))
+    }
+
     @Test fun draft_prefills_every_recognized_field() {
         val state = SemesterConfirmEditor.fromDraft(
             SemesterImportDraft(
@@ -31,7 +116,8 @@ class SemesterConfirmEditorTest {
         assertEquals(LocalDate.of(2026, 8, 30), state.startDate)
         assertEquals(LocalDate.of(2026, 9, 7), state.week1Start)
         assertEquals("20", state.totalWeeksText)
-        assertEquals(LocalDate.of(2027, 1, 15), state.endDate)
+        assertEquals(LocalDate.of(2027, 1, 15), state.manualEndDate)
+        assertEquals(LocalDate.of(2027, 1, 15), SemesterConfirmEditor.effectiveEndDate(state))
     }
 
     @Test fun missing_draft_fields_remain_blank() {
@@ -45,7 +131,8 @@ class SemesterConfirmEditorTest {
         assertNull(state.startDate)
         assertNull(state.week1Start)
         assertEquals("", state.totalWeeksText)
-        assertNull(state.endDate)
+        assertNull(state.manualEndDate)
+        assertNull(SemesterConfirmEditor.effectiveEndDate(state))
     }
 
     @Test fun no_autumn_2026_values_are_invented() {
@@ -57,7 +144,7 @@ class SemesterConfirmEditorTest {
         assertNull(state.term)
         assertNull(state.week1Start)
         assertNull(state.startDate)
-        assertNull(state.endDate)
+        assertNull(state.manualEndDate)
     }
 
     @Test fun total_weeks_1_and_63_are_valid() {
@@ -89,7 +176,11 @@ class SemesterConfirmEditorTest {
             validState().copy(startDate = null),
             validState().copy(week1Start = null),
             validState().copy(totalWeeksText = ""),
-            validState().copy(endDate = null),
+            validState().copy(
+                endDate = null,
+                manualEndDate = null,
+                endDateMode = SemesterEndDateMode.MANUAL,
+            ),
         )
 
         assertTrue(states.all { !SemesterConfirmEditor.validate(it).canConfirm })
@@ -123,6 +214,7 @@ class SemesterConfirmEditorTest {
             validState().copy(
                 startDate = LocalDate.of(2027, 1, 16),
                 endDate = LocalDate.of(2027, 1, 15),
+                manualEndDate = LocalDate.of(2027, 1, 15),
             ),
         )
 
