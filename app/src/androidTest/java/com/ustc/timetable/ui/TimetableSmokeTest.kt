@@ -47,9 +47,12 @@ class TimetableSmokeTest {
         compose.onNodeWithTag("first_launch_manual").assertIsDisplayed().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("timetable_grid").fetchSemanticsNodes().isNotEmpty() }
 
-        compose.onNodeWithText("一 31").assertIsDisplayed()
-        compose.onNodeWithText("六 5").assertIsDisplayed()
-        compose.onNodeWithText("日 6").assertIsDisplayed()
+        compose.onNodeWithText("周一").assertIsDisplayed()
+        compose.onNodeWithText("8-31").assertIsDisplayed()
+        compose.onNodeWithText("周六").assertIsDisplayed()
+        compose.onNodeWithText("9-05").assertIsDisplayed()
+        compose.onNodeWithText("周日").assertIsDisplayed()
+        compose.onNodeWithText("9-06").assertIsDisplayed()
         compose.onNodeWithTag("settings").assertIsDisplayed()
         compose.onNodeWithTag("refresh").assertDoesNotExist()
         compose.onNodeWithTag("school_block:debug-m-math-1").assertDoesNotExist()
@@ -94,7 +97,7 @@ class TimetableSmokeTest {
         compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_week").fetchSemanticsNode().config.toString().contains("第 4 周") }
 
         val safe = compose.onNodeWithTag("app_safe_content").getUnclippedBoundsInRoot()
-        val header = compose.onNodeWithTag("timetable_top_header").getUnclippedBoundsInRoot()
+        val header = compose.onNodeWithTag("timetable_top_bar").getUnclippedBoundsInRoot()
         val currentPage = hasAnyAncestor(hasTestTag("week_page_4"))
         val body = compose.onNode(hasTestTag("timetable_body") and currentPage).getUnclippedBoundsInRoot()
         val grid = compose.onNode(hasTestTag("timetable_grid") and currentPage).getUnclippedBoundsInRoot()
@@ -103,8 +106,8 @@ class TimetableSmokeTest {
         val gridWidth = grid.right - grid.left
         val gridHeight = grid.bottom - grid.top
         assertTrue(gridWidth > 7.dp && gridHeight > 0.dp)
-        val time0945 = compose.onNode(hasTestTag("time_label:09:45") and currentPage).getUnclippedBoundsInRoot()
-        val time2155 = compose.onNode(hasTestTag("time_label:21:55") and currentPage).getUnclippedBoundsInRoot()
+        val time0945 = compose.onNode(hasTestTag("time_group:09:45-12:10") and currentPage).getUnclippedBoundsInRoot()
+        val time2155 = compose.onNode(hasTestTag("time_group:19:30-21:55") and currentPage).getUnclippedBoundsInRoot()
         val y0945 = (time0945.top + time0945.bottom) / 2f
         val y2155 = (time2155.top + time2155.bottom) / 2f
         assertTrue(y0945 in grid.top..grid.bottom)
@@ -116,14 +119,16 @@ class TimetableSmokeTest {
     fun semester_switch_changes_viewed_only() {
         val (a, b) = J1TestState.seedTwoSemesters()
         val before = J1TestState.semesters()
+        grantNotificationPermissionIfNeeded()
         activity.launch()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("semester_name").fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(compose.onNodeWithTag("semester_name").fetchSemanticsNode().config.toString().contains("J1 学期 A"))
-        compose.onNodeWithTag("semester_name").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings").performClick()
+        compose.onNodeWithTag("viewed_semester").assertIsDisplayed()
+        compose.onNodeWithTag("viewed_semester").performClick()
         compose.onNodeWithTag("semester_item:${b.id.value}").performClick()
         compose.waitUntil(10_000) { J1TestState.viewedSemesterId() == b.id.value }
-        compose.waitUntil(10_000) { compose.onNodeWithTag("semester_name").fetchSemanticsNode().config.toString().contains("J1 学期 B") }
-        compose.onNodeWithTag("semester_name").assertIsDisplayed()
+        compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_semester").fetchSemanticsNode().config.toString().contains("J1 学期 B") }
+        compose.onNodeWithTag("viewed_semester").assertIsDisplayed()
         assertEquals(before, J1TestState.semesters())
         assertTrue(J1TestState.semesters().single { it.id == a.id.value }.isCurrentAcademicSemester)
     }
