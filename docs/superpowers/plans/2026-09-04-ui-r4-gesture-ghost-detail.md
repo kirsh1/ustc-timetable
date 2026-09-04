@@ -35,11 +35,14 @@ package com.ustc.timetable.timetable.ui
 enum class GridGestureOwner {
     IDLE,
     PRESS_PENDING,
+    DIRECTION_PENDING,
     CLICK_OWNED,
     LONG_PRESS_OWNED,
     HORIZONTAL_OWNED,
     VERTICAL_OWNED,
 }
+
+enum class GridPressTarget { EMPTY, SCHOOL_CARD, MANUAL_CARD }
 
 enum class VerticalOverviewAction { EXPAND, COLLAPSE }
 
@@ -47,26 +50,29 @@ sealed interface GridGestureDecision {
     data object None : GridGestureDecision
     data object Click : GridGestureDecision
     data object LongPress : GridGestureDecision
+    data object ConsumeCardLongPress : GridGestureDecision
     data object YieldToHorizontalPager : GridGestureDecision
     data class ChangeOverview(val action: VerticalOverviewAction) : GridGestureDecision
 }
 
 class OverviewGestureArbitrator(private val touchSlopPx: Float) {
     val owner: GridGestureOwner
-    fun onDown()
+    fun onDown(target: GridPressTarget)
     fun onMove(totalDxPx: Float, totalDyPx: Float): GridGestureDecision
-    fun onLongPressTimeout(emptyTarget: Boolean): GridGestureDecision
+    fun onLongPressTimeout(): GridGestureDecision
     fun onUp(): GridGestureDecision
     fun onCancel()
 }
 ```
 
-`onMove` stays pending until movement magnitude crosses platform slop and one absolute axis strictly dominates. Horizontal ownership returns `YieldToHorizontalPager` without a local action. Vertical ownership returns exactly one EXPAND for positive Y or COLLAPSE for negative Y and never returns a second action before reset. Long press can win only while pending and only on an empty target. Owner remains locked until `onUp` or `onCancel`; cancellation returns no action.
+Before crossing slop, `onUp` returns Click for SCHOOL/MANUAL cards and the existing empty click behavior. `onLongPressTimeout` while `PRESS_PENDING` returns LongPress for EMPTY, but returns `ConsumeCardLongPress` for SCHOOL_CARD or MANUAL_CARD; both select `LONG_PRESS_OWNED`, consume the remaining pointer sequence, and cannot later click.
 
-- [ ] **1. Write failing test.** Add exact named tests `click_wins_when_pointer_releases_within_slop`, `long_press_wins_after_timeout`, `horizontal_drag_before_timeout_yields_to_pager`, `vertical_drag_before_timeout_cancels_click_and_longpress`, and `one_vertical_drag_changes_overview_at_most_once`; also cover equal-axis pending, ineligible long press, owner lock, and cancellation.
+`onMove` computes Euclidean distance from the original down point. The first movement strictly beyond platform slop permanently disables click and long-press candidates. If absolute X or Y strictly dominates at that event, ownership moves directly to horizontal or vertical. If they are equal or direction is otherwise indeterminate, ownership becomes `DIRECTION_PENDING`; later movement may resolve horizontal/vertical, but timeout is ignored and release returns None. Horizontal ownership returns `YieldToHorizontalPager` without a local action. Vertical ownership returns exactly one EXPAND for positive Y or COLLAPSE for negative Y and never returns a second action before reset. Owner remains locked until `onUp` or `onCancel`; cancellation returns no action.
+
+- [ ] **1. Write failing test.** Add exact named tests `click_wins_when_pointer_releases_within_slop`, `long_press_wins_after_timeout`, `card_long_press_is_consumed_without_click`, `diagonal_motion_beyond_slop_does_not_click_on_release`, `motion_beyond_slop_disables_pending_long_press`, `horizontal_drag_before_timeout_yields_to_pager`, `vertical_drag_before_timeout_cancels_click_and_longpress`, and `one_vertical_drag_changes_overview_at_most_once`; also cover both SCHOOL/MANUAL card targets, owner lock, and cancellation.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.OverviewGestureArbitratorTest" --rerun-tasks --max-workers=1`. Expected RED: the owner, decisions, and arbitrator types do not exist.
-- [ ] **3. Minimal production implementation.** Implement the state machine as a small Kotlin class with no Compose, Android, repository, or persistence dependency. Reject nonpositive slop in the constructor and reset all accumulated state only on up/cancel.
-- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.OverviewGestureArbitratorTest" --rerun-tasks --max-workers=1`. Expected GREEN: every sequence selects at most one exclusive owner and vertical action.
+- [ ] **3. Minimal production implementation.** Implement the state machine as a small Kotlin class with no Compose, Android, repository, or persistence dependency. Store the down target, permanently invalidate click/long press on the first over-slop event, implement `DIRECTION_PENDING`, reject nonpositive slop, and reset all accumulated state only after returning the terminal up/cancel decision.
+- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.OverviewGestureArbitratorTest" --rerun-tasks --max-workers=1`. Expected GREEN: every sequence selects at most one exclusive owner/action, card long press is consumed, and any over-slop release cannot click or later long-press.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.WeekOverviewStripTest" --tests "com.ustc.timetable.timetable.layout.LongPressResolverTest" --rerun-tasks --max-workers=1`. Expected GREEN: existing overview window motion and empty-area X/Y resolution are unchanged.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/OverviewGestureArbitrator.kt app/src/test/java/com/ustc/timetable/timetable/ui/OverviewGestureArbitratorTest.kt` and `git commit -m "feat(ui-r4): define timetable gesture ownership"`.
 
@@ -113,11 +119,11 @@ fun WeeklyTimetableGrid(
 )
 ```
 
-One `awaitEachGesture` dispatcher on the seven-day body obtains `LocalViewConfiguration.current.touchSlop` and `longPressTimeoutMillis`, instantiates/reset the arbitrator, and hit-tests the pointer against logical block bounds. It dispatches card click on pending-up, empty long press only after timeout, yields unconsumed movement to `HorizontalPager`, and consumes vertical-owned movement. Card semantics retain explicit accessibility `onClick`, but per-card pointer detectors are removed so two detectors cannot fire. The fixed rail is outside this modifier. `TimetableScreen` maps EXPAND/COLLAPSE to its existing semester-scoped `overviewExpanded` Boolean.
+One `awaitEachGesture` dispatcher on the seven-day body obtains `LocalViewConfiguration.current.touchSlop` and `longPressTimeoutMillis`, hit-tests the down point once, passes EMPTY/SCHOOL_CARD/MANUAL_CARD into the arbitrator, and preserves that target for the pointer sequence. It dispatches card click only from a within-slop Click decision, empty manual creation only from LongPress, consumes card long press without opening details/editor, yields horizontal-owned movement unconsumed to `HorizontalPager`, and consumes movement only after vertical ownership. `DIRECTION_PENDING` observes subsequent displacement without consuming it, but its invalidated click/long-press flags can never be restored; release dispatches nothing. Card semantics retain explicit accessibility `onClick`, but per-card pointer detectors are removed so two detectors cannot fire. The fixed rail is outside this modifier. `TimetableScreen` maps EXPAND/COLLAPSE to its existing semester-scoped `overviewExpanded` Boolean.
 
-- [ ] **1. Write failing test.** Add Compose cases that drag down over empty grid to expand, drag up to collapse, horizontally swipe to change week without toggling overview, tap a card once, long-press empty area once, drag vertically before timeout without opening a card/editor, and prove the fixed rail does not respond to the overview gesture.
+- [ ] **1. Write failing test.** Add Compose cases that drag down over empty grid to expand, drag up to collapse, horizontally swipe to change week without toggling overview, tap a card once, long-press empty area once, long-press SCHOOL and MANUAL cards without click/detail/editor, release an equal-X/Y over-slop drag without click, wait past timeout after over-slop motion without manual creation, drag vertically before timeout without opening a card/editor, and prove the fixed rail does not respond to the overview gesture.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.TimetableGestureIntegrationTest" --tests "com.ustc.timetable.timetable.ui.TimetableScreenTest" --rerun-tasks --max-workers=1`. Expected RED: `WeeklyTimetableGrid` lacks `onVerticalOverviewAction`, existing independent `detectTapGestures` cannot provide exclusive ownership, and a grid drag does not change overview state.
-- [ ] **3. Minimal production implementation.** Add the single dispatcher and deterministic logical hit testing, remove per-card pointer detectors, retain semantic click actions, and connect the callback in `TimetableScreen`. Use the resolved existing axis for empty long-press mapping and do not change its Y calculation.
+- [ ] **3. Minimal production implementation.** Add the single dispatcher and deterministic logical hit testing, remove per-card pointer detectors, retain semantic click actions, consume `ConsumeCardLongPress` and vertical-owned changes, leave direction-pending/horizontal-owned changes unconsumed, and connect the overview callback in `TimetableScreen`. Use the resolved existing axis for empty long-press mapping and do not change its Y calculation.
 - [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.OverviewGestureArbitratorTest" --tests "com.ustc.timetable.timetable.ui.TimetableGestureIntegrationTest" --tests "com.ustc.timetable.timetable.ui.TimetableScreenTest" --rerun-tasks --max-workers=1`. Expected GREEN: each gesture invokes exactly one owner action and horizontal paging remains fluid.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.manual.ManualItemFlowTest" --tests "com.ustc.timetable.timetable.ui.WeekSwitchNavigationTest" --tests "com.ustc.timetable.timetable.layout.LongPressResolverTest" --tests "com.ustc.timetable.timetable.ui.WeekOverviewStripTest" --rerun-tasks --max-workers=1`. Expected GREEN: manual create/edit, week paging, coordinate inversion, and overview button/strip behavior remain unchanged.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/layout/WeeklyTimetableGrid.kt app/src/main/java/com/ustc/timetable/timetable/ui/TimetableScreen.kt app/src/test/java/com/ustc/timetable/timetable/ui/TimetableGestureIntegrationTest.kt app/src/test/java/com/ustc/timetable/timetable/ui/TimetableScreenTest.kt` and `git commit -m "feat(ui-r4): arbitrate timetable overview gestures"`.
@@ -150,19 +156,32 @@ data class SchoolPresentationSignature(
     val endInclusive: LocalTime,
 )
 
+data class SchoolCanonicalPresentationKey(
+    val earliestWeek: Int,
+    val weekday: Int,
+    val start: LocalTime,
+    val endInclusive: LocalTime,
+    val location: String,
+    val canonicalTeachers: List<String>,
+    val canonicalWeekPattern: String,
+    val stableCourseIdentity: String,
+)
+
 data class SchoolGhostAttachment(
-    val representativeMeetingId: MeetingId,
+    val representativeKey: SchoolCanonicalPresentationKey,
     val sameCourseVariants: List<SchoolTimedBlock>,
     val differentCourses: List<SchoolTimedBlock>,
 )
 
 data class SchoolGhostAssociation(
     val retainedSchoolBlocks: List<SchoolTimedBlock>,
-    val attachmentsByMeetingId: Map<MeetingId, SchoolGhostAttachment>,
+    val attachmentsByRepresentativeKey: Map<SchoolCanonicalPresentationKey, SchoolGhostAttachment>,
 )
 
 object SchoolGhostProjection {
-    fun presentationSignature(block: TimedBlock): SchoolPresentationSignature
+    fun presentationSignature(block: SchoolTimedBlock): SchoolPresentationSignature
+    fun canonicalPresentationKey(block: SchoolTimedBlock): SchoolCanonicalPresentationKey
+    val canonicalPresentationOrder: Comparator<SchoolCanonicalPresentationKey>
     fun associate(
         schoolBlocks: List<SchoolTimedBlock>,
         viewedWeek: Int,
@@ -171,12 +190,14 @@ object SchoolGhostProjection {
 }
 ```
 
-The stable school identity is `TimedBlock.colorKey`. Signature teachers are trimmed, blank-filtered, deduplicated, and sorted; location is trimmed; WeekPattern is excluded. Attach only non-current SCHOOL blocks that time-overlap a current SCHOOL block on the same weekday. Choose the representative with maximum overlap minutes, then stable business key `meetingId.value`, then `colorKey`. Active SCHOOL blocks all remain. Unattached ghosts remain. Attached ghosts are removed from `retainedSchoolBlocks` so they cannot consume a layout column. `SchoolTimedBlock` requires a nonnull meeting ID and null manual-item ID in its implementations. This helper accepts no MANUAL list, making SCHOOL/MANUAL mixing structurally impossible.
+The stable school identity is `TimedBlock.colorKey`. Signature teachers are trimmed, blank-filtered, deduplicated, and sorted; location is trimmed; WeekPattern is excluded only from marker classification. The canonical presentation key compares earliest set week, weekday, start, end, trimmed location, canonical teachers, `WeekPattern.format()`, and finally stable course identity in that exact order. `MeetingId`, `CourseId`, database insertion order, and list input order are absent from the key and comparator.
 
-- [ ] **1. Write failing test.** Add exact named tests `week_pattern_only_difference_has_no_variant_marker`, `presentation_signature_difference_has_variant_marker`, `manual_blocks_never_enter_school_aggregation`, `active_school_conflicts_remain_side_by_side`, `unattached_school_ghost_remains_gray_card`, and `ghost_uses_maximum_overlap_then_stable_key`. The MANUAL test must prove the public input type/API never accepts or returns a manual block and that callers keep manual lists separate.
+Attach only non-current SCHOOL blocks that time-overlap a current SCHOOL block on the same weekday. Choose the representative by greatest overlap duration, then minimum `canonicalPresentationKey(active)` using `canonicalPresentationOrder`. Exact-equal active keys form one presentation-equivalence class and share attachment metadata keyed by that canonical key; no local ID breaks the tie. Sort retained blocks and both attachment lists only with `canonicalPresentationOrder`. Active SCHOOL blocks all remain. Unattached ghosts remain. Attached ghosts are removed from `retainedSchoolBlocks` so they cannot consume a layout column. `SchoolTimedBlock` requires a nonnull meeting ID and null manual-item ID in its implementations. This helper accepts no MANUAL list, making SCHOOL/MANUAL mixing structurally impossible.
+
+- [ ] **1. Write failing test.** Add exact named tests `week_pattern_only_difference_has_no_variant_marker`, `presentation_signature_difference_has_variant_marker`, `manual_blocks_never_enter_school_aggregation`, `active_school_conflicts_remain_side_by_side`, `unattached_school_ghost_remains_gray_card`, `ghost_uses_maximum_overlap_then_stable_key`, `representative_is_stable_when_local_meeting_ids_change`, and `local_meeting_id_never_participates_in_attachment_order`. Mutate only all local MeetingIds and permute input while asserting identical canonical representative keys and attachment ordering. The MANUAL test must prove the public input type/API never accepts or returns a manual block and that callers keep manual lists separate.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.SchoolGhostProjectionTest" --rerun-tasks --max-workers=1`. Expected RED: the projection and signature types do not exist and current filtering sends every ghost into the overlap allocator.
-- [ ] **3. Minimal production implementation.** Implement canonical signature, half-open time-overlap minutes, deterministic representative selection, attachment classification, and retained list order sorted by weekday/start/end/stable key. Do not call repositories or mutate blocks.
-- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.SchoolGhostProjectionTest" --rerun-tasks --max-workers=1`. Expected GREEN: WeekPattern-only differences produce neither variant marker nor different-course classification; teacher/location/time changes on the same identity produce only same-course variants.
+- [ ] **3. Minimal production implementation.** Implement canonical signature/key/comparator, half-open time-overlap minutes, maximum-overlap then canonical-key representative selection, presentation-equivalence grouping, attachment classification, and canonical retained/attachment ordering. Do not read or compare `meetingId`, call repositories, depend on input order, or mutate blocks.
+- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.SchoolGhostProjectionTest" --rerun-tasks --max-workers=1`. Expected GREEN: WeekPattern-only differences produce neither variant marker nor different-course classification; teacher/location/time changes on the same identity produce only same-course variants; replacing every local MeetingId leaves representative keys and ordering unchanged.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.layout.WeeklyTimetableLayoutTest" --tests "com.ustc.timetable.timetable.ui.ShowNonCurrentWeekTest" --tests "com.ustc.timetable.manual.ManualItemFlowTest" --rerun-tasks --max-workers=1`. Expected GREEN: base overlap placement and all manual behavior remain baseline pending view-model wiring.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/SchoolGhostProjection.kt app/src/test/java/com/ustc/timetable/timetable/ui/SchoolGhostProjectionTest.kt` and `git commit -m "feat(ui-r4): project school ghost associations"`.
 
@@ -207,8 +228,8 @@ data class TimetableWeekPageUiState(
     val weekDates: LocalDateRange,
     val placedSchool: List<PlacedBlock>,
     val placedManual: List<PlacedBlock>,
-    val schoolMarkersByMeetingId: Map<MeetingId, SchoolCardMarkers>,
-    val attachedSchoolGhostsByMeetingId: Map<MeetingId, SchoolGhostAttachment>,
+    val schoolMarkersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers>,
+    val attachedSchoolGhostsByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolGhostAttachment>,
     val nowLine: LocalTime?,
 )
 
@@ -239,11 +260,11 @@ internal data class UiManualTimedBlock(
 }
 ```
 
-The excerpts show identity-bearing fields; both concrete classes retain all `TimedBlock` fields. `schoolTimedBlock` returns `UiSchoolTimedBlock`, `manualTimedBlock` returns `UiManualTimedBlock`, and each constructor enforces the opposite ID is absent. For each week, call `SchoolGhostProjection.associate(rawSchool, week, showNonCurrentWeek)`. Then call `WeeklyTimetableLayout.place(association.retainedSchoolBlocks + weekFilter(rawManual, week, showNonCurrentWeek), axis)` exactly once and split results by IDs as before. This retains SCHOOL/MANUAL joint layout and leaves MANUAL filtering untouched. Build markers only for placed active SCHOOL representatives. `WeeklyTimetableGrid` draws compact theme-colored vector markers in a reserved bottom-right region and never emits Unicode marker glyphs.
+The excerpts show identity-bearing fields; both concrete classes retain all `TimedBlock` fields. `schoolTimedBlock` returns `UiSchoolTimedBlock`, `manualTimedBlock` returns `UiManualTimedBlock`, and each constructor enforces the opposite ID is absent. For each week, call `SchoolGhostProjection.associate(rawSchool, week, showNonCurrentWeek)`. Then call `WeeklyTimetableLayout.place(association.retainedSchoolBlocks + weekFilter(rawManual, week, showNonCurrentWeek), axis)` exactly once and split results by IDs as before. This retains SCHOOL/MANUAL joint layout and leaves MANUAL filtering untouched. Build and look up marker metadata with `SchoolGhostProjection.canonicalPresentationKey(placed.block as SchoolTimedBlock)`. Local MeetingId remains available only for click/detail lookup. `WeeklyTimetableGrid` draws compact theme-colored vector markers in a reserved bottom-right region and never emits Unicode marker glyphs.
 
-- [ ] **1. Write failing test.** Update the old ghost-column expectation and assert attached SCHOOL ghosts do not consume active columns, active SCHOOL conflicts still do, unattached SCHOOL ghosts remain gray cards, SCHOOL/MANUAL overlaps still share the joint group, MANUAL blocks produce no marker, and the two marker kinds can coexist without obscuring the mandatory location semantics.
+- [ ] **1. Write failing test.** Update the old ghost-column expectation and assert attached SCHOOL ghosts do not consume active columns, active SCHOOL conflicts still do, unattached SCHOOL ghosts remain gray cards, SCHOOL/MANUAL overlaps still share the joint group, MANUAL blocks produce no marker, local MeetingId replacement does not change marker-key order, and the two marker kinds can coexist without obscuring the mandatory location semantics.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.ShowNonCurrentWeekTest" --tests "com.ustc.timetable.timetable.ui.TimetableViewModelTest" --tests "com.ustc.timetable.timetable.ui.WeekSwitchNavigationTest" --rerun-tasks --max-workers=1`. Expected RED: `TimetableWeekPageUiState` has no attachment/marker models and current `weekFilter(rawSchool + rawManual)` gives overlapping ghosts their own narrow columns.
-- [ ] **3. Minimal production implementation.** Wire the pure association before the one joint placement, expose immutable marker/attachment maps, and render the two vector shapes. Do not alter `weekOverviewPages = buildWeekOverviewPages(semester, rawSchool + rawManual, axis)`.
+- [ ] **3. Minimal production implementation.** Wire the pure association before the one joint placement, expose immutable canonical-key marker/attachment maps, derive render lookup keys from block presentation, and render the two vector shapes. Do not sort or tie-break with MeetingId and do not alter `weekOverviewPages = buildWeekOverviewPages(semester, rawSchool + rawManual, axis)`.
 - [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.SchoolGhostProjectionTest" --tests "com.ustc.timetable.timetable.ui.ShowNonCurrentWeekTest" --tests "com.ustc.timetable.timetable.ui.TimetableViewModelTest" --tests "com.ustc.timetable.timetable.ui.WeekSwitchNavigationTest" --rerun-tasks --max-workers=1`. Expected GREEN: projected SCHOOL markers match attachments and all active/manual placement remains deterministic.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.manual.ManualItemFlowTest" --tests "com.ustc.timetable.timetable.layout.WeeklyTimetableLayoutTest" --tests "com.ustc.timetable.timetable.ui.WeekOverviewStripTest" --rerun-tasks --max-workers=1`. Expected GREEN: manual flow, shared allocator, and active-only WeekOverview are unchanged.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/TimetableViewModel.kt app/src/main/java/com/ustc/timetable/timetable/layout/WeeklyTimetableGrid.kt app/src/test/java/com/ustc/timetable/timetable/ui/ShowNonCurrentWeekTest.kt app/src/test/java/com/ustc/timetable/timetable/ui/TimetableViewModelTest.kt app/src/test/java/com/ustc/timetable/timetable/ui/WeekSwitchNavigationTest.kt` and `git commit -m "feat(ui-r4): aggregate overlapping school ghosts"`.
@@ -263,18 +284,9 @@ The excerpts show identity-bearing fields; both concrete classes retain all `Tim
 ```kotlin
 package com.ustc.timetable.timetable.ui
 
-data class SchoolMeetingAnchor(
-    val earliestWeek: Int,
-    val weekday: Int,
-    val start: LocalTime,
-    val endInclusive: LocalTime,
-    val location: String,
-    val canonicalTeachers: List<String>,
-    val canonicalWeekPattern: String,
-)
-
 data class CourseDetailPage(
     val stableCourseIdentity: String,
+    val anchorKey: SchoolCanonicalPresentationKey,
     val anchorMeetingId: MeetingId,
     val detail: CourseDetailUiModel,
 )
@@ -290,11 +302,11 @@ object CourseDetailPager {
 }
 ```
 
-Page 1 always uses the representative active meeting. Alternative blocks are grouped by `colorKey`, excluding the representative identity. Each group selects the minimum `SchoolMeetingAnchor`: earliest set week, weekday, start, end, trimmed location, canonical teacher set, canonical WeekPattern text. Exact duplicate anchors collapse. Alternative pages sort by anchor then stable identity. `MeetingId` never sorts pages. Same-course variants remain in page 1's existing `allMeetings` and never add a page.
+Page 1 always uses the clicked representative active meeting and records its `SchoolCanonicalPresentationKey`. Alternative blocks are grouped by `colorKey`, excluding the representative identity. Each group selects the minimum canonical presentation key. Exact duplicate keys collapse. Alternative pages sort by the minimum key, whose final field is the stable course identity. Only after the winning key is selected may the implementation use one matching `meetingId` to look up `CourseDetailUiModel`; that ID is an address, never a comparator/tie-break. Same-course variants remain in page 1's existing `allMeetings` and never add a page.
 
-- [ ] **1. Write failing test.** Add exact named tests `one_detail_page_per_stable_course_identity`, `representative_active_course_is_first_detail_page`, and `same_course_variants_use_single_detail_page`; also prove input permutation and locally changed MeetingIds do not affect alternative ordering, exact duplicate anchors collapse, and MANUAL cannot appear because both representative and candidates require nonnull meeting IDs.
+- [ ] **1. Write failing test.** Add exact named tests `one_detail_page_per_stable_course_identity`, `representative_active_course_is_first_detail_page`, and `same_course_variants_use_single_detail_page`; also prove input permutation and locally changed MeetingIds do not affect `anchorKey` or alternative page ordering, exact duplicate keys collapse, and MANUAL cannot appear because both representative and candidates require `SchoolTimedBlock`.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.CourseDetailPagerTest" --rerun-tasks --max-workers=1`. Expected RED: page/anchor types and deterministic builder do not exist.
-- [ ] **3. Minimal production implementation.** Implement canonical anchor extraction, stable grouping, deduplication, and page construction from the existing unfiltered `courseDetailsByMeetingId`. Return null for stale/missing representative detail rather than constructing fake data.
+- [ ] **3. Minimal production implementation.** Reuse `SchoolGhostProjection.canonicalPresentationKey` and its comparator for grouping, deduplication, and page ordering. Select the canonical key before resolving one matching detail through the existing unfiltered `courseDetailsByMeetingId`. Return null for stale/missing representative detail rather than constructing fake data; never compare local IDs.
 - [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.CourseDetailPagerTest" --rerun-tasks --max-workers=1`. Expected GREEN: representative context is first, every alternative identity occurs once, and ordering is stable without MeetingId.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.CourseDetailSheetTest" --tests "com.ustc.timetable.timetable.ui.TimetableViewModelTest" --rerun-tasks --max-workers=1`. Expected GREEN: existing selected-meeting and complete-arrangement details remain intact.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/CourseDetailPager.kt app/src/test/java/com/ustc/timetable/timetable/ui/CourseDetailPagerTest.kt` and `git commit -m "feat(ui-r4): model stable course detail pages"`.
@@ -334,7 +346,7 @@ internal fun resolveSchoolCourseDetailPager(
 ): CourseDetailPagerModel?
 ```
 
-`TimetableRoute` owns `SchoolDetailSelection?` as saveable UI overlay state separate from `ManualOverlayState`; semester changes clear it. `TimetableScreen` passes `(MeetingId, pageWeek)` on school-card/marker click. Resolution reads that exact page's `attachedSchoolGhostsByMeetingId` and the global unfiltered detail map. `CourseDetailSheet` reuses `CourseDetailContent` for each page in a `HorizontalPager`, starts at page 0, shows vector previous/next buttons plus a page indicator only when page count exceeds one, and keeps one-page details free of paging chrome.
+`TimetableRoute` owns `SchoolDetailSelection?` as saveable UI overlay state separate from `ManualOverlayState`; semester changes clear it. `TimetableScreen` passes `(MeetingId, pageWeek)` on school-card/marker click. Resolution finds the clicked placed SCHOOL block, derives its canonical presentation key, reads that exact page's `attachedSchoolGhostsByPresentationKey`, and uses MeetingId only to retrieve detail content from the global unfiltered map. `CourseDetailSheet` reuses `CourseDetailContent` for each page in a `HorizontalPager`, starts at page 0, shows vector previous/next buttons plus a page indicator only when page count exceeds one, and keeps one-page details free of paging chrome.
 
 - [ ] **1. Write failing test.** Add tests that different-course marker/detail opens on current course page 1, swipes to each distinct alternative, vector controls stay in bounds, page indicator matches count, same-course marker opens a single page with full arrangements, ordinary active card uses the same page-1 context, stale selection dismisses, and a gray unattached ghost retains its independent single detail.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.CourseDetailSheetTest" --tests "com.ustc.timetable.timetable.ui.TimetableScreenTest" --rerun-tasks --max-workers=1`. Expected RED: the sheet accepts only one `CourseDetailUiModel`, selection has no page-week context, and markers have no pager resolver.

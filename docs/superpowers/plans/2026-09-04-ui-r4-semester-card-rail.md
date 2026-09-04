@@ -156,19 +156,82 @@ data class CourseCardTextBudget(
     val showTime: Boolean,
 )
 
+data class CourseCardTextMetrics(
+    val cardHeightDp: Float,
+    val cardWidthDp: Float,
+    val titleLineHeightDp: Float,
+    val locationLineHeightDp: Float,
+    val metadataLineHeightDp: Float,
+)
+
+object CourseCardTextTokens {
+    const val CONTENT_VERTICAL_PADDING_DP = 4f
+    const val MAX_TITLE_LINES = 3
+    const val LOCATION_LINES = 1
+    const val MAX_TEACHER_LINES = 2
+    const val TEACHER_MIN_OPTIONAL_WIDTH_DP = 40f
+    const val TIME_MIN_OPTIONAL_WIDTH_DP = 52f
+    const val MARKER_DIAMETER_DP = 8f
+    const val MARKER_GAP_DP = 2f
+    const val MARKER_RIGHT_INSET_DP = 2f
+}
+
 object BlockTexts {
-    fun budget(cardHeightDp: Float, cardWidthDp: Float, hasLocation: Boolean, markerCount: Int): CourseCardTextBudget
+    fun budget(
+        metrics: CourseCardTextMetrics,
+        hasLocation: Boolean,
+        hasTeachers: Boolean,
+        markerCount: Int,
+    ): CourseCardTextBudget
 }
 ```
 
-The budget allocates title first, then one location line, then up to two teacher lines, then time. With nonblank location and a renderable normal card, `showLocation` cannot be false merely to show teachers. Teacher names are joined by `、`; `teacherMaxLines` is 2, 1, or 0 from remaining height/width. Time is omitted first. `TimetableTypography.courseLocation` uses `FontFamily.Monospace` and `FontWeight.SemiBold`. Title uses one to three lines and final-line ellipsis only when constrained. Location uses exactly one line with ellipsis only as a last resort. Blank values render no placeholders. Marker count reserves a bottom-right rectangle without shrinking the mandatory title/location line width across the whole card.
+Compose resolves the three `TimetableTypography` line heights through the current `LocalDensity` and passes their dp values to the pure function. The algorithm is fixed:
+
+```kotlin
+require(metrics.titleLineHeightDp > 0f)
+require(metrics.locationLineHeightDp > 0f)
+require(metrics.metadataLineHeightDp > 0f)
+require(markerCount in 0..2)
+val usableHeight = (metrics.cardHeightDp - CourseCardTextTokens.CONTENT_VERTICAL_PADDING_DP)
+    .coerceAtLeast(0f)
+val locationHeight = if (
+    hasLocation &&
+    usableHeight >= metrics.titleLineHeightDp + metrics.locationLineHeightDp
+) metrics.locationLineHeightDp else 0f
+val titleMaxLines = floor(
+    (usableHeight - locationHeight).coerceAtLeast(0f) / metrics.titleLineHeightDp
+).toInt().coerceIn(1, CourseCardTextTokens.MAX_TITLE_LINES)
+val afterMandatory = (
+    usableHeight - titleMaxLines * metrics.titleLineHeightDp - locationHeight
+).coerceAtLeast(0f)
+val markerReservation = if (markerCount <= 0) 0f else {
+    markerCount * CourseCardTextTokens.MARKER_DIAMETER_DP +
+        (markerCount - 1) * CourseCardTextTokens.MARKER_GAP_DP +
+        CourseCardTextTokens.MARKER_RIGHT_INSET_DP
+}
+val optionalWidth = (metrics.cardWidthDp - markerReservation).coerceAtLeast(0f)
+val teacherMaxLines = when {
+    !hasTeachers || optionalWidth < CourseCardTextTokens.TEACHER_MIN_OPTIONAL_WIDTH_DP -> 0
+    afterMandatory >= 2f * metrics.metadataLineHeightDp -> 2
+    afterMandatory >= metrics.metadataLineHeightDp -> 1
+    else -> 0
+}
+val afterTeachers = afterMandatory - teacherMaxLines * metrics.metadataLineHeightDp
+val showTime = optionalWidth >= CourseCardTextTokens.TIME_MIN_OPTIONAL_WIDTH_DP &&
+    afterTeachers >= metrics.metadataLineHeightDp
+```
+
+The returned `showLocation` is `locationHeight > 0f`. Default-font metrics are exact tokens from existing typography: title 12.5dp, location 11.5dp, metadata 10.5dp. With 4dp vertical content padding, the first location threshold is 28dp; once the three-title-line budget is active, teacher zero-to-one is 63.5dp, teacher one-to-two is 74dp, and time after two teacher lines is 84.5dp. Optional-width thresholds are exactly 40dp for teachers and 52dp for time after marker reservation. Comparisons use inclusive `>=`. Boundary tests pair 27.99/28dp, 63.49/63.5dp, 73.99/74dp, 84.49/84.5dp, 39.99/40dp, and 51.99/52dp. Location calculation occurs before and independently of `hasTeachers`. Marker reservation changes only `optionalWidth`; it never changes `titleMaxLines`, `showLocation`, or their full-width measurement.
+
+Teacher names are joined by `、`; `teacherMaxLines` is 2, 1, or 0. Time is omitted first. `TimetableTypography.courseLocation` uses `FontFamily.Monospace` and `FontWeight.SemiBold`. Title uses one to three lines and final-line ellipsis only when constrained. Location uses exactly one line with ellipsis only as a last resort. Blank values render no placeholders.
 
 The existing `courseCardVisualBounds` remains the vertical primitive and is called with `insetDp = 1f`. Horizontal inset stays uniform at 1dp. The visual card is inside the logical hit region; a separate outer node retains the full logical size and owns input semantics.
 
-- [ ] **1. Write failing test.** In `CourseCardVisualLayoutTest`, assert exact 1dp top/bottom inset, non-negative short-card height, and unchanged logical hit bounds. In `BlockTextsTest`, cover full “电化学研究方法”, monospaced semibold `TH-A301`/`TH-B301`, two-line `Steve Masashi Musha、教师乙`, one-line ellipsis, teacher omission before location, no unknown placeholders, and complete `BlockTexts.a11y`.
+- [ ] **1. Write failing test.** In `CourseCardVisualLayoutTest`, assert exact 1dp top/bottom inset, non-negative short-card height, and unchanged logical hit bounds. In `BlockTextsTest`, add exact named cases `location_threshold_does_not_depend_on_teacher_presence`, `teacher_two_to_one_line_boundary_is_deterministic`, and `marker_reservation_does_not_reduce_all_title_lines`. Assert every paired boundary—27.99/28dp location, 63.49/63.5dp first teacher line, 73.99/74dp second teacher line, 84.49/84.5dp time, 39.99/40dp teacher width, and 51.99/52dp time width—with default metrics; assert unchanged title/location for marker counts 0/1/2, full “电化学研究方法”, monospaced semibold `TH-A301`/`TH-B301`, two-line `Steve Masashi Musha、教师乙`, one-line ellipsis, teacher omission before location, no unknown placeholders, and complete `BlockTexts.a11y`.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.layout.CourseCardVisualLayoutTest" --tests "com.ustc.timetable.timetable.ui.BlockTextsTest" --rerun-tasks --max-workers=1`. Expected RED: `CourseCardTextBudget` and `budget` do not exist, location is proportional normal-weight and multi-line, teachers are fixed to one line, and the visible node currently owns the click region.
-- [ ] **3. Minimal production implementation.** Implement the pure budget, typography, one-line location, adaptive teacher lines, title ellipsis, and two-layer logical-hit/visual-card structure. Apply the same renderer to SCHOOL and MANUAL nodes. Keep full accessibility strings and all existing IDs/callbacks.
-- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.layout.CourseCardVisualLayoutTest" --tests "com.ustc.timetable.timetable.ui.BlockTextsTest" --rerun-tasks --max-workers=1`. Expected GREEN: visual and logical bounds are distinct as specified and mandatory text wins every constrained budget.
+- [ ] **3. Minimal production implementation.** Implement the exact token object and formula above, resolve actual typography line heights before calling the pure budget, then implement one-line location, adaptive teacher lines, title ellipsis, and the two-layer logical-hit/visual-card structure. Apply the same renderer to SCHOOL and MANUAL nodes. Keep full accessibility strings and all existing IDs/callbacks.
+- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.layout.CourseCardVisualLayoutTest" --tests "com.ustc.timetable.timetable.ui.BlockTextsTest" --rerun-tasks --max-workers=1`. Expected GREEN: visual and logical bounds are distinct, exact threshold-minus-0.01dp cases select the lower budget, exact thresholds select the higher budget, and markers never reduce mandatory title/location lines.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.TimetableScreenTest" --tests "com.ustc.timetable.timetable.ui.TimetableViewModelTest" --tests "com.ustc.timetable.manual.ManualItemFlowTest" --rerun-tasks --max-workers=1`. Expected GREEN: school/manual clicks, manual editor flow, overlap geometry, and full a11y remain intact.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/layout/CourseCardVisualBounds.kt app/src/main/java/com/ustc/timetable/timetable/layout/WeeklyTimetableGrid.kt app/src/main/java/com/ustc/timetable/timetable/ui/BlockTexts.kt app/src/main/java/com/ustc/timetable/ui/theme/TimetableTheme.kt app/src/test/java/com/ustc/timetable/timetable/layout/CourseCardVisualLayoutTest.kt app/src/test/java/com/ustc/timetable/timetable/ui/BlockTextsTest.kt` and `git commit -m "fix(ui-r4): preserve timetable card identity text"`.
 

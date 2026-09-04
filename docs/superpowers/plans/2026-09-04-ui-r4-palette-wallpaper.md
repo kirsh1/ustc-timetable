@@ -61,6 +61,7 @@ Use `longPreferencesKey("course_palette_seed")` and `intPreferencesKey("wallpape
 
 - Modify production: `X:\schedule\app\src\main\java\com\ustc\timetable\timetable\ui\CoursePalette.kt`
 - Add production: `X:\schedule\app\src\main\java\com\ustc\timetable\settings\PaletteCandidateEditor.kt`
+- Add production: `X:\schedule\app\src\main\java\com\ustc\timetable\settings\PaletteSeedGenerator.kt`
 - Modify test: `X:\schedule\app\src\test\java\com\ustc\timetable\appearance\TimetableThemeTest.kt`
 - Add test: `X:\schedule\app\src\test\java\com\ustc\timetable\settings\PaletteCandidateEditorTest.kt`
 - Test FQCNs: `com.ustc.timetable.appearance.TimetableThemeTest`, `com.ustc.timetable.settings.PaletteCandidateEditorTest`
@@ -71,6 +72,8 @@ Use `longPreferencesKey("course_palette_seed")` and `intPreferencesKey("wallpape
 package com.ustc.timetable.timetable.ui
 
 object CoursePalette {
+    const val PALETTE_VARIANT_COUNT: Int = 24
+    fun variantFor(seed: Long): Int
     fun colorIndexFor(colorKey: String, seed: Long): Int
     fun containerColor(index: Int, dark: Boolean = false): Color
     fun onContainerColor(index: Int, dark: Boolean = false): Color
@@ -79,6 +82,18 @@ object CoursePalette {
 
 package com.ustc.timetable.settings
 
+fun interface PaletteSeedSource {
+    fun nextLong(): Long
+}
+
+object SecurePaletteSeedSource : PaletteSeedSource {
+    override fun nextLong(): Long
+}
+
+object PaletteSeedGenerator {
+    fun nextDistinct(currentSeed: Long, source: PaletteSeedSource): Long
+}
+
 data class PaletteCandidateState(
     val persistedSeed: Long,
     val candidateSeed: Long,
@@ -86,21 +101,26 @@ data class PaletteCandidateState(
 
 object PaletteCandidateEditor {
     fun open(persistedSeed: Long): PaletteCandidateState
-    fun replaceCandidate(state: PaletteCandidateState, generatedSeed: Long): PaletteCandidateState
+    fun nextDistinctCandidate(
+        state: PaletteCandidateState,
+        source: PaletteSeedSource,
+    ): PaletteCandidateState
     fun restoreDefault(state: PaletteCandidateState): PaletteCandidateState
     fun appliedSeed(state: PaletteCandidateState): Long
     fun cancel(state: PaletteCandidateState): PaletteCandidateState
 }
 ```
 
-For `DEFAULT_COURSE_PALETTE_SEED`, `colorIndexFor` executes the existing unsigned first MD5 byte modulo 12 exactly. For any other seed, build a platform-stable permutation by sorting indices `0..11` by the unsigned SHA-256 digest of the UTF-8 string `palette:<seed>:<index>`, with the numeric index as the final tie-break; map the legacy index through that permutation. `previewIndices` returns that permutation, making a candidate visibly different without arbitrary RGB. The existing audited pairs retain bounded hue/saturation/tone choices, light/dark contrast guarantees, and palette identity. `restoreDefault` changes only `candidateSeed`; `appliedSeed` returns the candidate for an explicit persistence callback; `cancel` restores candidate to persisted.
+For `DEFAULT_COURSE_PALETTE_SEED == 0L`, `colorIndexFor` executes the existing unsigned first MD5 byte modulo 12 exactly. `variantFor(seed)` is exactly `Math.floorMod(seed, PALETTE_VARIANT_COUNT.toLong()).toInt()`. Every seed selects one of exactly 24 unique, platform-stable permutations: variants `0..11` rotate the identity ordering by that value; variants `12..23` rotate the reversed ordering by `variant - 12`. Variant 0 is identity, so the missing/default seed preserves every UI-R3 course-to-color mapping. `previewIndices` returns the selected permutation; the existing audited color pairs retain their bounded hue/saturation/tone, light/dark contrast, and color-number identity.
 
-- [ ] **1. Write failing test.** Add exact named tests `default_seed_preserves_existing_palette_mapping`, `candidate_seed_is_not_persisted_before_apply`, `restore_default_requires_apply`, and `applied_seed_persists_across_recreation`. Also assert deterministic permutation, 12 unique indices, stable same-key mapping, light/dark identity, and contrast ratio at least 4.5 for every pair.
-- [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.appearance.TimetableThemeTest" --tests "com.ustc.timetable.settings.PaletteCandidateEditorTest" --rerun-tasks --max-workers=1`. Expected RED: `CoursePalette` accepts no seed and the candidate editor does not exist.
-- [ ] **3. Minimal production implementation.** Add the seed overload and SHA-256-sorted deterministic permutation while keeping the current color pairs, alpha policy, and one-argument source compatibility only as a delegating overload to the default seed. Implement the pure editor with no DataStore dependency.
-- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.appearance.TimetableThemeTest" --tests "com.ustc.timetable.settings.PaletteCandidateEditorTest" --rerun-tasks --max-workers=1`. Expected GREEN: default screenshots map to the same indices and nondefault candidates are deterministic and contrast-safe.
+`PaletteSeedSource` is injected at the Settings UI boundary. `SecurePaletteSeedSource.nextLong()` performs one `SecureRandom.nextLong()` call, but that method is invoked exactly once and only by an explicit `palette_new_candidate` click; opening, recomposition, navigation, Apply, cancel, and restore-default never invoke it. `PaletteSeedGenerator.nextDistinct` first samples the source. If the sampled seed's 12-index preview differs from `currentSeed`, it returns the sample unchanged. If the sample collides, it deterministically returns `(CoursePalette.variantFor(currentSeed) + 1).rem(CoursePalette.PALETTE_VARIANT_COUNT).toLong()`, the canonical seed for the next variant. Because all 24 permutations are unique, the returned preview is guaranteed to differ without retry loops, clocks, startup randomness, or arbitrary RGB. `PaletteCandidateEditor.nextDistinctCandidate` compares against the currently previewed `candidateSeed`, not only the persisted seed. `restoreDefault` changes only `candidateSeed`; `appliedSeed` returns the candidate for an explicit persistence callback; `cancel` restores candidate to persisted.
+
+- [ ] **1. Write failing test.** Add exact named tests `default_seed_preserves_existing_palette_mapping`, `candidate_seed_is_not_persisted_before_apply`, `restore_default_requires_apply`, `applied_seed_persists_across_recreation`, `new_candidate_is_distinct_from_current_preview`, and `colliding_seed_source_uses_deterministic_fallback`. Assert all 24 previews are deterministic and unique, every preview contains 12 unique indices, repeated explicit clicks compare against the current candidate, stable same-key mapping, light/dark identity, and contrast ratio at least 4.5 for every pair.
+- [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.appearance.TimetableThemeTest" --tests "com.ustc.timetable.settings.PaletteCandidateEditorTest" --rerun-tasks --max-workers=1`. Expected RED: `CoursePalette` accepts no seed, `PaletteCandidateEditor` does not exist, and there is no injectable collision-safe seed generator.
+- [ ] **3. Minimal production implementation.** Add the seed overload, exact 24-variant permutation, `PaletteSeedSource`, deterministic distinct fallback, and pure editor while keeping the current color pairs and alpha policy. Retain the one-argument color lookup only as a delegating overload to the default seed. Do not add DataStore, time, process, startup, or recomposition dependencies to these pure components.
+- [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.appearance.TimetableThemeTest" --tests "com.ustc.timetable.settings.PaletteCandidateEditorTest" --rerun-tasks --max-workers=1`. Expected GREEN: variant 0 preserves baseline indices, every explicit replacement has a distinct preview, collision fallback is deterministic, and all variants remain contrast-safe.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.timetable.ui.WeekOverviewStripTest" --tests "com.ustc.timetable.timetable.ui.TimetableScreenTest" --tests "com.ustc.timetable.manual.ManualItemFlowTest" --rerun-tasks --max-workers=1`. Expected GREEN: default seed leaves all school/manual and mini-map colors unchanged.
-- [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/CoursePalette.kt app/src/main/java/com/ustc/timetable/settings/PaletteCandidateEditor.kt app/src/test/java/com/ustc/timetable/appearance/TimetableThemeTest.kt app/src/test/java/com/ustc/timetable/settings/PaletteCandidateEditorTest.kt` and `git commit -m "feat(ui-r4): derive course palette from applied seed"`.
+- [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/timetable/ui/CoursePalette.kt app/src/main/java/com/ustc/timetable/settings/PaletteCandidateEditor.kt app/src/main/java/com/ustc/timetable/settings/PaletteSeedGenerator.kt app/src/test/java/com/ustc/timetable/appearance/TimetableThemeTest.kt app/src/test/java/com/ustc/timetable/settings/PaletteCandidateEditorTest.kt` and `git commit -m "feat(ui-r4): derive course palette from applied seed"`.
 
 ---
 
@@ -173,16 +193,23 @@ data class SettingsCallbacks(
     val onApplyCoursePaletteSeed: (Long) -> Unit = {},
 )
 
+@Composable
+fun SettingsScreen(
+    state: SettingsUiState,
+    callbacks: SettingsCallbacks,
+    paletteSeedSource: PaletteSeedSource = SecurePaletteSeedSource,
+)
+
 class SettingsViewModel {
     fun onCoursePaletteSeedApplied(seed: Long)
 }
 ```
 
-The real data classes retain all existing fields; the excerpt fixes only new signatures/defaults. `SettingsViewModel.Persisted` and its combines include both new flows without replacing existing ones. The “课程色系” row opens a sheet with a 12-color candidate preview, `palette_new_candidate`, `palette_apply`, and `palette_restore_default`. A generated Long is supplied only from the explicit new-candidate click. Opening initializes `PaletteCandidateEditor.open(state.coursePaletteSeed)`. Dismiss/back calls cancel and writes nothing. Apply invokes the callback once and closes only after adopting the candidate. Restore-default changes preview only.
+The real data classes and composable retain all existing fields/parameters; the excerpt fixes only new signatures/defaults. The production call site supplies a process-local `PaletteSeedSource` implementation, while tests inject a counting/fixed source. `SettingsViewModel.Persisted` and its combines include both new flows without replacing existing ones. The “课程色系” row opens a sheet with a 12-color candidate preview, `palette_new_candidate`, `palette_apply`, and `palette_restore_default`. Only the explicit new-candidate click calls `PaletteCandidateEditor.nextDistinctCandidate(editorState, paletteSeedSource)`. Opening initializes `PaletteCandidateEditor.open(state.coursePaletteSeed)`. Recomposition, dismiss/back, Apply, and restore-default do not call the source. Dismiss/back calls cancel and writes nothing. Apply invokes the callback once and closes only after adopting the candidate. Restore-default changes preview only.
 
-- [ ] **1. Write failing test.** In `SettingsViewModelTest`, assert applied seed writes once and is emitted after recreation. In `SettingsScreenTest`, assert preview count 12, new candidate changes preview without callback, restore-default does not call callback, Apply writes the current candidate, dismiss writes nothing, and reopening starts from the persisted value.
+- [ ] **1. Write failing test.** In `SettingsViewModelTest`, assert applied seed writes once and is emitted after recreation. In `SettingsScreenTest`, assert preview count 12, add exact named test `seed_source_is_called_only_by_explicit_new_candidate`, verify one explicit click samples exactly once and changes preview without persistence, restore-default/Apply/dismiss/recomposition do not sample, Apply writes the current candidate, dismiss writes nothing, and reopening starts from the persisted value.
 - [ ] **2. Run and observe expected RED.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.SettingsViewModelTest" --tests "com.ustc.timetable.settings.SettingsScreenTest" --rerun-tasks --max-workers=1`. Expected RED: settings state/callbacks contain no palette seed and the palette editor row/sheet is absent.
-- [ ] **3. Minimal production implementation.** Extend the existing settings combine with both preference values, add only the palette persistence method in this task, and render candidate controls using `PaletteCandidateEditor`. Do not change theme or wallpaper URI rows.
+- [ ] **3. Minimal production implementation.** Extend the existing settings combine with both preference values, add only the palette persistence method in this task, inject `PaletteSeedSource` at the Settings screen boundary, and render candidate controls using `PaletteCandidateEditor`. Invoke the source only inside the explicit new-candidate click handler. Do not change theme or wallpaper URI rows.
 - [ ] **4. Run targeted GREEN.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.PaletteCandidateEditorTest" --tests "com.ustc.timetable.settings.SettingsViewModelTest" --tests "com.ustc.timetable.settings.SettingsScreenTest" --rerun-tasks --max-workers=1`. Expected GREEN: only explicit Apply persists and all candidate/default/cancel flows are deterministic.
 - [ ] **5. Run targeted regression.** Run `./gradlew :app:testDebugUnitTest --tests "com.ustc.timetable.settings.SettingsViewModelTest" --tests "com.ustc.timetable.settings.SettingsScreenTest" --tests "com.ustc.timetable.sync.ManualSyncFlowTest" --rerun-tasks --max-workers=1`. Expected GREEN: theme, wallpaper URI, sync, relogin, profile, and notification settings remain intact.
 - [ ] **6. Commit.** Run `git add app/src/main/java/com/ustc/timetable/settings/SettingsModels.kt app/src/main/java/com/ustc/timetable/settings/SettingsViewModel.kt app/src/main/java/com/ustc/timetable/settings/SettingsScreen.kt app/src/test/java/com/ustc/timetable/settings/SettingsViewModelTest.kt app/src/test/java/com/ustc/timetable/settings/SettingsScreenTest.kt` and `git commit -m "feat(ui-r4): add course palette settings workflow"`.
