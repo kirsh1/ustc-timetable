@@ -38,5 +38,12 @@ class TimeBoundaryRailTest {
         )
     }
 
+    @Test fun existing_time_boundary_positions_remain_unchanged() {
+        assertEquals(
+            listOf("07:50", "08:35", "08:40", "09:25", "09:45", "10:30"),
+            timeBoundaryMarks(periods).flatMap(TimeBoundaryMark::times).map(LocalTime::toString),
+        )
+    }
+
     private fun p(number: Int, start: String, end: String) = PeriodTime(number, LocalTime.parse(start), LocalTime.parse(end))
 }

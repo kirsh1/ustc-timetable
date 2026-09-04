@@ -53,6 +53,14 @@ class SegmentedTimelineAxisV2Test {
         }
     }
 
+    @Test fun existing_segmented_axis_roundtrip_remains_unchanged() {
+        val axis = SegmentedTimelineAxis.from(profile).resolve(700f, 8f)
+        listOf("07:50", "08:35", "09:31", "12:10", "14:00", "18:20", "21:55").forEach {
+            val time = LocalTime.parse(it)
+            assertEquals(time, axis.timeAt(axis.fractionOf(time)))
+        }
+    }
+
     @Test fun long_press_inside_group_gap_returns_unique_time() {
         val axis = SegmentedTimelineAxis.from(profile).resolve(700f, 8f)
         val first = LongPressResolver.resolve(.1f, axis.fractionOf(LocalTime.of(9, 31)), axis)

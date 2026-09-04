@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +71,6 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
     return groups
 }
 
-internal const val GUTTER_WIDTH_DP: Int = 44
 internal const val HEADER_HEIGHT_DP: Int = 36
 
 /**
@@ -98,7 +98,16 @@ fun WeeklyTimetableGrid(
     segmentedAxis: SegmentedTimelineAxis? = null,
     showTimeRail: Boolean = true,
 ) {
-    val gutterWidth = if (showTimeRail) GUTTER_WIDTH_DP.dp else 0.dp
+    val gutterWidth = if (showTimeRail) {
+        rememberMeasuredTimeRailWidth(
+            periods = periods,
+            fallbackPeriodStarts = periodStarts,
+            axisStart = axis.start,
+            axisEndInclusive = axis.endInclusive,
+        )
+    } else {
+        0.dp
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth()) {
             if (showTimeRail) Spacer(Modifier.width(gutterWidth))
@@ -327,7 +336,26 @@ fun FixedTimeRail(
     segmentedAxis: SegmentedTimelineAxis,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.width(GUTTER_WIDTH_DP.dp).testTag("fixed_time_rail")) {
+    val railWidth = rememberMeasuredTimeRailWidth(
+        periods = periods,
+        fallbackPeriodStarts = periods.map { it.start },
+        axisStart = periods.minByOrNull { it.number }?.start,
+        axisEndInclusive = periods.maxByOrNull { it.number }?.end,
+    )
+    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    Column(
+        modifier
+            .width(railWidth)
+            .drawBehind {
+                drawLine(
+                    color = dividerColor,
+                    start = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
+                    strokeWidth = TIME_RAIL_DIVIDER_DP.dp.toPx(),
+                )
+            }
+            .testTag("fixed_time_rail"),
+    ) {
         Spacer(Modifier.height(HEADER_HEIGHT_DP.dp))
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val resolved = segmentedAxis.resolve(maxHeight.value, compressedGapDpForHeight(maxHeight.value))
@@ -340,6 +368,28 @@ fun FixedTimeRail(
             )
         }
     }
+}
+
+@Composable
+private fun rememberMeasuredTimeRailWidth(
+    periods: List<PeriodTime>,
+    fallbackPeriodStarts: List<LocalTime>,
+    axisStart: LocalTime?,
+    axisEndInclusive: LocalTime?,
+): Dp {
+    val labelTimes = if (periods.isEmpty()) {
+        (fallbackPeriodStarts + listOfNotNull(axisStart, axisEndInclusive)).distinct().sorted()
+    } else {
+        timeBoundaryMarks(periods).flatMap(TimeBoundaryMark::times)
+    }
+    val textMeasurer = rememberTextMeasurer()
+    val textStyle = MaterialTheme.typography.labelSmall
+    val density = LocalDensity.current
+    val renderedWidths = labelTimes.map { time ->
+        textMeasurer.measure(text = time.toString(), style = textStyle).size.width.toFloat()
+    }
+    val width = measuredTimeRailWidthPx(renderedWidths, density.density)
+    return with(density) { width.totalPx.toDp() }
 }
 
 @Composable
@@ -383,7 +433,9 @@ private fun PositionedGutterMark(mark: TimeBoundaryMark, anchorFraction: Float, 
         val label = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
         val anchor = (bodyHeight.roundToPx() * anchorFraction).roundToInt()
         val y = (anchor - label.height / 2).coerceIn(0, (bodyHeight.roundToPx() - label.height).coerceAtLeast(0))
-        layout(constraints.maxWidth, constraints.maxHeight) { label.placeRelative(4.dp.roundToPx(), y) }
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            label.placeRelative(TIME_RAIL_TEXT_PADDING_DP.dp.roundToPx(), y)
+        }
     }
 }
 

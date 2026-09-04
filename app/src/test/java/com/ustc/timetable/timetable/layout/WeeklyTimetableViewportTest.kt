@@ -17,6 +17,7 @@ import com.ustc.timetable.timetable.domain.WeekPattern
 import java.time.LocalDate
 import java.time.LocalTime
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -162,5 +163,26 @@ class WeeklyTimetableViewportTest {
     @Test fun compact_height_keeps_seven_columns() {
         setViewport(width = 360.dp, height = 560.dp)
         for (day in 0..6) rule.onAllNodesWithTag("header_$day").assertCountEquals(1)
+    }
+
+    @Test fun no_extra_spacer_exists_between_time_rail_and_monday() {
+        setViewport()
+        val rail = rule.onNodeWithTag("time_gutter").fetchSemanticsNode().boundsInRoot
+        val monday = rule.onNodeWithTag("header_0").fetchSemanticsNode().boundsInRoot
+        assertTrue("rail=$rail monday=$monday", kotlin.math.abs(rail.right - monday.left) <= 1f)
+    }
+
+    @Test fun released_width_is_distributed_equally_to_seven_days() {
+        setViewport()
+        val widths = (0..6).map { day ->
+            rule.onNodeWithTag("header_$day").fetchSemanticsNode().boundsInRoot.width
+        }
+        widths.drop(1).forEach { width -> assertTrue("widths=$widths", kotlin.math.abs(width - widths.first()) <= 1f) }
+    }
+
+    @Test fun measured_rail_is_narrower_than_legacy_fixed_width_for_default_labels() {
+        setViewport()
+        val rail = rule.onNodeWithTag("time_gutter").fetchSemanticsNode().boundsInRoot
+        assertTrue("rail=$rail", rail.width < 44.dp.value)
     }
 }
