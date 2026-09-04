@@ -217,7 +217,7 @@ UI-R3 reconciliation（2026-09-03）：
 - 主页不再绘制 `nowLine`。自然周和当前时间的业务计算仍保留，供“返回本周”等行为使用。
 - 主页顶栏以“第 N 周 + 日期范围”为主信息，学期选择与手动同步迁入 Settings；周概览与 Settings 使用统一矢量图标。窄宽可隐藏前后周箭头，但周数、范围、周概览和 Settings 始终保留。
 - 星期头统一为两行“周一…周日 / M-dd”；时间栏统一为从 profile 连续节次推导的五类教学范围标签，末端 `21:55` 受边界测试保护。压缩间隔保留一条跟随主题色的轻量分隔带。
-- WeekOverview 默认收起、学期变化时收起、不持久化；仅投影目标周 active blocks，并使用同一分段轴的紧凑 6dp gap 解析。
+- WeekOverview 默认收起、学期变化时收起、不持久化；仅投影目标周 active blocks，并使用同一分段轴的紧凑 6dp gap 解析。viewed week 已完整位于当前缩略视口时只移动高亮、不滚动；越过边缘时使用 FastOutSlowIn 动画做最小距离滚动，使目标周完整贴边且不露出下一周残片。
 - 非自然周且 `naturalWeek != null` 时显示返回本周 FAB；点击复用既有 week-selection/pager authority，不创建第二套周状态。
 - 课程卡使用专属紧凑 typography：标题优先 1–3 行、地点独立行、教师/时间继续同时受卡高与 overlap 后实际宽度门控。
 - Settings 使用共享 `SettingsSection` 与 navigation/toggle/info/action/danger row 体系；学期选择仍只写 `SettingsStore.viewedSemesterId`，立即同步仍只消费既有 manual-sync controller。
