@@ -27,10 +27,34 @@ class SettingsScreenTest {
 
     @Test fun all_required_settings_entries_present() {
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
-        listOf("课表", "当前查看学期", "2026-2027 秋季", "学校作息时间", "显示非当前周课程", "同步", "上次同步时间", "每周静默同步", "立即同步", "学校账户", "登录状态", "重新登录", "清除登录状态", "关于", "数据与版本", "App 版本").forEach {
+        listOf("课表", "当前查看学期", "2026-2027 秋季", "学校作息时间", "显示非当前周课程", "同步", "上次同步时间", "每周静默同步", "立即同步", "学校账户", "登录状态", "登录并导入", "清除登录状态", "关于", "数据与版本", "App 版本").forEach {
             rule.onNodeWithTag("settings_list").performScrollToNode(hasText(it))
             rule.onAllNodesWithText(it)[0].assertExists()
         }
+    }
+
+    @Test fun portal_linked_current_semester_keeps_relogin_action() {
+        rule.setContent {
+            SettingsScreen(
+                state = state().copy(hasPortalLinkedCurrentSemester = true),
+                callbacks = SettingsCallbacks(),
+            )
+        }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasText("重新登录"))
+        rule.onAllNodesWithText("重新登录").assertCountEquals(1)
+        rule.onAllNodesWithText("登录并导入").assertCountEquals(0)
+    }
+
+    @Test fun portal_linked_current_semester_reports_school_data_source() {
+        rule.setContent {
+            SettingsScreen(
+                state = state().copy(hasPortalLinkedCurrentSemester = true),
+                callbacks = SettingsCallbacks(),
+            )
+        }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasText("学校课表数据"))
+        rule.onAllNodesWithText("学校课表数据").assertCountEquals(1)
+        rule.onAllNodesWithText("本地课表数据").assertCountEquals(0)
     }
 
     @Test fun appearance_group_exposes_theme_and_wallpaper_rows() {

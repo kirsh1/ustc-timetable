@@ -23,6 +23,7 @@ sealed interface SettingsEvent {
     data object RequestNotificationPermission : SettingsEvent
     data object OpenNotificationSettings : SettingsEvent
     data object RequestRelogin : SettingsEvent
+    data object RequestImport : SettingsEvent
 }
 
 sealed interface SchoolLoginUiState {
@@ -46,6 +47,7 @@ data class SettingsUiState(
     val sessionLoading: Boolean = true,
     val workingProfile: ScheduleProfile? = null,
     val syncNowEnabled: Boolean = false,
+    val hasPortalLinkedCurrentSemester: Boolean = false,
     val reloginEnabled: Boolean = false,
     val canApplyWorkingToAcademicCurrent: Boolean = false,
     val semestersLoaded: Boolean = false,

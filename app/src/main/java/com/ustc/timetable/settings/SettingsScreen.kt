@@ -44,6 +44,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.school.ustc.auth.WebViewLoginContract
 import com.ustc.timetable.semester.SemesterSwitcherSheet
+import com.ustc.timetable.semester.ImportFlowViewModel
+import com.ustc.timetable.semester.ImportStep
+import com.ustc.timetable.semester.SemesterConfirmSheet
 import com.ustc.timetable.sync.ManualSyncController
 import com.ustc.timetable.sync.ManualSyncState
 import com.ustc.timetable.timetable.ui.AuthExpiredDialog
@@ -76,6 +79,7 @@ data class SettingsCallbacks(
 fun SettingsRoute(
     viewModel: SettingsViewModel,
     manualSyncController: ManualSyncController? = null,
+    importFlow: ImportFlowViewModel? = null,
     onBack: () -> Unit,
     onOpenProfile: () -> Unit,
     onRequestRelogin: (() -> Unit)? = null,
@@ -83,6 +87,7 @@ fun SettingsRoute(
     val state by viewModel.state.collectAsState()
     val unavailableWallpaperUri by WallpaperRuntimeState.unavailableUri.collectAsState()
     val manualSyncState = manualSyncController?.state?.collectAsState()?.value ?: ManualSyncState.Idle
+    val importStep = importFlow?.step?.collectAsState()?.value
     val context = LocalContext.current
     val wallpaperGrants = remember(context) { AndroidWallpaperUriGrants(context.contentResolver) }
     var semesterSheetOpen by remember { mutableStateOf(false) }
@@ -97,7 +102,8 @@ fun SettingsRoute(
         viewModel.onNotificationPermissionResult()
     }
     val reloginLauncher = rememberLauncherForActivityResult(WebViewLoginContract()) { successful ->
-        if (successful) viewModel.onReloginResult(true)
+        val resumesPendingSync = manualSyncState == ManualSyncState.AwaitingReauth
+        if (successful) viewModel.onReloginResult(true, resumesPendingSync)
         manualSyncController?.let { handleManualSyncLoginResult(it, successful) }
     }
     LaunchedEffect(Unit) { viewModel.onSyncSectionEntered() }
@@ -113,6 +119,7 @@ fun SettingsRoute(
                         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
                 )
                 SettingsEvent.RequestRelogin -> onRequestRelogin?.invoke() ?: reloginLauncher.launch(Unit)
+                SettingsEvent.RequestImport -> importFlow?.startLoginImport()
             }
         }
     }
@@ -139,6 +146,7 @@ fun SettingsRoute(
             },
         ),
         manualSyncState = manualSyncState,
+        importStep = importStep,
     )
     val viewed = state.viewedSemesterId
     if (semesterSheetOpen && viewed != null) {
@@ -158,6 +166,15 @@ fun SettingsRoute(
             onRelogin = { reloginLauncher.launch(Unit) },
         )
     }
+    val confirmation = importStep as? ImportStep.ConfirmMeta
+    if (confirmation != null) {
+        val flow = requireNotNull(importFlow)
+        SemesterConfirmSheet(
+            draft = confirmation.draft,
+            onConfirm = flow::confirmMeta,
+            onCancel = flow::onMetaCancelled,
+        )
+    }
 }
 
 @Composable
@@ -166,6 +183,7 @@ fun SettingsScreen(
     state: SettingsUiState,
     callbacks: SettingsCallbacks,
     manualSyncState: ManualSyncState = ManualSyncState.Idle,
+    importStep: ImportStep? = null,
 ) {
     var themeSheetOpen by remember { mutableStateOf(false) }
     var wallpaperSheetOpen by remember { mutableStateOf(false) }
@@ -242,14 +260,31 @@ fun SettingsScreen(
             SettingsSection("学校账户", "account", AppIcons.Account) {
                 SettingsInfoRow("登录状态", state.loginText, "login_status")
                 SettingsDivider()
-                SettingsNavigationRow("重新登录", if (state.reloginEnabled) null else "当前不可用", "relogin", if (state.reloginEnabled) callbacks.onRelogin else null)
+                val importBusy = importStep == ImportStep.Fetching
+                val accountAction = if (state.hasPortalLinkedCurrentSemester) "重新登录" else "登录并导入"
+                val accountSupporting = when {
+                    importBusy -> "正在导入学校课表"
+                    importStep is ImportStep.Error -> "导入失败，请重试"
+                    !state.reloginEnabled -> "当前不可用"
+                    else -> null
+                }
+                SettingsNavigationRow(
+                    accountAction,
+                    accountSupporting,
+                    "relogin",
+                    if (state.reloginEnabled && !importBusy) callbacks.onRelogin else null,
+                )
                 SettingsDivider()
                 SettingsDangerRow("清除登录状态", "clear_login", callbacks.onClearLogin)
             }
         }
         item {
             SettingsSection("关于", "about", AppIcons.Info) {
-                SettingsInfoRow("数据与版本", "本地课表数据", "data_version")
+                SettingsInfoRow(
+                    "数据与版本",
+                    if (state.hasPortalLinkedCurrentSemester) "学校课表数据" else "本地课表数据",
+                    "data_version",
+                )
                 SettingsDivider()
                 SettingsInfoRow("App 版本", state.appVersion, "app_version")
             }

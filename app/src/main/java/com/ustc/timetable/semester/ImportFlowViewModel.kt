@@ -219,6 +219,7 @@ class ImportFlowViewModel(
             syncedAt = now,
         )
         setViewedSemesterId(semester.id.value)
+        settings.setLastSyncFinishedAt(now.toEpochMilli())
         pending = null
         mutableStep.value = ImportStep.Done(semester.id)
     }

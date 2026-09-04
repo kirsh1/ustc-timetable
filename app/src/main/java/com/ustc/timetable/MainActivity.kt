@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
                     settingsContent = { back, openProfile -> SettingsRoute(
                         viewModel = settings,
                         manualSyncController = container.ustcPortalRuntime.manualSyncController,
+                        importFlow = importFlow,
                         onBack = back,
                         onOpenProfile = openProfile,
                     ) },

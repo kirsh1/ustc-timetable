@@ -85,6 +85,7 @@ class SettingsViewModel(
             sessionValue.blob != null -> SchoolLoginUiState.LoggedIn(sessionValue.blob.capturedAt)
             else -> SchoolLoginUiState.NotLoggedIn
         }
+        val hasPortalTarget = semesterList.any { it.isCurrentAcademicSemester && it.portalLinked }
         SettingsUiState(
             appearanceMode = p.appearanceMode,
             timetableWallpaperUri = p.wallpaperUri,
@@ -102,7 +103,8 @@ class SettingsViewModel(
             },
             sessionLoading = sessionValue.loading,
             workingProfile = working,
-            syncNowEnabled = manualSync != null && semesterList.any { it.isCurrentAcademicSemester && it.portalLinked },
+            syncNowEnabled = manualSync != null && hasPortalTarget,
+            hasPortalLinkedCurrentSemester = hasPortalTarget,
             reloginEnabled = reloginRuntimeAvailable,
             canApplyWorkingToAcademicCurrent = semesterList.any { it.isCurrentAcademicSemester },
             semestersLoaded = true,
@@ -153,9 +155,18 @@ class SettingsViewModel(
     fun onSyncNow() { if (state.value.syncNowEnabled) manualSync?.start() }
     fun onReloginClick() { if (reloginRuntimeAvailable) eventChannel.trySend(SettingsEvent.RequestRelogin) }
 
-    fun onReloginResult(successful: Boolean) {
+    fun onReloginResult(successful: Boolean, pendingManualSyncWillResume: Boolean = false) {
         if (!successful) return
-        viewModelScope.launch { settings.setNeedReauth(false); refreshSessionNow() }
+        viewModelScope.launch {
+            settings.setNeedReauth(false)
+            refreshSessionNow()
+            if (pendingManualSyncWillResume) return@launch
+            if (state.value.hasPortalLinkedCurrentSemester) {
+                manualSync?.start()
+            } else {
+                eventChannel.send(SettingsEvent.RequestImport)
+            }
+        }
     }
 
     fun onClearLogin() {

@@ -237,8 +237,39 @@ class SettingsViewModelTest {
         await { !settings.needReauth.first() }; assertFalse(settings.needReauth.first())
     }
 
-    @Test fun explicit_settings_relogin_does_not_auto_sync() = runSettingsTest {
-        val sync = RecordingSync(); val vm = vm(sync = sync, reloginAvailable = true); vm.onReloginResult(true); assertEquals(0, sync.calls)
+    @Test fun relogin_with_portal_target_continues_with_sync() = runSettingsTest {
+        seedSemester("school", portal = true)
+        val sync = RecordingSync()
+        val vm = vm(sync = sync, reloginAvailable = true)
+        await { vm.state.value.hasPortalLinkedCurrentSemester }
+
+        vm.onReloginResult(true)
+
+        await { sync.calls == 1 }
+        assertEquals(1, sync.calls)
+    }
+
+    @Test fun login_with_only_local_target_requests_import_instead_of_noop_sync() = runSettingsTest {
+        seedSemester("manual", portal = false)
+        val sync = RecordingSync()
+        val vm = vm(sync = sync, reloginAvailable = true)
+        await { vm.state.value.semestersLoaded }
+
+        val event = eventFrom(vm) { vm.onReloginResult(true) }
+
+        assertEquals(SettingsEvent.RequestImport, event)
+        assertEquals(0, sync.calls)
+    }
+
+    @Test fun reauth_resume_does_not_start_a_second_settings_sync() = runSettingsTest {
+        seedSemester("school", portal = true)
+        val sync = RecordingSync()
+        val vm = vm(sync = sync, reloginAvailable = true)
+        await { vm.state.value.hasPortalLinkedCurrentSemester }
+
+        vm.onReloginResult(successful = true, pendingManualSyncWillResume = true)
+
+        assertEquals(0, sync.calls)
     }
 
     @Test fun sync_now_disabled_without_portal_target() = runSettingsTest { seedSemester("manual", false); val vm = vm(sync = RecordingSync()); await { vm.state.value.semestersLoaded }; assertFalse(vm.state.value.syncNowEnabled) }

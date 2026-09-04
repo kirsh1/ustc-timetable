@@ -280,6 +280,7 @@ class ImportFlowTest {
         compose.runOnIdle { showRoute.value = false }
         releaseViewedWrite.complete(Unit)
         compose.waitUntil(timeoutMillis = 5_000) { viewedWriteFinished.get() }
+        compose.waitUntil(timeoutMillis = 5_000) { fixture.vm.step.value is ImportStep.Done }
 
         assertEquals("new", runBlocking { settings.viewedSemesterId.first() })
         assertEquals(ImportStep.Done(SemesterId("new")), fixture.vm.step.value)
@@ -361,6 +362,14 @@ class ImportFlowTest {
 
         assertNotNull(db.semesterDao().byId("new"))
         assertEquals("new", settings.viewedSemesterId.first())
+    }
+
+    @Test fun successful_import_records_last_sync_completion_time() = runBlocking {
+        val fixture = fixture(meta = completePartial(), confident = true)
+
+        fixture.vm.onLoginResultOk()
+
+        assertEquals(now.toEpochMilli(), settings.lastSyncFinishedAt.first())
     }
 
     @Test fun imported_semester_points_to_private_profile_clone() = runBlocking {
