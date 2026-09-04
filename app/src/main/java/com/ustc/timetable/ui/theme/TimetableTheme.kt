@@ -96,7 +96,12 @@ val LocalResolvedAppearance = staticCompositionLocalOf { ResolvedAppearance.LIGH
 
 object TimetableTypography {
     val courseTitle = TextStyle(fontSize = 11.sp, lineHeight = 12.5.sp, fontWeight = FontWeight.SemiBold)
-    val courseLocation = TextStyle(fontSize = 10.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.Normal)
+    val courseLocation = TextStyle(
+        fontSize = 10.sp,
+        lineHeight = 11.5.sp,
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        fontWeight = FontWeight.SemiBold,
+    )
     val courseMetadata = TextStyle(fontSize = 9.sp, lineHeight = 10.5.sp, fontWeight = FontWeight.Normal)
 }
 

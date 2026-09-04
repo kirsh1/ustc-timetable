@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -39,10 +40,12 @@ import com.ustc.timetable.timetable.domain.LocalDateRange
 import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.ui.BlockTexts
+import com.ustc.timetable.timetable.ui.CourseCardTextMetrics
 import com.ustc.timetable.timetable.ui.CoursePalette
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.appearance.ResolvedAppearance
 import com.ustc.timetable.ui.theme.LocalResolvedAppearance
+import com.ustc.timetable.ui.theme.TimetableTypography
 
 data class TeachingTimeGroup(
     val start: LocalTime,
@@ -69,10 +72,6 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
 
 internal const val GUTTER_WIDTH_DP: Int = 44
 internal const val HEADER_HEIGHT_DP: Int = 36
-private const val TEACHER_MIN_HEIGHT_DP: Int = 60
-private const val TIME_MIN_HEIGHT_DP: Int = 90
-private const val TEACHER_MIN_WIDTH_DP: Int = 40
-private const val TIME_MIN_WIDTH_DP: Int = 52
 
 /**
  * 每周七列课表网格（SPEC §4.1/§4.2/§5.1）。
@@ -242,23 +241,32 @@ private fun BoxScope.BlockNode(
     val logicalY = gridH * axis.fractionOf(pb.block.start)
     val logicalBottom = gridH * axis.fractionOf(pb.block.endInclusive)
     val visual = courseCardVisualBounds(logicalY.value, logicalBottom.value, insetDp = 1f)
-    val y = visual.topDp.dp
-    val h = (visual.bottomDp - visual.topDp).dp
+    val logicalHeight = (logicalBottom - logicalY).coerceAtLeast(0.dp)
+    val visualYOffset = (visual.topDp - logicalY.value).dp
+    val visualHeight = (visual.bottomDp - visual.topDp).dp
     val horizontalInset = 1.dp.coerceAtMost(groupWidth / 2f)
-    val hasTeacherTextWidth = groupWidth > TEACHER_MIN_WIDTH_DP.dp
-    val hasTimeTextWidth = groupWidth > TIME_MIN_WIDTH_DP.dp
-    val hasUncontestedColumn = pb.columnsInGroup == 1
+    val visualWidth = (groupWidth - horizontalInset * 2f).coerceAtLeast(0.dp)
+    val density = LocalDensity.current
+    val textBudget = BlockTexts.budget(
+        metrics = CourseCardTextMetrics(
+            cardHeightDp = visualHeight.value,
+            cardWidthDp = visualWidth.value,
+            titleLineHeightDp = with(density) { TimetableTypography.courseTitle.lineHeight.toDp().value },
+            locationLineHeightDp = with(density) { TimetableTypography.courseLocation.lineHeight.toDp().value },
+            metadataLineHeightDp = with(density) { TimetableTypography.courseMetadata.lineHeight.toDp().value },
+        ),
+        hasLocation = pb.block.location.isNotBlank(),
+        hasTeachers = pb.block.teacherNames.isNotEmpty(),
+        markerCount = 0,
+    )
     val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
     val shape = RoundedCornerShape(6.dp)
     Box(
         Modifier
-            .offset(x = x + horizontalInset, y = y)
-            .size(width = (groupWidth - horizontalInset * 2f).coerceAtLeast(0.dp), height = h)
-            .graphicsLayer { this.alpha = alpha }
-            .clip(shape)
-            .background(CoursePalette.containerColor(paletteIndex, dark), shape)
+            .offset(x = x, y = logicalY)
+            .size(width = groupWidth, height = logicalHeight)
             .pointerInput(tag) {
                 detectTapGestures(
                     onTap = { onClick() },
@@ -268,15 +276,20 @@ private fun BoxScope.BlockNode(
             .semantics { contentDescription = BlockTexts.a11y(pb.block) }
             .testTag(tag),
     ) {
-        BlockTexts.Content(
-            block = pb.block,
-            titleMaxLines = BlockTexts.titleMaxLinesFor(h.value, pb.block.location.isNotBlank()),
-            locationMaxLines = BlockTexts.locationMaxLinesFor(h.value),
-            showLocation = h > 42.dp,
-            showTeacher = h > TEACHER_MIN_HEIGHT_DP.dp && hasTeacherTextWidth && hasUncontestedColumn,
-            showTime = h > TIME_MIN_HEIGHT_DP.dp && hasTimeTextWidth && hasUncontestedColumn,
-            contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
-        )
+        Box(
+            Modifier
+                .offset(x = horizontalInset, y = visualYOffset)
+                .size(width = visualWidth, height = visualHeight)
+                .graphicsLayer { this.alpha = alpha }
+                .clip(shape)
+                .background(CoursePalette.containerColor(paletteIndex, dark), shape),
+        ) {
+            BlockTexts.Content(
+                block = pb.block,
+                budget = textBudget,
+                contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
+            )
+        }
     }
 }
 

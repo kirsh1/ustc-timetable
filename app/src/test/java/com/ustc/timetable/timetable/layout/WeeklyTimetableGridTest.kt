@@ -339,8 +339,8 @@ class WeeklyTimetableGridTest {
     }
 
     @Test fun course_title_uses_available_height_before_optional_metadata() {
-        assertEquals(5, BlockTexts.titleMaxLinesFor(cardHeightDp = 120f, hasLocation = true))
-        assertEquals(3, BlockTexts.titleMaxLinesFor(cardHeightDp = 72f, hasLocation = true))
+        assertEquals(3, cardBudget(cardHeightDp = 120f).titleMaxLines)
+        assertEquals(3, cardBudget(cardHeightDp = 72f).titleMaxLines)
     }
 
     @Test fun location_is_rendered_as_separate_line() {
@@ -366,8 +366,8 @@ class WeeklyTimetableGridTest {
         val card = rule.onNodeWithTag("school_block:complete").fetchSemanticsNode().boundsInRoot
         val titleBounds = rule.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val locationBounds = rule.onNodeWithText(location, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        assertTrue(BlockTexts.titleMaxLinesFor(card.height, hasLocation = true) > 3)
-        assertTrue(BlockTexts.locationMaxLinesFor(card.height) > 1)
+        assertEquals(3, cardBudget(card.height).titleMaxLines)
+        assertTrue(cardBudget(card.height).showLocation)
         assertTrue("mandatory title precedes mandatory location: $titleBounds / $locationBounds", titleBounds.bottom <= locationBounds.top)
         assertTrue("mandatory text stays inside the card: $titleBounds / $locationBounds / $card", locationBounds.bottom <= card.bottom)
     }
@@ -379,7 +379,7 @@ class WeeklyTimetableGridTest {
             height = 700.dp,
         )
         rule.onAllNodesWithText("高等无机化学", useUnmergedTree = true).assertCountEquals(1)
-        assertEquals(1, BlockTexts.titleMaxLinesFor(cardHeightDp = 20f, hasLocation = true))
+        assertEquals(1, cardBudget(cardHeightDp = 20f).titleMaxLines)
     }
 
     @Test fun accessibility_still_contains_hidden_teacher_and_time() {
@@ -398,7 +398,7 @@ class WeeklyTimetableGridTest {
         rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(0)
     }
 
-    @Test fun overlapped_half_width_block_hides_optional_text() {
+    @Test fun overlapped_half_width_block_uses_deterministic_optional_width_thresholds() {
         setContentGrid(
             school = placed(
                 schoolBlock("half-a", 5, LocalTime.of(8, 0), LocalTime.of(20, 0)),
@@ -407,9 +407,22 @@ class WeeklyTimetableGridTest {
             width = 700.dp,
             height = 1000.dp,
         )
-        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("刘斯", useUnmergedTree = true).assertCountEquals(1)
         rule.onAllNodesWithText("08:00–20:00", useUnmergedTree = true).assertCountEquals(0)
     }
+
+    private fun cardBudget(cardHeightDp: Float) = BlockTexts.budget(
+        metrics = com.ustc.timetable.timetable.ui.CourseCardTextMetrics(
+            cardHeightDp = cardHeightDp,
+            cardWidthDp = 80f,
+            titleLineHeightDp = 12.5f,
+            locationLineHeightDp = 11.5f,
+            metadataLineHeightDp = 10.5f,
+        ),
+        hasLocation = true,
+        hasTeachers = true,
+        markerCount = 0,
+    )
 
     // ---- a11y ----
 

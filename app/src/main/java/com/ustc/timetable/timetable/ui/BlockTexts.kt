@@ -14,6 +14,34 @@ import androidx.compose.ui.unit.dp
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import com.ustc.timetable.ui.theme.TimetableTypography
+import kotlin.math.floor
+
+data class CourseCardTextBudget(
+    val titleMaxLines: Int,
+    val showLocation: Boolean,
+    val teacherMaxLines: Int,
+    val showTime: Boolean,
+)
+
+data class CourseCardTextMetrics(
+    val cardHeightDp: Float,
+    val cardWidthDp: Float,
+    val titleLineHeightDp: Float,
+    val locationLineHeightDp: Float,
+    val metadataLineHeightDp: Float,
+)
+
+object CourseCardTextTokens {
+    const val CONTENT_VERTICAL_PADDING_DP = 4f
+    const val MAX_TITLE_LINES = 3
+    const val LOCATION_LINES = 1
+    const val MAX_TEACHER_LINES = 2
+    const val TEACHER_MIN_OPTIONAL_WIDTH_DP = 40f
+    const val TIME_MIN_OPTIONAL_WIDTH_DP = 52f
+    const val MARKER_DIAMETER_DP = 8f
+    const val MARKER_GAP_DP = 2f
+    const val MARKER_RIGHT_INSET_DP = 2f
+}
 
 /**
  * 课表文案 formatter（SPEC §4.3/§4.4）。a11y 复现 meeting 自身 week pattern（不含 viewedWeek）；
@@ -43,29 +71,62 @@ object BlockTexts {
         if (block.teacherNames.isNotEmpty()) add(block.teacherNames.joinToString("、"))
     }.joinToString("，")
 
-    fun titleMaxLinesFor(cardHeightDp: Float, hasLocation: Boolean): Int {
-        if (cardHeightDp < 42f) return 1
-        val availableLines = ((cardHeightDp - 4f) / 12.5f).toInt().coerceAtLeast(1)
-        val locationReserve = if (hasLocation) locationMaxLinesFor(cardHeightDp) else 0
-        return (availableLines - locationReserve).coerceAtLeast(2)
-    }
-
-    fun locationMaxLinesFor(cardHeightDp: Float): Int = when {
-        cardHeightDp < 42f -> 0
-        cardHeightDp < 72f -> 1
-        cardHeightDp < 120f -> 2
-        else -> 4
+    fun budget(
+        metrics: CourseCardTextMetrics,
+        hasLocation: Boolean,
+        hasTeachers: Boolean,
+        markerCount: Int,
+    ): CourseCardTextBudget {
+        require(metrics.titleLineHeightDp > 0f)
+        require(metrics.locationLineHeightDp > 0f)
+        require(metrics.metadataLineHeightDp > 0f)
+        require(markerCount in 0..2)
+        val usableHeight = (metrics.cardHeightDp - CourseCardTextTokens.CONTENT_VERTICAL_PADDING_DP)
+            .coerceAtLeast(0f)
+        val locationHeight = if (
+            hasLocation &&
+            usableHeight >= metrics.titleLineHeightDp + metrics.locationLineHeightDp
+        ) {
+            metrics.locationLineHeightDp
+        } else {
+            0f
+        }
+        val titleMaxLines = floor(
+            (usableHeight - locationHeight).coerceAtLeast(0f) / metrics.titleLineHeightDp,
+        ).toInt().coerceIn(1, CourseCardTextTokens.MAX_TITLE_LINES)
+        val afterMandatory = (
+            usableHeight - titleMaxLines * metrics.titleLineHeightDp - locationHeight
+        ).coerceAtLeast(0f)
+        val markerReservation = if (markerCount <= 0) {
+            0f
+        } else {
+            markerCount * CourseCardTextTokens.MARKER_DIAMETER_DP +
+                (markerCount - 1) * CourseCardTextTokens.MARKER_GAP_DP +
+                CourseCardTextTokens.MARKER_RIGHT_INSET_DP
+        }
+        val optionalWidth = (metrics.cardWidthDp - markerReservation).coerceAtLeast(0f)
+        val teacherMaxLines = when {
+            !hasTeachers || optionalWidth < CourseCardTextTokens.TEACHER_MIN_OPTIONAL_WIDTH_DP -> 0
+            afterMandatory >= 2f * metrics.metadataLineHeightDp -> 2
+            afterMandatory >= metrics.metadataLineHeightDp -> 1
+            else -> 0
+        }
+        val afterTeachers = afterMandatory - teacherMaxLines * metrics.metadataLineHeightDp
+        val showTime = optionalWidth >= CourseCardTextTokens.TIME_MIN_OPTIONAL_WIDTH_DP &&
+            afterTeachers >= metrics.metadataLineHeightDp
+        return CourseCardTextBudget(
+            titleMaxLines = titleMaxLines,
+            showLocation = locationHeight > 0f,
+            teacherMaxLines = teacherMaxLines,
+            showTime = showTime,
+        )
     }
 
     /** 卡片内容：名称优先；地点独立一行；教师、时间仅在高度与宽度同时足够时出现。 */
     @Composable
     fun Content(
         block: TimedBlock,
-        titleMaxLines: Int,
-        locationMaxLines: Int,
-        showLocation: Boolean,
-        showTeacher: Boolean,
-        showTime: Boolean,
+        budget: CourseCardTextBudget,
         contentColor: Color,
     ) {
         Column(Modifier.fillMaxSize().padding(2.dp)) {
@@ -73,28 +134,28 @@ object BlockTexts {
                 block.title,
                 style = TimetableTypography.courseTitle,
                 color = contentColor,
-                maxLines = titleMaxLines,
-                overflow = TextOverflow.Clip,
+                maxLines = budget.titleMaxLines,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (showLocation && block.location.isNotBlank()) {
+            if (budget.showLocation && block.location.isNotBlank()) {
                 Text(
                     block.location,
                     style = TimetableTypography.courseLocation,
                     color = contentColor,
-                    maxLines = locationMaxLines.coerceAtLeast(1),
-                    overflow = TextOverflow.Clip,
+                    maxLines = CourseCardTextTokens.LOCATION_LINES,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (showTeacher && block.teacherNames.isNotEmpty()) {
+            if (budget.teacherMaxLines > 0 && block.teacherNames.isNotEmpty()) {
                 Text(
                     block.teacherNames.joinToString("、"),
                     style = TimetableTypography.courseMetadata,
                     color = contentColor,
-                    maxLines = 1,
+                    maxLines = budget.teacherMaxLines,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (showTime) {
+            if (budget.showTime) {
                 Text(
                     timeText(block.start, block.endInclusive),
                     style = TimetableTypography.courseMetadata,
