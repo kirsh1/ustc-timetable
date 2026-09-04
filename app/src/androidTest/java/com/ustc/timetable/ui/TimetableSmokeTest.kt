@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.appearance.AppearanceMode
 import java.time.LocalTime
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -93,8 +94,11 @@ class TimetableSmokeTest {
         compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_week").fetchSemanticsNode().config.toString().contains("第 3 周") }
         compose.onNodeWithTag("week_overview_strip").assertIsDisplayed()
 
+        val fixedRailBefore = compose.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot()
         compose.onNodeWithTag("week_pager").performTouchInput { swipeLeft() }
         compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_week").fetchSemanticsNode().config.toString().contains("第 4 周") }
+        val fixedRailAfter = compose.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot()
+        assertEquals(fixedRailBefore, fixedRailAfter)
 
         val safe = compose.onNodeWithTag("app_safe_content").getUnclippedBoundsInRoot()
         val header = compose.onNodeWithTag("timetable_top_bar").getUnclippedBoundsInRoot()
@@ -106,8 +110,8 @@ class TimetableSmokeTest {
         val gridWidth = grid.right - grid.left
         val gridHeight = grid.bottom - grid.top
         assertTrue(gridWidth > 7.dp && gridHeight > 0.dp)
-        val time0945 = compose.onNode(hasTestTag("time_group:09:45-12:10") and currentPage).getUnclippedBoundsInRoot()
-        val time2155 = compose.onNode(hasTestTag("time_group:19:30-21:55") and currentPage).getUnclippedBoundsInRoot()
+        val time0945 = compose.onNodeWithTag("time_boundary:09:45").getUnclippedBoundsInRoot()
+        val time2155 = compose.onNodeWithTag("time_boundary:21:55").getUnclippedBoundsInRoot()
         val y0945 = (time0945.top + time0945.bottom) / 2f
         val y2155 = (time2155.top + time2155.bottom) / 2f
         assertTrue(y0945 in grid.top..grid.bottom)
@@ -147,6 +151,20 @@ class TimetableSmokeTest {
         compose.onNodeWithTag("profile_editor_back").performClick()
         compose.onNodeWithTag("settings_back").performClick()
         compose.onNodeWithTag("timetable_grid").assertIsDisplayed()
+    }
+
+    @Test
+    fun appearance_mode_changes_persist_from_settings() {
+        J1TestState.seedDebug()
+        grantNotificationPermissionIfNeeded()
+        activity.launch()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("settings").performClick()
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("appearance_theme"))
+        compose.onNodeWithTag("appearance_theme").performClick()
+        compose.onNodeWithTag("appearance_option:DARK").performClick()
+        compose.waitUntil(10_000) { J1TestState.appearanceMode() == AppearanceMode.DARK }
+        compose.onNodeWithTag("settings_list").assertIsDisplayed()
     }
 
     private fun grantNotificationPermissionIfNeeded() {

@@ -8,6 +8,8 @@ import com.ustc.timetable.timetable.domain.SemesterDefaults
 import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import com.ustc.timetable.appearance.AppearanceMode
+import com.ustc.timetable.appearance.WallpaperRuntimeState
 
 object J1TestState {
     val app: TimetableApp
@@ -23,6 +25,9 @@ object J1TestState {
         container.settings.setShowNonCurrentWeek(false)
         container.settings.setWeeklySyncEnabled(true)
         container.settings.setViewedSemesterId("j1-no-viewed-semester")
+        container.settings.setAppearanceMode(AppearanceMode.LIGHT)
+        container.settings.setTimetableWallpaperUri(null)
+        WallpaperRuntimeState.clear()
     }
 
     fun seedDebug() = runBlocking {
@@ -63,4 +68,5 @@ object J1TestState {
 
     fun semesters() = runBlocking { app.container.db.semesterDao().allByStartDateDesc() }
     fun viewedSemesterId() = runBlocking { app.container.settings.viewedSemesterId.first() }
+    fun appearanceMode() = runBlocking { app.container.settings.appearanceMode.first() }
 }

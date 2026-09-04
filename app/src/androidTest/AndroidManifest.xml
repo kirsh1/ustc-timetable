@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <provider
+            android:name="com.ustc.timetable.test.UiR4WallpaperProvider"
+            android:authorities="com.ustc.timetable.test.ui-r4-wallpaper"
+            android:exported="true" />
+    </application>
+</manifest>
