@@ -1,11 +1,17 @@
 package com.ustc.timetable.timetable.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
@@ -16,10 +22,12 @@ import com.ustc.timetable.timetable.domain.SemesterDefaults
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
+import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import java.time.LocalDate
 import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -113,6 +121,71 @@ class WeekOverviewStripTest {
         rule.onNodeWithTag("week_overview_toggle").performClick()
         rule.onAllNodesWithTag("week_overview_selected:2", useUnmergedTree = true).assertCountEquals(1)
         rule.onAllNodesWithTag("week_overview_selected:1", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun fully_visible_viewed_week_does_not_move_overview_window() {
+        assertEquals(
+            0f,
+            weekOverviewVisibilityScrollDelta(
+                itemOffset = 84,
+                itemSize = 72,
+                viewportStart = 0,
+                viewportEnd = 320,
+            ),
+        )
+    }
+
+    @Test fun partially_visible_next_week_scrolls_only_to_trailing_edge() {
+        assertEquals(
+            28f,
+            weekOverviewVisibilityScrollDelta(
+                itemOffset = 276,
+                itemSize = 72,
+                viewportStart = 0,
+                viewportEnd = 320,
+            ),
+        )
+    }
+
+    @Test fun partially_visible_previous_week_scrolls_only_to_leading_edge() {
+        assertEquals(
+            -18f,
+            weekOverviewVisibilityScrollDelta(
+                itemOffset = -18,
+                itemSize = 72,
+                viewportStart = 0,
+                viewportEnd = 320,
+            ),
+        )
+    }
+
+    @Test fun visible_week_changes_keep_window_still_then_edge_crossing_right_aligns_target() {
+        val viewed = mutableIntStateOf(7)
+        val pages = (1..20).map { WeekOverviewPageUiState(it, emptyList()) }
+        rule.setContent {
+            Box(Modifier.width(320.dp)) {
+                WeekOverviewStrip(
+                    pages = pages,
+                    viewedWeek = viewed.intValue,
+                    naturalWeek = null,
+                    onWeekSelected = {},
+                    axis = SegmentedTimelineAxis.from(profile),
+                )
+            }
+        }
+        rule.waitForIdle()
+        val weekSevenBefore = rule.onNodeWithTag("week_overview_card:7").getUnclippedBoundsInRoot()
+        viewed.intValue = 8
+        rule.waitForIdle()
+        val weekSevenAfter = rule.onNodeWithTag("week_overview_card:7").getUnclippedBoundsInRoot()
+        assertEquals(weekSevenBefore.left, weekSevenAfter.left)
+
+        viewed.intValue = 11
+        rule.waitForIdle()
+        val strip = rule.onNodeWithTag("week_overview_strip").getUnclippedBoundsInRoot()
+        val weekEleven = rule.onNodeWithTag("week_overview_card:11").getUnclippedBoundsInRoot()
+        assertTrue(kotlin.math.abs((weekEleven.right - strip.right).value) <= 1f)
+        rule.onNodeWithTag("week_overview_card:12").assertIsNotDisplayed()
     }
 
     @Test fun clicking_week_changes_viewedWeek() {

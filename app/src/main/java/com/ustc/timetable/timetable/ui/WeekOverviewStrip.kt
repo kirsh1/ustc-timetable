@@ -1,8 +1,11 @@
 package com.ustc.timetable.timetable.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.timetable.domain.Semester
@@ -39,6 +43,17 @@ data class WeekOverviewPageUiState(
     val week: Int,
     val placedBlocks: List<PlacedBlock>,
 )
+
+internal fun weekOverviewVisibilityScrollDelta(
+    itemOffset: Int,
+    itemSize: Int,
+    viewportStart: Int,
+    viewportEnd: Int,
+): Float = when {
+    itemOffset < viewportStart -> (itemOffset - viewportStart).toFloat()
+    itemOffset + itemSize > viewportEnd -> (itemOffset + itemSize - viewportEnd).toFloat()
+    else -> 0f
+}
 
 /** 同一 raw school/manual 数据的 active-only projection；不消费主网格可能包含 ghost 的最终 projection。 */
 internal fun buildWeekOverviewPages(
@@ -61,9 +76,34 @@ internal fun WeekOverviewStrip(
     axis: SegmentedTimelineAxis,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
+    val initialIndex = if (pages.isEmpty()) 0 else (viewedWeek - 1).coerceIn(pages.indices)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
+    val density = LocalDensity.current
     LaunchedEffect(viewedWeek, pages.size) {
-        if (pages.isNotEmpty()) listState.scrollToItem((viewedWeek - 1).coerceIn(pages.indices))
+        if (pages.isEmpty()) return@LaunchedEffect
+        val targetIndex = (viewedWeek - 1).coerceIn(pages.indices)
+        val layout = listState.layoutInfo
+        val visible = layout.visibleItemsInfo
+        if (visible.isEmpty()) return@LaunchedEffect
+        val cardWidth = with(density) { 72.dp.roundToPx() }
+        val itemSpacing = with(density) { 6.dp.roundToPx() }
+        val target = visible.firstOrNull { it.index == targetIndex }
+        val targetOffset = target?.offset ?: run {
+            val anchor = visible.first()
+            anchor.offset + (targetIndex - anchor.index) * (cardWidth + itemSpacing)
+        }
+        val delta = weekOverviewVisibilityScrollDelta(
+            itemOffset = targetOffset,
+            itemSize = target?.size ?: cardWidth,
+            viewportStart = layout.viewportStartOffset,
+            viewportEnd = layout.viewportEndOffset,
+        )
+        if (delta != 0f) {
+            listState.animateScrollBy(
+                value = delta,
+                animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+            )
+        }
     }
     LazyRow(
         state = listState,
