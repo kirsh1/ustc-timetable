@@ -176,11 +176,7 @@ class SemesterConfirmEditorTest {
             validState().copy(startDate = null),
             validState().copy(week1Start = null),
             validState().copy(totalWeeksText = ""),
-            validState().copy(
-                endDate = null,
-                manualEndDate = null,
-                endDateMode = SemesterEndDateMode.MANUAL,
-            ),
+            validState().copy(manualEndDate = null, endDateMode = SemesterEndDateMode.MANUAL),
         )
 
         assertTrue(states.all { !SemesterConfirmEditor.validate(it).canConfirm })
@@ -188,7 +184,16 @@ class SemesterConfirmEditorTest {
 
     @Test fun required_field_errors_use_frozen_copy() {
         val errors = SemesterConfirmEditor.validate(
-            SemesterConfirmEditorState(" ", " ", null, null, null, "", null),
+            SemesterConfirmEditorState(
+                " ",
+                " ",
+                null,
+                null,
+                null,
+                "",
+                null,
+                SemesterEndDateMode.MANUAL,
+            ),
         ).errors
 
         assertEquals("学期名称不能为空", errors.displayName)
@@ -213,7 +218,6 @@ class SemesterConfirmEditorTest {
         val result = SemesterConfirmEditor.validate(
             validState().copy(
                 startDate = LocalDate.of(2027, 1, 16),
-                endDate = LocalDate.of(2027, 1, 15),
                 manualEndDate = LocalDate.of(2027, 1, 15),
             ),
         )
@@ -279,11 +283,11 @@ class SemesterConfirmEditorTest {
         val before = validState()
         val selected = LocalDate.of(2026, 9, 14)
 
-        val after = before.withDate(SemesterDateField.WEEK1_START, selected)
+        val after = before.withConfirmedDate(SemesterDateField.WEEK1_START, selected)
 
         assertEquals(selected, after.week1Start)
         assertEquals(before.startDate, after.startDate)
-        assertEquals(before.endDate, after.endDate)
+        assertEquals(before.manualEndDate, after.manualEndDate)
         assertEquals(before.copy(week1Start = selected), after)
     }
 
@@ -294,6 +298,7 @@ class SemesterConfirmEditorTest {
         startDate = LocalDate.of(2026, 8, 30),
         week1Start = LocalDate.of(2026, 9, 7),
         totalWeeksText = totalWeeks,
-        endDate = LocalDate.of(2027, 1, 15),
+        manualEndDate = LocalDate.of(2027, 1, 15),
+        endDateMode = SemesterEndDateMode.MANUAL,
     )
 }

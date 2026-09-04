@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -32,6 +33,112 @@ import org.robolectric.annotation.Config
 class SemesterConfirmSheetTest {
 
     @get:Rule val rule = createComposeRule()
+
+    @Test fun opening_and_canceling_end_picker_preserves_mode() {
+        val before = validState()
+
+        val pickerDate = before.dateForPicker(SemesterDateField.END_DATE)
+
+        assertEquals(LocalDate.of(2027, 1, 15), pickerDate)
+        assertEquals(SemesterEndDateMode.MANUAL, before.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 15), before.manualEndDate)
+    }
+
+    @Test fun confirming_end_picker_selection_enters_manual() {
+        val auto = SemesterConfirmEditor.fromDraft(validDraft().copy(endDate = null))
+
+        val confirmed = auto.withConfirmedDate(
+            SemesterDateField.END_DATE,
+            LocalDate.of(2027, 1, 15),
+        )
+
+        assertEquals(SemesterEndDateMode.MANUAL, confirmed.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 15), confirmed.manualEndDate)
+    }
+
+    @Test fun auto_end_date_status_updates_with_week_count() {
+        val editorState = mutableStateOf(
+            SemesterConfirmEditor.fromDraft(
+                validDraft().copy(
+                    startDate = LocalDate.of(2026, 8, 31),
+                    week1Start = LocalDate.of(2026, 8, 31),
+                    endDate = null,
+                ),
+            ),
+        )
+        rule.setContent {
+            SemesterConfirmContent(
+                state = editorState.value,
+                validation = SemesterConfirmEditor.validate(editorState.value),
+                onStateChange = { editorState.value = it },
+                onOpenDatePicker = {},
+                onConfirm = {},
+                onCancel = {},
+            )
+        }
+
+        rule.onAllNodesWithText("2027-01-17", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("自动计算", useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithTag("semester_confirm_total_weeks").performTextReplacement("21")
+
+        assertEquals(LocalDate.of(2027, 1, 24), SemesterConfirmEditor.effectiveEndDate(editorState.value))
+        rule.onAllNodesWithText("2027-01-24", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test fun restore_auto_action_recomputes_and_removes_manual_action() {
+        val editorState = mutableStateOf(
+            validState().copy(week1Start = LocalDate.of(2026, 8, 31)),
+        )
+        rule.setContent {
+            SemesterConfirmContent(
+                state = editorState.value,
+                validation = SemesterConfirmEditor.validate(editorState.value),
+                onStateChange = { editorState.value = it },
+                onOpenDatePicker = {},
+                onConfirm = {},
+                onCancel = {},
+            )
+        }
+
+        rule.onNodeWithTag("semester_confirm_restore_auto_end").performScrollTo().performClick()
+
+        assertEquals(SemesterEndDateMode.AUTO, editorState.value.endDateMode)
+        assertEquals(LocalDate.of(2027, 1, 17), SemesterConfirmEditor.effectiveEndDate(editorState.value))
+        rule.onNodeWithTag("semester_confirm_restore_auto_end").assertDoesNotExist()
+    }
+
+    @Test fun recognized_manual_mode_survives_saveable_restoration() {
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            SemesterConfirmSheet(validDraft(), onConfirm = {}, onCancel = {})
+        }
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        rule.onAllNodesWithText("已手动修改", useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithTag("semester_confirm_restore_auto_end").assertExists()
+    }
+
+    @Test fun auto_mode_survives_saveable_restoration() {
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            SemesterConfirmSheet(
+                validDraft().copy(
+                    startDate = LocalDate.of(2026, 8, 31),
+                    week1Start = LocalDate.of(2026, 8, 31),
+                    endDate = null,
+                ),
+                onConfirm = {},
+                onCancel = {},
+            )
+        }
+
+        restoration.emulateSavedInstanceStateRestore()
+
+        rule.onAllNodesWithText("自动计算", useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithText("2027-01-17", useUnmergedTree = true).assertCountEquals(1)
+        rule.onNodeWithTag("semester_confirm_restore_auto_end").assertDoesNotExist()
+    }
 
     @Test fun all_seven_fields_are_present() {
         content(validState())
@@ -253,7 +360,8 @@ class SemesterConfirmSheetTest {
         startDate = LocalDate.of(2026, 8, 30),
         week1Start = LocalDate.of(2026, 9, 7),
         totalWeeksText = "20",
-        endDate = LocalDate.of(2027, 1, 15),
+        manualEndDate = LocalDate.of(2027, 1, 15),
+        endDateMode = SemesterEndDateMode.MANUAL,
     )
 
     private fun validDraft() = SemesterImportDraft(

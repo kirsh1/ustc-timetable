@@ -15,14 +15,8 @@ data class SemesterConfirmEditorState(
     val startDate: LocalDate?,
     val week1Start: LocalDate?,
     val totalWeeksText: String,
-    @Deprecated("Task 2 removes this compatibility field; use manualEndDate/effectiveEndDate")
-    val endDate: LocalDate?,
-    val manualEndDate: LocalDate? = endDate,
-    val endDateMode: SemesterEndDateMode = if (endDate == null) {
-        SemesterEndDateMode.AUTO
-    } else {
-        SemesterEndDateMode.MANUAL
-    },
+    val manualEndDate: LocalDate?,
+    val endDateMode: SemesterEndDateMode,
 )
 
 data class SemesterConfirmErrors(
@@ -51,7 +45,6 @@ object SemesterConfirmEditor {
         startDate = draft.startDate,
         week1Start = draft.week1Start,
         totalWeeksText = draft.totalWeeks?.toString().orEmpty(),
-        endDate = draft.endDate,
         manualEndDate = draft.endDate,
         endDateMode = if (draft.endDate == null) SemesterEndDateMode.AUTO else SemesterEndDateMode.MANUAL,
     )
@@ -82,14 +75,12 @@ object SemesterConfirmEditor {
         state: SemesterConfirmEditorState,
         value: LocalDate,
     ): SemesterConfirmEditorState = state.copy(
-        endDate = value,
         manualEndDate = value,
         endDateMode = SemesterEndDateMode.MANUAL,
     )
 
     fun restoreAutomaticEndDate(state: SemesterConfirmEditorState): SemesterConfirmEditorState =
         state.copy(
-            endDate = null,
             manualEndDate = null,
             endDateMode = SemesterEndDateMode.AUTO,
         )
@@ -151,7 +142,6 @@ internal fun ConfirmedSemesterMeta.isValidSemesterConfirmation(): Boolean =
             startDate = startDate,
             week1Start = week1Start,
             totalWeeksText = totalWeeks.toString(),
-            endDate = endDate,
             manualEndDate = endDate,
             endDateMode = SemesterEndDateMode.MANUAL,
         ),

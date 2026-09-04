@@ -81,14 +81,14 @@ fun SemesterConfirmSheet(
     openDateField?.let { field ->
         key(field) {
             val pickerState = rememberDatePickerState(
-                initialSelectedDateMillis = state.date(field)?.toDatePickerUtcMillis(),
+                initialSelectedDateMillis = state.dateForPicker(field)?.toDatePickerUtcMillis(),
             )
             DatePickerDialog(
                 onDismissRequest = { openDateField = null },
                 confirmButton = {
                     TextButton(onClick = {
                         pickerState.selectedDateMillis?.fromDatePickerUtcMillis()?.let { selected ->
-                            state = state.withDate(field, selected)
+                            state = state.withConfirmedDate(field, selected)
                         }
                         openDateField = null
                     }) { Text("确定") }
@@ -178,7 +178,9 @@ internal fun SemesterConfirmContent(
         )
         OutlinedTextField(
             value = state.totalWeeksText,
-            onValueChange = { onStateChange(state.copy(totalWeeksText = it)) },
+            onValueChange = {
+                onStateChange(SemesterConfirmEditor.withTotalWeeksText(state, it))
+            },
             label = { Text("教学周数") },
             isError = validation.errors.totalWeeks != null,
             supportingText = errorText(validation.errors.totalWeeks),
@@ -188,11 +190,27 @@ internal fun SemesterConfirmContent(
         )
         SemesterDateButton(
             label = "学期结束日期",
-            date = state.endDate,
+            date = SemesterConfirmEditor.effectiveEndDate(state),
             error = validation.errors.endDate,
             tag = "semester_confirm_end_date",
             onClick = { onOpenDatePicker(SemesterDateField.END_DATE) },
         )
+        Text(
+            text = if (state.endDateMode == SemesterEndDateMode.AUTO) "自动计算" else "已手动修改",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("semester_confirm_end_date_mode"),
+        )
+        if (state.endDateMode == SemesterEndDateMode.MANUAL) {
+            TextButton(
+                onClick = {
+                    onStateChange(SemesterConfirmEditor.restoreAutomaticEndDate(state))
+                },
+                modifier = Modifier.testTag("semester_confirm_restore_auto_end"),
+            ) {
+                Text("恢复自动计算")
+            }
+        }
         validation.errors.dateOrder?.let { ErrorText(it) }
 
         Row(
@@ -238,19 +256,19 @@ private fun ErrorText(text: String) {
 private fun errorText(error: String?): (@Composable () -> Unit)? =
     error?.let { { ErrorText(it) } }
 
-private fun SemesterConfirmEditorState.date(field: SemesterDateField): LocalDate? = when (field) {
+internal fun SemesterConfirmEditorState.dateForPicker(field: SemesterDateField): LocalDate? = when (field) {
     SemesterDateField.START_DATE -> startDate
     SemesterDateField.WEEK1_START -> week1Start
-    SemesterDateField.END_DATE -> endDate
+    SemesterDateField.END_DATE -> SemesterConfirmEditor.effectiveEndDate(this)
 }
 
-internal fun SemesterConfirmEditorState.withDate(
+internal fun SemesterConfirmEditorState.withConfirmedDate(
     field: SemesterDateField,
     date: LocalDate,
 ): SemesterConfirmEditorState = when (field) {
     SemesterDateField.START_DATE -> copy(startDate = date)
-    SemesterDateField.WEEK1_START -> copy(week1Start = date)
-    SemesterDateField.END_DATE -> copy(endDate = date)
+    SemesterDateField.WEEK1_START -> SemesterConfirmEditor.withWeek1Start(this, date)
+    SemesterDateField.END_DATE -> SemesterConfirmEditor.withManualEndDate(this, date)
 }
 
 private data class TermChoice(val term: Term, val label: String, val tag: String)
@@ -272,7 +290,8 @@ private val SemesterConfirmEditorStateSaver = Saver<SemesterConfirmEditorState, 
             state.startDate?.toEpochDay()?.toString().orEmpty(),
             state.week1Start?.toEpochDay()?.toString().orEmpty(),
             state.totalWeeksText,
-            state.endDate?.toEpochDay()?.toString().orEmpty(),
+            state.manualEndDate?.toEpochDay()?.toString().orEmpty(),
+            state.endDateMode.name,
         )
     },
     restore = { saved ->
@@ -283,7 +302,8 @@ private val SemesterConfirmEditorStateSaver = Saver<SemesterConfirmEditorState, 
             startDate = saved[3].toLongOrNull()?.let(LocalDate::ofEpochDay),
             week1Start = saved[4].toLongOrNull()?.let(LocalDate::ofEpochDay),
             totalWeeksText = saved[5],
-            endDate = saved[6].toLongOrNull()?.let(LocalDate::ofEpochDay),
+            manualEndDate = saved[6].toLongOrNull()?.let(LocalDate::ofEpochDay),
+            endDateMode = SemesterEndDateMode.valueOf(saved[7]),
         )
     },
 )
