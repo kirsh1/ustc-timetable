@@ -87,6 +87,9 @@ class UiR4ConnectedTest {
     private fun capture(name: String) {
         if (InstrumentationRegistry.getArguments().getString("uiR4Screenshots") != "true") return
         compose.waitForIdle()
+        // Compose semantics can settle before the window compositor presents that frame.
+        // Wait for window-event quiescence before taking the device-side screenshot.
+        instrumentation.uiAutomation.waitForIdle(300, 5_000)
         shell("screencap -p /sdcard/Pictures/ui-r4-$name.png")
     }
 
