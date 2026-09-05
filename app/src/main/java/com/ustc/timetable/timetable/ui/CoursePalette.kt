@@ -14,6 +14,18 @@ object CoursePalette {
 
     const val NON_CURRENT_WEEK_ALPHA: Float = 0.35f
     const val PALETTE_SIZE: Int = 12
+    const val PALETTE_VARIANT_COUNT: Int = 24
+
+    fun variantFor(seed: Long): Int = Math.floorMod(seed, PALETTE_VARIANT_COUNT.toLong()).toInt()
+
+    fun previewIndices(seed: Long): List<Int> {
+        val variant = variantFor(seed)
+        val rotation = variant % PALETTE_SIZE
+        return List(PALETTE_SIZE) { index ->
+            val rotated = (index + rotation) % PALETTE_SIZE
+            if (variant < PALETTE_SIZE) rotated else PALETTE_SIZE - 1 - rotated
+        }
+    }
 
     private val lightPairs: List<Pair<Color, Color>> = listOf(
         Color(0xFFB9DCFF) to Color(0xFF102A43),
@@ -44,11 +56,13 @@ object CoursePalette {
     }
 
     /** MD5 首字节按 unsigned（& 0xFF）对 12 取模。 */
-    fun colorIndexFor(colorKey: String): Int {
+    fun colorIndexFor(colorKey: String): Int = colorIndexFor(colorKey, com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED)
+
+    fun colorIndexFor(colorKey: String, seed: Long): Int {
         val first = MessageDigest.getInstance("MD5")
             .digest(colorKey.toByteArray(Charsets.UTF_8))[0]
             .toInt() and 0xFF
-        return first % PALETTE_SIZE
+        return previewIndices(seed)[first % PALETTE_SIZE]
     }
 
     /** 当前周恒 1f；非当前周仅在开关开启时淡化，开关关闭时不渲染（由调用方跳过）。 */
