@@ -16,3 +16,10 @@ fun wallpaperScrim(appearance: ResolvedAppearance): Color = when (appearance) {
     ResolvedAppearance.LIGHT -> Color.White.copy(alpha = 0.76f)
     ResolvedAppearance.DARK -> Color.Black.copy(alpha = 0.66f)
 }
+
+fun wallpaperImageAlpha(visibilityPercent: Int): Float = visibilityPercent.coerceIn(0, 100) / 100f
+
+fun wallpaperScrim(appearance: ResolvedAppearance, visibilityPercent: Int): Color {
+    val safety = wallpaperScrim(appearance)
+    return safety.copy(alpha = safety.alpha * wallpaperImageAlpha(visibilityPercent))
+}

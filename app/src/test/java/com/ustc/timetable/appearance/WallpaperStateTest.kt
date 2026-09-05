@@ -4,6 +4,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class WallpaperStateTest {
+    @Test fun slider_preview_does_not_change_course_card_alpha() {
+        for (percent in listOf(0, 65, 100)) {
+            assertEquals(percent / 100f, wallpaperImageAlpha(percent), 0.001f)
+            for (appearance in ResolvedAppearance.entries) {
+                assertEquals(wallpaperScrim(appearance).alpha * percent / 100f, wallpaperScrim(appearance, percent).alpha, 0.005f)
+            }
+            assertEquals(1f, com.ustc.timetable.timetable.ui.CoursePalette.alphaFor(true, true))
+            assertEquals(0.35f, com.ustc.timetable.timetable.ui.CoursePalette.alphaFor(false, true))
+        }
+        assertEquals(0f, wallpaperImageAlpha(-1), 0f)
+        assertEquals(1f, wallpaperImageAlpha(101), 0f)
+    }
     @Test fun picker_cancel_keeps_existing_wallpaper() {
         val grants = FakeGrants()
         assertEquals("content://old", WallpaperSelection.resolve("content://old", null, grants))
