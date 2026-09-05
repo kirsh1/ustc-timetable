@@ -57,7 +57,7 @@ internal fun CourseDetailPagerContent(pager: CourseDetailPagerModel, profile: Sc
                         enabled = pagerState.currentPage > 0,
                         modifier = Modifier.testTag("course_detail_previous"),
                     ) { Icon(AppIcons.ChevronLeft, "上一门课程") }
-                    Text("${pagerState.currentPage + 1} / ${pager.pages.size}", Modifier.testTag("course_detail_page_indicator"))
+                    Text("${pagerState.currentPage + 1} / ${pager.pages.size}", Modifier.testTag("course_detail_indicator"))
                     IconButton(
                         onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
                         enabled = pagerState.currentPage < pager.pages.lastIndex,

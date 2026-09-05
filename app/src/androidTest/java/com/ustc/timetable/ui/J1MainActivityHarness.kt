@@ -19,4 +19,9 @@ internal class J1MainActivityHarness(private val compose: ComposeTestRule) {
         scenario = null
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
     }
+
+    fun recreate() {
+        checkNotNull(scenario).recreate()
+        compose.waitForIdle()
+    }
 }

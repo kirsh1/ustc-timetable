@@ -375,13 +375,28 @@ private fun BoxScope.BlockNode(
     val horizontalInset = 1.dp.coerceAtMost(groupWidth / 2f)
     val visualWidth = (groupWidth - horizontalInset * 2f).coerceAtLeast(0.dp)
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val markerFooterHeight = if (markerKinds.isEmpty()) 0.dp else 9.dp.coerceAtMost(visualHeight)
+    val textConstraints = androidx.compose.ui.unit.Constraints(
+        maxWidth = with(density) { (visualWidth - 4.dp).roundToPx().coerceAtLeast(1) },
+    )
+    val titleLines = textMeasurer.measure(
+        text = pb.block.title, style = TimetableTypography.courseTitle, constraints = textConstraints,
+    ).lineCount
+    val locationLines = if (pb.block.location.isBlank()) 0 else textMeasurer.measure(
+        text = pb.block.location,
+        style = TimetableTypography.courseLocation,
+        constraints = textConstraints,
+    ).lineCount
     val textBudget = BlockTexts.budget(
         metrics = CourseCardTextMetrics(
-            cardHeightDp = visualHeight.value,
+            cardHeightDp = (visualHeight - markerFooterHeight).value,
             cardWidthDp = visualWidth.value,
             titleLineHeightDp = with(density) { TimetableTypography.courseTitle.lineHeight.toDp().value },
             locationLineHeightDp = with(density) { TimetableTypography.courseLocation.lineHeight.toDp().value },
             metadataLineHeightDp = with(density) { TimetableTypography.courseMetadata.lineHeight.toDp().value },
+            locationRequiredLines = locationLines,
+            titleRequiredLines = titleLines,
         ),
         hasLocation = pb.block.location.isNotBlank(),
         hasTeachers = pb.block.teacherNames.isNotEmpty(),
@@ -412,21 +427,24 @@ private fun BoxScope.BlockNode(
                 .clip(shape)
                 .background(CoursePalette.containerColor(paletteIndex, dark), shape),
         ) {
-            BlockTexts.Content(
-                block = pb.block,
-                budget = textBudget,
-                contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
-            )
+            Box(Modifier.fillMaxSize().padding(bottom = markerFooterHeight)) {
+                BlockTexts.Content(
+                    block = pb.block,
+                    budget = textBudget,
+                    contentColor = CoursePalette.onContainerColor(paletteIndex, dark),
+                )
+            }
             if (markerKinds.isNotEmpty()) {
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(2.dp),
+                        .padding(end = 2.dp, bottom = 2.dp),
                 ) {
                     markerKinds.sortedBy { it.ordinal }.forEach { kind ->
                         SchoolMarker(
                             kind = kind,
-                            tag = "school_marker:${kind.name.lowercase()}:${pb.block.meetingId!!.value}",
+                            tag = if (kind == SchoolMarkerKind.DIFFERENT_COURSE) "school_marker:different" else "school_marker:variant",
+                            onClick = onClick,
                         )
                     }
                 }
@@ -436,12 +454,16 @@ private fun BoxScope.BlockNode(
 }
 
 @Composable
-private fun SchoolMarker(kind: SchoolMarkerKind, tag: String) {
+private fun SchoolMarker(kind: SchoolMarkerKind, tag: String, onClick: () -> Unit) {
     val color = MaterialTheme.colorScheme.primary
     Canvas(
         Modifier
             .padding(start = 1.dp)
             .size(7.dp)
+            .semantics {
+                contentDescription = if (kind == SchoolMarkerKind.DIFFERENT_COURSE) "其他周有不同课程，查看课程" else "其他周安排不同，查看完整安排"
+                onClick { onClick(); true }
+            }
             .testTag(tag),
     ) {
         when (kind) {

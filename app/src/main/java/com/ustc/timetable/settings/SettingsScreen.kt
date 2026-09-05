@@ -8,6 +8,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.Interaction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.TextButton
@@ -351,6 +354,7 @@ fun SettingsScreen(
     }
     if (wallpaperSheetOpen) {
         var visibility by remember { mutableStateOf(WallpaperVisibilityEditor.open(state.wallpaperVisibilityPercent)) }
+        val sliderInteractions = remember { CancelAwareSliderInteractions() }
         val close = { visibility = WallpaperVisibilityEditor.cancel(visibility); wallpaperSheetOpen = false }
         ModalBottomSheet(onDismissRequest = close) {
             state.timetableWallpaperUri?.let { uri ->
@@ -360,9 +364,14 @@ fun SettingsScreen(
                     value = visibility.candidatePercent.toFloat(),
                     onValueChange = { visibility = WallpaperVisibilityEditor.preview(visibility, it.roundToInt()) },
                     onValueChangeFinished = {
-                        visibility = WallpaperVisibilityEditor.finish(visibility)
-                        callbacks.onWallpaperVisibilityFinished(visibility.persistedPercent)
+                        if (sliderInteractions.consumeCancelledFinish() || !wallpaperSheetOpen) {
+                            visibility = WallpaperVisibilityEditor.cancel(visibility)
+                        } else {
+                            visibility = WallpaperVisibilityEditor.finish(visibility)
+                            callbacks.onWallpaperVisibilityFinished(visibility.persistedPercent)
+                        }
                     },
+                    interactionSource = sliderInteractions,
                     valueRange = 0f..100f,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("wallpaper_visibility_slider"),
                 )
@@ -372,6 +381,28 @@ fun SettingsScreen(
             TextButton(close, Modifier.align(Alignment.End).padding(16.dp).testTag("wallpaper_close")) { Text("关闭") }
         }
     }
+}
+
+/** Draggable emits Cancel before its shared stop callback; do not persist that callback. */
+private class CancelAwareSliderInteractions : MutableInteractionSource {
+    private val delegate = MutableInteractionSource()
+    private var cancelled = false
+    override val interactions get() = delegate.interactions
+    private fun observe(interaction: Interaction) {
+        when (interaction) {
+            is DragInteraction.Start, is DragInteraction.Stop -> cancelled = false
+            is DragInteraction.Cancel -> cancelled = true
+        }
+    }
+    override suspend fun emit(interaction: Interaction) {
+        observe(interaction)
+        delegate.emit(interaction)
+    }
+    override fun tryEmit(interaction: Interaction): Boolean {
+        observe(interaction)
+        return delegate.tryEmit(interaction)
+    }
+    fun consumeCancelledFinish(): Boolean = cancelled.also { cancelled = false }
 }
 
 @Composable

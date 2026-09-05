@@ -8,13 +8,25 @@ class WallpaperStateTest {
         for (percent in listOf(0, 65, 100)) {
             assertEquals(percent / 100f, wallpaperImageAlpha(percent), 0.001f)
             for (appearance in ResolvedAppearance.entries) {
-                assertEquals(wallpaperScrim(appearance).alpha * percent / 100f, wallpaperScrim(appearance, percent).alpha, 0.005f)
+                org.junit.Assert.assertTrue(wallpaperScrim(appearance, percent).alpha in 0f..wallpaperScrim(appearance).alpha)
             }
             assertEquals(1f, com.ustc.timetable.timetable.ui.CoursePalette.alphaFor(true, true))
             assertEquals(0.35f, com.ustc.timetable.timetable.ui.CoursePalette.alphaFor(false, true))
         }
         assertEquals(0f, wallpaperImageAlpha(-1), 0f)
         assertEquals(1f, wallpaperImageAlpha(101), 0f)
+    }
+    @Test fun wallpaper_contribution_is_monotonic_and_maximal_at_100_percent() {
+        for (appearance in ResolvedAppearance.entries) {
+            var previous = -1f
+            for (percent in 0..100) {
+                val weight = wallpaperImageAlpha(percent) * (1f - wallpaperScrimAlpha(appearance, percent))
+                org.junit.Assert.assertTrue("$appearance $percent: $previous -> $weight", weight >= previous)
+                previous = weight
+            }
+            assertEquals(0f, wallpaperScrim(appearance, 0).alpha, .001f)
+            assertEquals(wallpaperScrim(appearance).alpha, wallpaperScrim(appearance, 100).alpha, .001f)
+        }
     }
     @Test fun picker_cancel_keeps_existing_wallpaper() {
         val grants = FakeGrants()

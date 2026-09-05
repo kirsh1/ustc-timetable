@@ -71,20 +71,20 @@ class CourseDetailSheetTest {
 
     @Test fun different_course_detail_starts_on_current_course_and_vector_next_switches_page() {
         rule.setContent { CourseDetailPagerContent(pager(true), profile) }
-        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("1 / 2")
+        rule.onNodeWithTag("course_detail_indicator").assertTextEquals("1 / 2")
         rule.onNodeWithTag("course_detail_next").performClick()
         rule.waitForIdle()
-        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("2 / 2")
+        rule.onNodeWithTag("course_detail_indicator").assertTextEquals("2 / 2")
         rule.onNodeWithTag("course_detail_pager").performTouchInput { swipeRight() }
         rule.waitForIdle()
-        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("1 / 2")
+        rule.onNodeWithTag("course_detail_indicator").assertTextEquals("1 / 2")
     }
 
     @Test fun same_course_single_page_has_complete_arrangements_without_navigation() {
         rule.setContent { CourseDetailPagerContent(pager(false), profile) }
         rule.onNodeWithTag("course_detail_next").assertDoesNotExist()
         rule.onNodeWithTag("course_detail_previous").assertDoesNotExist()
-        rule.onNodeWithTag("course_detail_page_indicator").assertDoesNotExist()
+        rule.onNodeWithTag("course_detail_indicator").assertDoesNotExist()
         rule.onAllNodesWithText("郭宇桥 · 第 13–18 周 · TH-B301", useUnmergedTree = true).assertCountEquals(1)
     }
 

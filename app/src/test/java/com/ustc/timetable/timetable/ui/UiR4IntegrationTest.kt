@@ -2,6 +2,15 @@ package com.ustc.timetable.timetable.ui
 
 import android.app.Application
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -12,6 +21,7 @@ import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
 import com.ustc.timetable.ui.theme.TimetableTheme
 import java.time.LocalTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,8 +30,24 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36], qualifiers = "w400dp-h800dp")
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class UiR4IntegrationTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test fun long_room_code_wraps_without_ellipsis_when_two_lines_fit() {
+        val block = UiSchoolTimedBlock("s", MeetingId("m"), 1, LocalTime.of(9, 0), LocalTime.of(12, 0),
+            WeekPattern.of(1), "课", "TH-A301", listOf("教师"))
+        rule.setContent {
+            Box(Modifier.size(28.dp, 200.dp)) {
+                BlockTexts.Content(block, CourseCardTextBudget(1, true, 0, false, locationMaxLines = 3), Color.Black)
+            }
+        }
+        val layouts = mutableListOf<TextLayoutResult>()
+        rule.onNodeWithText("TH-A301").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val layout = layouts.single()
+        assertTrue(layout.lineCount >= 2)
+        assertTrue((0 until layout.lineCount).none { layout.isLineEllipsized(it) })
+    }
 
     @Test fun applied_seed_keeps_school_manual_and_overview_content_across_recomposition() {
         val profile = ScheduleProfile("p", "test", false, (1..13).map {

@@ -32,6 +32,7 @@ import com.ustc.timetable.appearance.AppearanceMode
 import com.ustc.timetable.appearance.ResolvedAppearance
 import com.ustc.timetable.appearance.resolveAppearance
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -156,7 +157,11 @@ fun AppBackgroundLayer(
                     alpha = wallpaperImageAlpha(wallpaperVisibilityPercent),
                     modifier = Modifier.fillMaxSize().testTag("timetable_wallpaper_image"),
                 )
-                Box(Modifier.fillMaxSize().background(wallpaperScrim(LocalResolvedAppearance.current, wallpaperVisibilityPercent)).testTag("timetable_wallpaper_scrim"))
+                val appearance = LocalResolvedAppearance.current
+                Box(Modifier.fillMaxSize()
+                    .graphicsLayer { alpha = com.ustc.timetable.appearance.wallpaperScrimAlpha(appearance, wallpaperVisibilityPercent) }
+                    .background(wallpaperScrim(appearance).copy(alpha = 1f))
+                    .testTag("timetable_wallpaper_scrim"))
             }
         Box(Modifier.fillMaxSize()) { content() }
     }

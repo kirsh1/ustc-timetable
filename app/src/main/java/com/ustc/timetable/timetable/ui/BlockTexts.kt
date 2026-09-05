@@ -21,6 +21,7 @@ data class CourseCardTextBudget(
     val showLocation: Boolean,
     val teacherMaxLines: Int,
     val showTime: Boolean,
+    val locationMaxLines: Int = 1,
 )
 
 data class CourseCardTextMetrics(
@@ -29,6 +30,8 @@ data class CourseCardTextMetrics(
     val titleLineHeightDp: Float,
     val locationLineHeightDp: Float,
     val metadataLineHeightDp: Float,
+    val locationRequiredLines: Int = 1,
+    val titleRequiredLines: Int = 3,
 )
 
 object CourseCardTextTokens {
@@ -83,7 +86,7 @@ object BlockTexts {
         require(markerCount in 0..2)
         val usableHeight = (metrics.cardHeightDp - CourseCardTextTokens.CONTENT_VERTICAL_PADDING_DP)
             .coerceAtLeast(0f)
-        val locationHeight = if (
+        val firstLocationHeight = if (
             hasLocation &&
             usableHeight >= metrics.titleLineHeightDp + metrics.locationLineHeightDp
         ) {
@@ -92,19 +95,18 @@ object BlockTexts {
             0f
         }
         val titleMaxLines = floor(
-            (usableHeight - locationHeight).coerceAtLeast(0f) / metrics.titleLineHeightDp,
-        ).toInt().coerceIn(1, CourseCardTextTokens.MAX_TITLE_LINES)
+            (usableHeight - firstLocationHeight).coerceAtLeast(0f) / metrics.titleLineHeightDp,
+        ).toInt().coerceIn(1, metrics.titleRequiredLines.coerceIn(1, CourseCardTextTokens.MAX_TITLE_LINES))
+        val locationLines = if (firstLocationHeight > 0f) {
+            floor((usableHeight - titleMaxLines * metrics.titleLineHeightDp) / metrics.locationLineHeightDp)
+                .toInt().coerceAtLeast(1).coerceAtMost(metrics.locationRequiredLines.coerceAtLeast(1))
+        } else 0
+        val locationHeight = locationLines * metrics.locationLineHeightDp
         val afterMandatory = (
             usableHeight - titleMaxLines * metrics.titleLineHeightDp - locationHeight
         ).coerceAtLeast(0f)
-        val markerReservation = if (markerCount <= 0) {
-            0f
-        } else {
-            markerCount * CourseCardTextTokens.MARKER_DIAMETER_DP +
-                (markerCount - 1) * CourseCardTextTokens.MARKER_GAP_DP +
-                CourseCardTextTokens.MARKER_RIGHT_INSET_DP
-        }
-        val optionalWidth = (metrics.cardWidthDp - markerReservation).coerceAtLeast(0f)
+        // Markers have their own footer outside the supplied text height; text keeps full width.
+        val optionalWidth = metrics.cardWidthDp.coerceAtLeast(0f)
         val teacherMaxLines = when {
             !hasTeachers || optionalWidth < CourseCardTextTokens.TEACHER_MIN_OPTIONAL_WIDTH_DP -> 0
             afterMandatory >= 2f * metrics.metadataLineHeightDp -> 2
@@ -119,6 +121,7 @@ object BlockTexts {
             showLocation = locationHeight > 0f,
             teacherMaxLines = teacherMaxLines,
             showTime = showTime,
+            locationMaxLines = locationLines,
         )
     }
 
@@ -142,7 +145,8 @@ object BlockTexts {
                     block.location,
                     style = TimetableTypography.courseLocation,
                     color = contentColor,
-                    maxLines = CourseCardTextTokens.LOCATION_LINES,
+                    maxLines = budget.locationMaxLines.coerceAtLeast(1),
+                    softWrap = true,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

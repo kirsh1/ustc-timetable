@@ -20,6 +20,14 @@ fun wallpaperScrim(appearance: ResolvedAppearance): Color = when (appearance) {
 fun wallpaperImageAlpha(visibilityPercent: Int): Float = visibilityPercent.coerceIn(0, 100) / 100f
 
 fun wallpaperScrim(appearance: ResolvedAppearance, visibilityPercent: Int): Color {
+    return wallpaperScrim(appearance).copy(alpha = wallpaperScrimAlpha(appearance, visibilityPercent))
+}
+
+fun wallpaperScrimAlpha(appearance: ResolvedAppearance, visibilityPercent: Int): Float {
     val safety = wallpaperScrim(appearance)
-    return safety.copy(alpha = safety.alpha * wallpaperImageAlpha(visibilityPercent))
+    val visibility = wallpaperImageAlpha(visibilityPercent)
+    // Compensate the image's own alpha so the combined wallpaper contribution increases
+    // monotonically, while retaining zero and the existing safety scrim at the endpoints.
+    val scrimAlpha = safety.alpha * visibility / (1f - safety.alpha + safety.alpha * visibility)
+    return scrimAlpha
 }

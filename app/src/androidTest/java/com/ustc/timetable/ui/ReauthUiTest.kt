@@ -9,6 +9,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ustc.timetable.sync.ManualSyncController
 import com.ustc.timetable.sync.ManualSyncRunner
@@ -39,7 +41,8 @@ class ReauthUiTest {
         val runner = QueueRunner(SyncResult.Failed(SyncError.AuthenticationExpired))
         val controller = ManualSyncController(runner, scope)
         compose.setContent { Harness(controller) }
-        compose.onNodeWithTag("sync_action").performClick()
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("sync_action"))
+        compose.onNodeWithTag("sync_action").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings_list").assertIsDisplayed()
         compose.onNodeWithText("登录状态已失效").assertIsDisplayed()
         compose.onNodeWithText("已有课表不会受到影响").assertIsDisplayed()
@@ -51,7 +54,8 @@ class ReauthUiTest {
         val runner = QueueRunner(SyncResult.Failed(SyncError.AuthenticationExpired), SyncResult.NoChange)
         val controller = ManualSyncController(runner, scope)
         compose.setContent { Harness(controller, onRelogin = controller::onReloginSuccess) }
-        compose.onNodeWithTag("sync_action").performClick()
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("sync_action"))
+        compose.onNodeWithTag("sync_action").assertIsDisplayed().performClick()
         compose.onNodeWithTag("auth_expired_relogin").performClick()
         compose.waitUntil(10_000) { runner.calls == 2 }
         compose.onNodeWithText("登录状态已失效").assertDoesNotExist()
@@ -63,7 +67,8 @@ class ReauthUiTest {
         val runner = QueueRunner(SyncResult.Failed(SyncError.AuthenticationExpired))
         val controller = ManualSyncController(runner, scope)
         compose.setContent { Harness(controller) }
-        compose.onNodeWithTag("sync_action").performClick()
+        compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("sync_action"))
+        compose.onNodeWithTag("sync_action").assertIsDisplayed().performClick()
         compose.onNodeWithTag("auth_expired_cancel").performClick()
         compose.onNodeWithText("登录状态已失效").assertDoesNotExist()
         compose.onNodeWithTag("settings_list").assertIsDisplayed()

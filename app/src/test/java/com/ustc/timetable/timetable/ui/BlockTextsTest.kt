@@ -9,6 +9,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BlockTextsTest {
+    @Test fun wrapped_location_is_budgeted_before_teachers_and_time() {
+        val result = BlockTexts.budget(metrics(80f, 45f).copy(locationRequiredLines = 2), true, true, 0)
+        assertEquals(2, result.locationMaxLines)
+        assertEquals(3, result.titleMaxLines)
+        assertEquals(1, result.teacherMaxLines)
+        assertFalse(result.showTime)
+    }
+    @Test fun extra_location_lines_never_take_required_title_lines() {
+        val result = BlockTexts.budget(metrics(64f, 45f).copy(locationRequiredLines = 4), true, true, 0)
+        assertEquals(3, result.titleMaxLines)
+        assertEquals(1, result.locationMaxLines)
+    }
     private fun metrics(height: Float, width: Float = 80f) = CourseCardTextMetrics(
         cardHeightDp = height,
         cardWidthDp = width,
