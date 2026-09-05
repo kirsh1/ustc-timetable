@@ -571,18 +571,9 @@ fun FixedTimeRail(
         axisStart = periods.minByOrNull { it.number }?.start,
         axisEndInclusive = periods.maxByOrNull { it.number }?.end,
     )
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant
     Column(
         modifier
             .width(railWidth)
-            .drawBehind {
-                drawLine(
-                    color = dividerColor,
-                    start = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
-                    strokeWidth = TIME_RAIL_DIVIDER_DP.dp.toPx(),
-                )
-            }
             .testTag("fixed_time_rail"),
     ) {
         Spacer(Modifier.height(HEADER_HEIGHT_DP.dp))
