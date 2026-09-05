@@ -25,6 +25,40 @@ import com.ustc.timetable.sync.ManualSyncState
 class SettingsScreenTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun seed_source_is_called_only_by_explicit_new_candidate() {
+        var samples = 0
+        val applied = mutableListOf<Long>()
+        rule.setContent {
+            SettingsScreen(state = state().copy(coursePaletteSeed = 5L),
+                callbacks = SettingsCallbacks(onApplyCoursePaletteSeed = { applied += it }),
+                paletteSeedSource = PaletteSeedSource { samples++; 7L })
+        }
+        rule.onNodeWithTag("course_palette").performClick()
+        rule.onAllNodesWithTag("palette_color", useUnmergedTree = true).assertCountEquals(12)
+        assertEquals(0, samples)
+        rule.onNodeWithTag("palette_new_candidate").performClick()
+        assertEquals(1, samples)
+        assertEquals(emptyList<Long>(), applied)
+        rule.onNodeWithTag("palette_restore_default").performClick()
+        assertEquals(1, samples)
+        assertEquals(emptyList<Long>(), applied)
+        rule.onNodeWithTag("palette_apply").performClick()
+        assertEquals(listOf(0L), applied)
+        assertEquals(1, samples)
+    }
+
+    @Test fun palette_cancel_discards_candidate_and_reopening_uses_persisted_seed() {
+        val applied = mutableListOf<Long>()
+        rule.setContent { SettingsScreen(state().copy(coursePaletteSeed = 5L), SettingsCallbacks(onApplyCoursePaletteSeed = { applied += it }), paletteSeedSource = PaletteSeedSource { 7L }) }
+        rule.onNodeWithTag("course_palette").performClick()
+        rule.onNodeWithTag("palette_new_candidate").performClick()
+        rule.onNodeWithTag("palette_cancel").performClick()
+        assertEquals(emptyList<Long>(), applied)
+        rule.onNodeWithTag("course_palette").performClick()
+        rule.onNodeWithTag("palette_apply").performClick()
+        assertEquals(listOf(5L), applied)
+    }
+
     @Test fun all_required_settings_entries_present() {
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks()) }
         listOf("课表", "当前查看学期", "2026-2027 秋季", "学校作息时间", "显示非当前周课程", "同步", "上次同步时间", "每周静默同步", "立即同步", "学校账户", "登录状态", "登录并导入", "清除登录状态", "关于", "数据与版本", "App 版本").forEach {
@@ -86,6 +120,7 @@ class SettingsScreenTest {
     @Test fun profile_row_opens_editor() {
         var calls = 0
         rule.setContent { SettingsScreen(state = state(), callbacks = SettingsCallbacks(onOpenProfile = { calls++ })) }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("working_profile"))
         rule.onNodeWithTag("working_profile").performClick(); rule.waitForIdle(); assertEquals(1, calls)
     }
 

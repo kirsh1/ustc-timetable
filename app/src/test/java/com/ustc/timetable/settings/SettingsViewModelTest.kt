@@ -113,6 +113,16 @@ class SettingsViewModelTest {
         assertTrue(settings.showNonCurrentWeek.first())
     }
 
+    @Test fun applied_palette_is_emitted_after_viewmodel_recreation() = runSettingsTest {
+        val first = vm()
+        first.onCoursePaletteSeedApplied(17L)
+        await { settings.coursePaletteSeed.first() == 17L }
+        await { first.state.value.coursePaletteSeed == 17L }
+        val recreated = vm()
+        await { recreated.state.value.coursePaletteSeed == 17L }
+        assertEquals(65, recreated.state.value.wallpaperVisibilityPercent)
+    }
+
     @Test fun weekly_sync_toggle_persists() = runSettingsTest {
         val vm = vm(); vm.onToggleWeeklySync(false)
         await { !settings.weeklySyncEnabled.first() }

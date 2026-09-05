@@ -7,6 +7,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Button
+import com.ustc.timetable.timetable.ui.CoursePalette
+import com.ustc.timetable.ui.theme.LocalResolvedAppearance
+import com.ustc.timetable.appearance.ResolvedAppearance
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,6 +81,7 @@ data class SettingsCallbacks(
     val onAppearanceSelected: (AppearanceMode) -> Unit = {},
     val onChooseWallpaper: () -> Unit = {},
     val onClearWallpaper: () -> Unit = {},
+    val onApplyCoursePaletteSeed: (Long) -> Unit = {},
 )
 
 @Composable
@@ -138,6 +147,7 @@ fun SettingsRoute(
             onRestoreDefault = viewModel::restoreWorkingDefault,
             onApplyWorking = viewModel::applyWorkingToAcademicCurrent,
             onAppearanceSelected = viewModel::onAppearanceModeSelected,
+            onApplyCoursePaletteSeed = viewModel::onCoursePaletteSeedApplied,
             onChooseWallpaper = { wallpaperPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onClearWallpaper = {
                 WallpaperSelection.clear(state.timetableWallpaperUri, wallpaperGrants)
@@ -184,9 +194,11 @@ fun SettingsScreen(
     callbacks: SettingsCallbacks,
     manualSyncState: ManualSyncState = ManualSyncState.Idle,
     importStep: ImportStep? = null,
+    paletteSeedSource: PaletteSeedSource = SecurePaletteSeedSource,
 ) {
     var themeSheetOpen by remember { mutableStateOf(false) }
     var wallpaperSheetOpen by remember { mutableStateOf(false) }
+    var paletteEditor by remember { mutableStateOf<PaletteCandidateState?>(null) }
     val spacing = LocalTimetableSpacing.current
     val viewedSemester = state.availableSemesters.firstOrNull { it.id == state.viewedSemesterId }
         ?: state.availableSemesters.firstOrNull { it.isCurrentAcademicSemester }
@@ -211,6 +223,10 @@ fun SettingsScreen(
                     appearanceLabel(state.appearanceMode),
                     "appearance_theme",
                 ) { themeSheetOpen = true }
+                SettingsDivider()
+                SettingsNavigationRow("课程色系", "选择课程配色", "course_palette") {
+                    paletteEditor = PaletteCandidateEditor.open(state.coursePaletteSeed)
+                }
                 SettingsDivider()
                 SettingsNavigationRow(
                     "课表壁纸",
@@ -287,6 +303,29 @@ fun SettingsScreen(
                 )
                 SettingsDivider()
                 SettingsInfoRow("App 版本", state.appVersion, "app_version")
+            }
+        }
+    }
+    paletteEditor?.let { editor ->
+        val cancel = { paletteEditor = PaletteCandidateEditor.cancel(editor); paletteEditor = null }
+        ModalBottomSheet(onDismissRequest = cancel, modifier = Modifier.testTag("course_palette_sheet")) {
+            Text("课程色系", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+            val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
+            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                CoursePalette.previewIndices(editor.candidateSeed).forEach { index ->
+                    Box(Modifier.weight(1f).height(36.dp).background(CoursePalette.containerColor(index, dark), MaterialTheme.shapes.small).testTag("palette_color"))
+                }
+            }
+            SettingsActionRow("换一套", "palette_new_candidate") {
+                paletteEditor = PaletteCandidateEditor.nextDistinctCandidate(editor, paletteSeedSource)
+            }
+            SettingsActionRow("恢复默认", "palette_restore_default") { paletteEditor = PaletteCandidateEditor.restoreDefault(editor) }
+            Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(cancel, Modifier.testTag("palette_cancel")) { Text("取消") }
+                Button(onClick = {
+                    callbacks.onApplyCoursePaletteSeed(PaletteCandidateEditor.appliedSeed(editor))
+                    paletteEditor = null
+                }, modifier = Modifier.testTag("palette_apply")) { Text("应用") }
             }
         }
     }

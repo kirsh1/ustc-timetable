@@ -33,6 +33,8 @@ sealed interface SchoolLoginUiState {
 }
 
 data class SettingsUiState(
+    val coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
+    val wallpaperVisibilityPercent: Int = com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT,
     val appearanceMode: AppearanceMode = AppearanceMode.LIGHT,
     val timetableWallpaperUri: String? = null,
     val wallpaperUnavailable: Boolean = false,

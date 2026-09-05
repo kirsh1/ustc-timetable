@@ -52,6 +52,8 @@ class SettingsViewModel(
         val viewedSemesterId: String? = null,
         val appearanceMode: AppearanceMode = AppearanceMode.LIGHT,
         val wallpaperUri: String? = null,
+        val coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
+        val wallpaperVisibilityPercent: Int = com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT,
     )
     private data class SessionStatus(val loading: Boolean, val blob: SessionBlob?)
 
@@ -69,13 +71,16 @@ class SettingsViewModel(
         settings.lastSyncFinishedAt,
         settings.notificationRequestShown,
     ) { show, weekly, reauth, last, requested -> Persisted(show, weekly, reauth, last, requested) }
-    private val persisted = combine(
+    private val persistedAppearance = combine(
         persistedCore,
         settings.viewedSemesterId,
         settings.appearanceMode,
         settings.timetableWallpaperUri,
     ) { value, viewedId, appearance, wallpaper ->
         value.copy(viewedSemesterId = viewedId, appearanceMode = appearance, wallpaperUri = wallpaper)
+    }
+    private val persisted = combine(persistedAppearance, settings.coursePaletteSeed, settings.wallpaperVisibilityPercent) { p, seed, visibility ->
+        p.copy(coursePaletteSeed = seed, wallpaperVisibilityPercent = visibility)
     }
 
     val state = combine(persisted, profiles.observeWorking(), semesters.observeSemesters(), sessionStatus, notificationsEnabled) {
@@ -87,6 +92,8 @@ class SettingsViewModel(
         }
         val hasPortalTarget = semesterList.any { it.isCurrentAcademicSemester && it.portalLinked }
         SettingsUiState(
+            coursePaletteSeed = p.coursePaletteSeed,
+            wallpaperVisibilityPercent = p.wallpaperVisibilityPercent,
             appearanceMode = p.appearanceMode,
             timetableWallpaperUri = p.wallpaperUri,
             showNonCurrentWeek = p.show,
@@ -120,6 +127,7 @@ class SettingsViewModel(
     fun onAppearanceModeSelected(mode: AppearanceMode) { viewModelScope.launch { settings.setAppearanceMode(mode) } }
     fun onWallpaperSelected(uri: String) { viewModelScope.launch { settings.setTimetableWallpaperUri(uri) } }
     fun onWallpaperCleared() { viewModelScope.launch { settings.setTimetableWallpaperUri(null) } }
+    fun onCoursePaletteSeedApplied(seed: Long) { viewModelScope.launch { settings.setCoursePaletteSeed(seed) } }
 
     fun onSemesterSelected(id: SemesterId) {
         if (state.value.availableSemesters.none { it.id == id }) return
