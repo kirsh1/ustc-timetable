@@ -42,6 +42,11 @@ class TimetableSmokeTest {
     @Test
     fun empty_database_manual_fallback_enters_blank_seven_day_timetable() {
         activity.launch()
+        // Room's first emission is asynchronous and is not a Compose idling resource.
+        // Keep all visible-screen and persisted fallback assertions after readiness.
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithTag("first_launch_screen").fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("first_launch_screen").assertIsDisplayed()
         compose.onNodeWithText("课表数据保存在本机。", substring = true).assertIsDisplayed()
         compose.onNodeWithTag("first_launch_import").assertIsDisplayed()
