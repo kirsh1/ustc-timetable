@@ -33,6 +33,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -83,6 +85,25 @@ internal fun resolveSchoolCourseDetail(
     detailsByMeetingId: Map<MeetingId, CourseDetailUiModel>,
 ): CourseDetailUiModel? = selectedMeetingId?.let(detailsByMeetingId::get)
 
+data class SchoolDetailSelection(val pageWeek: Int, val representativeMeetingId: MeetingId)
+
+internal fun resolveSchoolCourseDetailPager(selection: SchoolDetailSelection?, state: TimetableUiState): CourseDetailPagerModel? {
+    if (selection == null) return null
+    val page = state.weekPages.firstOrNull { it.week == selection.pageWeek } ?: return null
+    val representative = page.placedSchool.firstOrNull { it.block.meetingId == selection.representativeMeetingId }
+        ?.block as? SchoolTimedBlock ?: return null
+    return CourseDetailPager.build(
+        representative,
+        page.attachedSchoolGhostsByPresentationKey[SchoolGhostProjection.canonicalPresentationKey(representative)],
+        state.courseDetailsByMeetingId,
+    )
+}
+
+private val SchoolDetailSelectionSaver = Saver<SchoolDetailSelection?, List<Any>>(
+    save = { selection -> selection?.let { listOf(it.pageWeek, it.representativeMeetingId.value) } ?: emptyList() },
+    restore = { if (it.isEmpty()) null else SchoolDetailSelection(it[0] as Int, MeetingId(it[1] as String)) },
+)
+
 /** Route：collect state → 无状态 Screen；Screen 不读 Room/DataStore。 */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -109,18 +130,26 @@ fun TimetableRoute(
         }
     }
     val overlays = remember(state.semester?.id) { ManualOverlayState() }
+    var schoolSelection by rememberSaveable(state.semester?.id, stateSaver = SchoolDetailSelectionSaver) {
+        mutableStateOf<SchoolDetailSelection?>(null)
+    }
     Box(Modifier.fillMaxSize()) {
         TimetableScreen(
             state = state,
             onPrevWeek = viewModel::onPrevWeek,
             onNextWeek = viewModel::onNextWeek,
             onWeekSelected = viewModel::onWeekSelected,
-            onSchoolBlockClick = overlays::openSchool,
+            onSchoolBlockClick = { id, pageWeek ->
+                overlays.dismissManual()
+                schoolSelection = SchoolDetailSelection(pageWeek, id)
+            },
             onManualBlockClick = { id, pageWeek ->
+                schoolSelection = null
                 val target = createEditManualEditorTarget(state, id, pageWeek)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
             },
             onEmptyLongPress = { pageWeek, draft ->
+                schoolSelection = null
                 val target = createNewManualEditorTarget(state, pageWeek, draft)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
             },
@@ -149,13 +178,16 @@ fun TimetableRoute(
             onDismiss = overlays::dismissManual,
         )
     }
-    val selectedDetail = resolveSchoolCourseDetail(overlays.selectedSchoolMeetingId, state.courseDetailsByMeetingId)
+    val selectedDetail = resolveSchoolCourseDetailPager(schoolSelection, state)
+    LaunchedEffect(schoolSelection, selectedDetail) {
+        if (selectedDetail == null) schoolSelection = null
+    }
     val selectedProfile = state.profile
     if (selectedDetail != null && selectedProfile != null) {
         CourseDetailSheet(
-            detail = selectedDetail,
+            pager = selectedDetail,
             profile = selectedProfile,
-            onDismiss = overlays::dismissSchool,
+            onDismiss = { schoolSelection = null },
         )
     }
 }
@@ -167,7 +199,7 @@ fun TimetableScreen(
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
     onWeekSelected: (Int) -> Unit,
-    onSchoolBlockClick: (MeetingId) -> Unit = {},
+    onSchoolBlockClick: (MeetingId, pageWeek: Int) -> Unit = { _, _ -> },
     onManualBlockClick: (ManualItemId, pageWeek: Int) -> Unit = { _, _ -> },
     onEmptyLongPress: (pageWeek: Int, draft: LongPressDraft) -> Unit = { _, _ -> },
     manualSyncAvailable: Boolean = false,
@@ -258,7 +290,7 @@ fun TimetableScreen(
                             viewedWeek = page.week,
                             nowLine = page.nowLine,
                             today = state.today,
-                            onSchoolBlockClick = onSchoolBlockClick,
+                            onSchoolBlockClick = { id -> onSchoolBlockClick(id, page.week) },
                             onManualBlockClick = { id -> onManualBlockClick(id, page.week) },
                             onEmptyLongPress = { draft -> onEmptyLongPress(page.week, draft) },
                             onVerticalOverviewAction = { action ->

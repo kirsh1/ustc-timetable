@@ -4,6 +4,10 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.timetable.domain.Course
@@ -52,6 +56,63 @@ class CourseDetailSheetTest {
     }
 
     @get:Rule val rule = createComposeRule()
+
+    private fun pager(twoCourses: Boolean): CourseDetailPagerModel {
+        val first = detail()
+        val block = schoolTimedBlock(semId, first.course, first.selectedMeeting, profile)
+        val pages = mutableListOf(CourseDetailPage(block.colorKey, SchoolGhostProjection.canonicalPresentationKey(block), block.meetingId, first))
+        if (twoCourses) {
+            val other = first.copy(course = first.course.copy(id = CourseId("other"), sourceCourseKey = "other", name = "另一门课程"))
+            val otherBlock = schoolTimedBlock(semId, other.course, other.selectedMeeting, profile)
+            pages += CourseDetailPage(otherBlock.colorKey, SchoolGhostProjection.canonicalPresentationKey(otherBlock), otherBlock.meetingId, other)
+        }
+        return CourseDetailPagerModel(pages)
+    }
+
+    @Test fun different_course_detail_starts_on_current_course_and_vector_next_switches_page() {
+        rule.setContent { CourseDetailPagerContent(pager(true), profile) }
+        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("1 / 2")
+        rule.onNodeWithTag("course_detail_next").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("2 / 2")
+        rule.onNodeWithTag("course_detail_pager").performTouchInput { swipeRight() }
+        rule.waitForIdle()
+        rule.onNodeWithTag("course_detail_page_indicator").assertTextEquals("1 / 2")
+    }
+
+    @Test fun same_course_single_page_has_complete_arrangements_without_navigation() {
+        rule.setContent { CourseDetailPagerContent(pager(false), profile) }
+        rule.onNodeWithTag("course_detail_next").assertDoesNotExist()
+        rule.onNodeWithTag("course_detail_previous").assertDoesNotExist()
+        rule.onNodeWithTag("course_detail_page_indicator").assertDoesNotExist()
+        rule.onAllNodesWithText("郭宇桥 · 第 13–18 周 · TH-B301", useUnmergedTree = true).assertCountEquals(1)
+    }
+
+    @Test fun stale_page_selection_does_not_resolve_details() {
+        assertNull(resolveSchoolCourseDetailPager(SchoolDetailSelection(2, MeetingId("m2")), TimetableUiState()))
+    }
+
+    @Test fun page_selection_resolves_current_course_and_attached_alternative() {
+        val current = detail()
+        val active = schoolTimedBlock(semId, current.course, current.selectedMeeting, profile)
+        val alternativeDetail = current.copy(
+            course = current.course.copy(id = CourseId("other"), sourceCourseKey = "other"),
+            selectedMeeting = current.selectedMeeting.copy(id = MeetingId("other-meeting"), weekPattern = WeekPattern.of(1)),
+        )
+        val alternative = schoolTimedBlock(semId, alternativeDetail.course, alternativeDetail.selectedMeeting, profile)
+        val key = SchoolGhostProjection.canonicalPresentationKey(active)
+        val page = TimetableWeekPageUiState(
+            8,
+            com.ustc.timetable.timetable.domain.LocalDateRange(java.time.LocalDate.of(2026, 10, 19), java.time.LocalDate.of(2026, 10, 25)),
+            com.ustc.timetable.timetable.layout.WeeklyTimetableLayout.place(listOf(active), com.ustc.timetable.timetable.layout.WeeklyTimetableLayout.axisOf(profile)),
+            emptyList(), null,
+            attachedSchoolGhostsByPresentationKey = mapOf(key to SchoolGhostAttachment(key, emptyList(), listOf(alternative))),
+        )
+        val state = TimetableUiState(weekPages = listOf(page), courseDetailsByMeetingId = mapOf(active.meetingId to current, alternative.meetingId to alternativeDetail))
+        val resolved = resolveSchoolCourseDetailPager(SchoolDetailSelection(8, active.meetingId), state)!!
+        assertEquals(listOf(active.colorKey, alternative.colorKey), resolved.pages.map { it.stableCourseIdentity })
+        assertNull(resolveSchoolCourseDetailPager(SchoolDetailSelection(9, active.meetingId), state))
+    }
 
     private fun content(d: CourseDetailUiModel = detail()) {
         rule.setContent { CourseDetailContent(detail = d, profile = profile) }

@@ -324,8 +324,8 @@ private fun BoxScope.SchoolBlockNode(
     onClick: (MeetingId) -> Unit,
 ) {
     val id = pb.block.meetingId!!
-    val schoolBlock = pb.block as SchoolTimedBlock
-    val markers = markersByPresentationKey[SchoolGhostProjection.canonicalPresentationKey(schoolBlock)]
+    val schoolBlock = pb.block as? SchoolTimedBlock
+    val markers = schoolBlock?.let { markersByPresentationKey[SchoolGhostProjection.canonicalPresentationKey(it)] }
         ?.kinds
         .orEmpty()
     BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}", markers) { onClick(id) }

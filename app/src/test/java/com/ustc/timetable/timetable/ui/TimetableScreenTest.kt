@@ -262,7 +262,7 @@ class TimetableScreenTest {
             TimetableScreen(
                 state = fullState(placedSchool = placedSchool("m9")),
                 onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
-                onSchoolBlockClick = { got = it },
+                onSchoolBlockClick = { id, week -> got = id; assertEquals(2, week) },
             )
         }
         rule.onNodeWithTag("school_block:m9").performClick()
@@ -276,7 +276,7 @@ class TimetableScreenTest {
             TimetableScreen(
                 state = fullState(placedManual = placedManual("i9")),
                 onPrevWeek = {}, onNextWeek = {}, onWeekSelected = {},
-                onSchoolBlockClick = { schoolClick = it },
+                onSchoolBlockClick = { id, _ -> schoolClick = id },
             )
         }
         rule.onNodeWithTag("manual_block:i9").performClick()
