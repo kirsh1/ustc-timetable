@@ -123,6 +123,16 @@ class SettingsViewModelTest {
         assertEquals(65, recreated.state.value.wallpaperVisibilityPercent)
     }
 
+    @Test fun wallpaper_finish_persists_bounded_value_and_clear_retains_strength() = runSettingsTest {
+        val model = vm()
+        model.onWallpaperVisibilityFinished(120)
+        await { model.state.value.wallpaperVisibilityPercent == 100 }
+        assertEquals(100, settings.wallpaperVisibilityPercent.first())
+        model.onWallpaperCleared()
+        val recreated = vm()
+        await { recreated.state.value.wallpaperVisibilityPercent == 100 }
+    }
+
     @Test fun weekly_sync_toggle_persists() = runSettingsTest {
         val vm = vm(); vm.onToggleWeeklySync(false)
         await { !settings.weeklySyncEnabled.first() }

@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appearanceMode by container.settings.appearanceMode.collectAsState(initial = AppearanceMode.LIGHT)
             val wallpaperUri by container.settings.timetableWallpaperUri.collectAsState(initial = null)
+            val wallpaperVisibility by container.settings.wallpaperVisibilityPercent.collectAsState(initial = com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT)
             val resolvedAppearance = resolveAppearance(appearanceMode, isSystemInDarkTheme())
             SideEffect {
                 val style = if (resolvedAppearance == ResolvedAppearance.DARK) {
@@ -101,6 +102,7 @@ class MainActivity : ComponentActivity() {
                     timetableContent = { openSettings ->
                         AppBackgroundLayer(
                             wallpaperUri = wallpaperUri,
+                            wallpaperVisibilityPercent = wallpaperVisibility,
                             onWallpaperUnavailable = { wallpaperUri?.let(WallpaperRuntimeState::reportUnavailable) },
                             onWallpaperAvailable = { wallpaperUri?.let(WallpaperRuntimeState::clear) },
                         ) {

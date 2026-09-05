@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
+import androidx.compose.material3.Slider
+import kotlin.math.roundToInt
+import com.ustc.timetable.ui.theme.AppBackgroundLayer
 import com.ustc.timetable.timetable.ui.CoursePalette
 import com.ustc.timetable.ui.theme.LocalResolvedAppearance
 import com.ustc.timetable.appearance.ResolvedAppearance
@@ -82,6 +85,7 @@ data class SettingsCallbacks(
     val onChooseWallpaper: () -> Unit = {},
     val onClearWallpaper: () -> Unit = {},
     val onApplyCoursePaletteSeed: (Long) -> Unit = {},
+    val onWallpaperVisibilityFinished: (Int) -> Unit = {},
 )
 
 @Composable
@@ -148,6 +152,7 @@ fun SettingsRoute(
             onApplyWorking = viewModel::applyWorkingToAcademicCurrent,
             onAppearanceSelected = viewModel::onAppearanceModeSelected,
             onApplyCoursePaletteSeed = viewModel::onCoursePaletteSeedApplied,
+            onWallpaperVisibilityFinished = viewModel::onWallpaperVisibilityFinished,
             onChooseWallpaper = { wallpaperPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
             onClearWallpaper = {
                 WallpaperSelection.clear(state.timetableWallpaperUri, wallpaperGrants)
@@ -345,10 +350,34 @@ fun SettingsScreen(
         }
     }
     if (wallpaperSheetOpen) {
-        ModalBottomSheet(onDismissRequest = { wallpaperSheetOpen = false }) {
+        var visibility by remember { mutableStateOf(WallpaperVisibilityEditor.open(state.wallpaperVisibilityPercent)) }
+        val close = { visibility = WallpaperVisibilityEditor.cancel(visibility); wallpaperSheetOpen = false }
+        ModalBottomSheet(onDismissRequest = close) {
+            state.timetableWallpaperUri?.let { uri ->
+                Text("壁纸显示强度 ${visibility.candidatePercent}%", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(16.dp))
+                WallpaperPreview(uri, visibility.candidatePercent, Modifier.fillMaxWidth().height(150.dp).padding(horizontal = 16.dp))
+                Slider(
+                    value = visibility.candidatePercent.toFloat(),
+                    onValueChange = { visibility = WallpaperVisibilityEditor.preview(visibility, it.roundToInt()) },
+                    onValueChangeFinished = {
+                        visibility = WallpaperVisibilityEditor.finish(visibility)
+                        callbacks.onWallpaperVisibilityFinished(visibility.persistedPercent)
+                    },
+                    valueRange = 0f..100f,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("wallpaper_visibility_slider"),
+                )
+            }
             SettingsActionRow("更换壁纸", "replace_wallpaper") { wallpaperSheetOpen = false; callbacks.onChooseWallpaper() }
             SettingsActionRow("清除壁纸", "clear_wallpaper") { wallpaperSheetOpen = false; callbacks.onClearWallpaper() }
+            TextButton(close, Modifier.align(Alignment.End).padding(16.dp).testTag("wallpaper_close")) { Text("关闭") }
         }
+    }
+}
+
+@Composable
+internal fun WallpaperPreview(wallpaperUri: String, visibilityPercent: Int, modifier: Modifier = Modifier) {
+    Box(modifier.testTag("wallpaper_visibility_preview")) {
+        AppBackgroundLayer(wallpaperUri = wallpaperUri, wallpaperVisibilityPercent = visibilityPercent) {}
     }
 }
 

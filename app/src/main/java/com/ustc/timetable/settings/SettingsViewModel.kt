@@ -128,6 +128,7 @@ class SettingsViewModel(
     fun onWallpaperSelected(uri: String) { viewModelScope.launch { settings.setTimetableWallpaperUri(uri) } }
     fun onWallpaperCleared() { viewModelScope.launch { settings.setTimetableWallpaperUri(null) } }
     fun onCoursePaletteSeedApplied(seed: Long) { viewModelScope.launch { settings.setCoursePaletteSeed(seed) } }
+    fun onWallpaperVisibilityFinished(percent: Int) { viewModelScope.launch { settings.setWallpaperVisibilityPercent(percent) } }
 
     fun onSemesterSelected(id: SemesterId) {
         if (state.value.availableSemesters.none { it.id == id }) return

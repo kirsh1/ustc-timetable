@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -24,6 +26,28 @@ import com.ustc.timetable.sync.ManualSyncState
 @Config(sdk = [36])
 class SettingsScreenTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test fun wallpaper_slider_exists_only_with_uri_and_finish_persists() {
+        val finished = mutableListOf<Int>()
+        rule.setContent { SettingsScreen(state().copy(timetableWallpaperUri = "content://test/image"), SettingsCallbacks(onWallpaperVisibilityFinished = { finished += it })) }
+        rule.onNodeWithTag("timetable_wallpaper").performClick()
+        rule.onNodeWithTag("wallpaper_visibility_slider").assertExists()
+        rule.onNodeWithTag("wallpaper_visibility_preview").assertExists()
+        for (value in listOf(0f, 65f, 100f)) {
+            rule.onNodeWithTag("wallpaper_visibility_slider").performSemanticsAction(SemanticsActions.SetProgress) { it(value) }
+        }
+        assertEquals(listOf(0, 65, 100), finished)
+        rule.onNodeWithTag("wallpaper_close").performClick()
+        assertEquals(listOf(0, 65, 100), finished)
+    }
+
+    @Test fun wallpaper_without_uri_does_not_show_strength_slider() {
+        var picks = 0
+        rule.setContent { SettingsScreen(state(), SettingsCallbacks(onChooseWallpaper = { picks++ })) }
+        rule.onNodeWithTag("timetable_wallpaper").performClick()
+        assertEquals(1, picks)
+        rule.onNodeWithTag("wallpaper_visibility_slider").assertDoesNotExist()
+    }
 
     @Test fun seed_source_is_called_only_by_explicit_new_candidate() {
         var samples = 0

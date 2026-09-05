@@ -26,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.ustc.timetable.appearance.WallpaperImageLoader
 import com.ustc.timetable.appearance.wallpaperScrim
+import com.ustc.timetable.appearance.wallpaperImageAlpha
+import com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT
 import com.ustc.timetable.appearance.AppearanceMode
 import com.ustc.timetable.appearance.ResolvedAppearance
 import com.ustc.timetable.appearance.resolveAppearance
@@ -127,6 +129,7 @@ fun TimetableTheme(mode: AppearanceMode = AppearanceMode.LIGHT, content: @Compos
 @Composable
 fun AppBackgroundLayer(
     wallpaperUri: String? = null,
+    wallpaperVisibilityPercent: Int = DEFAULT_WALLPAPER_VISIBILITY_PERCENT,
     onWallpaperUnavailable: () -> Unit = {},
     onWallpaperAvailable: () -> Unit = {},
     content: @Composable () -> Unit,
@@ -150,9 +153,10 @@ fun AppBackgroundLayer(
                     bitmap = image!!,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
+                    alpha = wallpaperImageAlpha(wallpaperVisibilityPercent),
                     modifier = Modifier.fillMaxSize().testTag("timetable_wallpaper_image"),
                 )
-                Box(Modifier.fillMaxSize().background(wallpaperScrim(LocalResolvedAppearance.current)).testTag("timetable_wallpaper_scrim"))
+                Box(Modifier.fillMaxSize().background(wallpaperScrim(LocalResolvedAppearance.current, wallpaperVisibilityPercent)).testTag("timetable_wallpaper_scrim"))
             }
         Box(Modifier.fillMaxSize()) { content() }
     }
