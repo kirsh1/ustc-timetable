@@ -27,6 +27,18 @@ import com.ustc.timetable.appearance.AppearanceMode
 @org.robolectric.annotation.Config(application = android.app.Application::class, sdk = [36])
 class SettingsStoreTest {
 
+    @Test fun exact_overlap_defaults_roundtrips_and_ignores_unknown_without_affecting_other_keys() = runBlocking {
+        val key = stringKey("exact_overlap_display_mode")
+        assertEquals(com.ustc.timetable.timetable.ui.ExactOverlapMode.SPLIT, store.exactOverlapMode.first())
+        store.setAppearanceMode(AppearanceMode.DARK)
+        store.setExactOverlapMode(com.ustc.timetable.timetable.ui.ExactOverlapMode.EARLIEST)
+        assertEquals(com.ustc.timetable.timetable.ui.ExactOverlapMode.EARLIEST, SettingsStore(dataStore).exactOverlapMode.first())
+        dataStore.edit { it[key] = "future" }
+        assertEquals(com.ustc.timetable.timetable.ui.ExactOverlapMode.SPLIT, store.exactOverlapMode.first())
+        assertEquals("future", dataStore.data.first()[key])
+        assertEquals(AppearanceMode.DARK, store.appearanceMode.first())
+    }
+
     @Test fun new_appearance_preferences_default_and_roundtrip() = runBlocking {
         assertEquals(0L, store.coursePaletteSeed.first())
         assertEquals(65, store.wallpaperVisibilityPercent.first())

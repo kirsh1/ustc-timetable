@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import com.ustc.timetable.appearance.AppearanceMode
+import com.ustc.timetable.timetable.ui.ExactOverlapMode
 
 const val DEFAULT_COURSE_PALETTE_SEED: Long = 0L
 const val DEFAULT_WALLPAPER_VISIBILITY_PERCENT: Int = 65
@@ -21,6 +22,7 @@ const val DEFAULT_WALLPAPER_VISIBILITY_PERCENT: Int = 65
 class SettingsStore(private val dataStore: DataStore<Preferences>) {
 
     private object Keys {
+        val EXACT_OVERLAP_MODE = stringPreferencesKey("exact_overlap_display_mode")
         val VIEWED_SEMESTER_ID = stringPreferencesKey("viewed_semester_id")
         val SHOW_NON_CURRENT_WEEK = booleanPreferencesKey("show_non_current_week")
         val WEEKLY_SYNC_ENABLED = booleanPreferencesKey("weekly_sync_enabled")
@@ -35,6 +37,10 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
     }
 
     val viewedSemesterId: Flow<String?> = dataStore.data.map { it[Keys.VIEWED_SEMESTER_ID] }
+    val exactOverlapMode: Flow<ExactOverlapMode> = dataStore.data.map { preferences ->
+        ExactOverlapMode.entries.firstOrNull { it.name == preferences[Keys.EXACT_OVERLAP_MODE] } ?: ExactOverlapMode.SPLIT
+    }
+    suspend fun setExactOverlapMode(mode: ExactOverlapMode) { dataStore.edit { it[Keys.EXACT_OVERLAP_MODE] = mode.name } }
     val showNonCurrentWeek: Flow<Boolean> = dataStore.data.map { it[Keys.SHOW_NON_CURRENT_WEEK] ?: false }
     val weeklySyncEnabled: Flow<Boolean> = dataStore.data.map { it[Keys.WEEKLY_SYNC_ENABLED] ?: true }
     val activeWorkingProfileId: Flow<String?> = dataStore.data.map { it[Keys.ACTIVE_WORKING_PROFILE_ID] }
