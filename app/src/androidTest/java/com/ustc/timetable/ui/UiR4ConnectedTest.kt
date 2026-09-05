@@ -111,13 +111,13 @@ class UiR4ConnectedTest {
 
     @Test fun different_course_carousel_starts_current_and_deduplicates_course_identity() {
         launch()
-        compose.onNodeWithTag("school_marker:different", useUnmergedTree = true).performClick()
-        compose.onNodeWithTag("course_detail_indicator").assertTextEquals("1 / 2")
-        compose.onNode(hasText("电化学研究方法") and hasAnyAncestor(hasTestTag("course_detail_page:0"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_marker:CROSS_WEEK", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("1 / 2")
+        compose.onNode(hasText("电化学研究方法") and hasAnyAncestor(hasTestTag("course_detail"))).assertIsDisplayed()
         capture("different-course-page-1")
-        compose.onNodeWithTag("course_detail_next").performClick()
-        compose.onNodeWithTag("course_detail_indicator").assertTextEquals("2 / 2")
-        compose.onNode(hasText("应用物理化学") and hasAnyAncestor(hasTestTag("course_detail_page:1"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_detail_next").performClick()
+        compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("2 / 2")
+        compose.onNode(hasText("应用物理化学") and hasAnyAncestor(hasTestTag("course_detail"))).assertIsDisplayed()
         capture("different-course-page-2")
     }
 
@@ -129,16 +129,16 @@ class UiR4ConnectedTest {
         assertTrue(layouts.single().lineCount >= 2)
         assertTrue((0 until layouts.single().lineCount).none { layouts.single().isLineEllipsized(it) })
         val textBounds = room.getUnclippedBoundsInRoot()
-        val markerBounds = compose.onNodeWithTag("school_marker:different", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val markerBounds = compose.onNodeWithTag("overlap_marker:CROSS_WEEK", useUnmergedTree = true).getUnclippedBoundsInRoot()
         assertTrue(textBounds.bottom <= markerBounds.top)
     }
 
     @Test fun same_course_variants_are_single_page_and_manual_has_no_school_marker() {
         launch()
-        compose.onNode(hasTestTag("school_marker:different") and hasAnyAncestor(hasTestTag("manual_block:r4-manual")), useUnmergedTree = true).assertDoesNotExist()
-        compose.onNodeWithTag("school_marker:variant", useUnmergedTree = true).performClick()
-        compose.onNodeWithTag("course_detail_page:0").assertIsDisplayed()
-        compose.onNodeWithTag("course_detail_next").assertDoesNotExist()
+        compose.onNode(hasTestTag("overlap_marker:CROSS_WEEK") and hasAnyAncestor(hasTestTag("manual_block:r4-manual")), useUnmergedTree = true).assertDoesNotExist()
+        compose.onNodeWithTag("overlap_marker:VARIANT", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("course_detail").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_detail_next").assertDoesNotExist()
         compose.onNodeWithText("完整安排").assertIsDisplayed()
         capture("same-course-single-page")
     }
