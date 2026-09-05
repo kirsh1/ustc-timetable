@@ -130,6 +130,7 @@ fun TimetableRoute(
         }
     }
     val overlays = remember(state.semester?.id) { ManualOverlayState() }
+    var overlapSelection by remember(state.semester?.id) { mutableStateOf<OverlapDetailSelection?>(null) }
     var schoolSelection by rememberSaveable(state.semester?.id, stateSaver = SchoolDetailSelectionSaver) {
         mutableStateOf<SchoolDetailSelection?>(null)
     }
@@ -140,15 +141,18 @@ fun TimetableRoute(
             onNextWeek = viewModel::onNextWeek,
             onWeekSelected = viewModel::onWeekSelected,
             onSchoolBlockClick = { id, pageWeek ->
+                overlapSelection = null
                 overlays.dismissManual()
                 schoolSelection = SchoolDetailSelection(pageWeek, id)
             },
             onManualBlockClick = { id, pageWeek ->
+                overlapSelection = null
                 schoolSelection = null
                 val target = createEditManualEditorTarget(state, id, pageWeek)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
             },
             onEmptyLongPress = { pageWeek, draft ->
+                overlapSelection = null
                 schoolSelection = null
                 val target = createNewManualEditorTarget(state, pageWeek, draft)
                 if (target == null) overlays.dismissManual() else overlays.openManual(target)
@@ -159,10 +163,31 @@ fun TimetableRoute(
             onReloginClick = { reloginLauncher.launch(Unit) },
             onCancelAuthExpired = { manualSyncController?.onCancelAuthExpired() },
             onSettingsClick = onSettingsClick,
+            onOverlapMarkerClick = { week, key, kind ->
+                schoolSelection = null
+                overlays.dismissManual()
+                overlapSelection = OverlapDetailSelection(week, key, kind)
+            },
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
     val target = overlays.manualTarget
+    val overlap = overlapSelection
+    val projection = overlap?.let { state.weekPages.getOrNull(it.week - 1)?.overlapProjection }
+    val representative = projection?.retained?.firstOrNull { it.key == overlap?.representativeKey }
+    val overlapPages = if (overlap != null && representative != null) OverlapDetail.build(representative,
+        projection.attachments[representative.key] ?: OverlapAttachment(), overlap.kind, overlap.week,
+        state.courseDetailsByMeetingId, state.manualItemsById) else emptyList()
+    LaunchedEffect(overlap, overlapPages) { if (overlapPages.isEmpty()) overlapSelection = null }
+    if (overlap != null && overlapPages.isNotEmpty() && state.profile != null) {
+        OverlapDetailSheet(overlapPages, requireNotNull(state.profile), { overlapSelection = null }) { id ->
+            val editTarget = createEditManualEditorTarget(state, id, overlap.week)
+            if (editTarget != null) {
+                overlapSelection = null
+                overlays.openManual(editTarget)
+            }
+        }
+    }
     val editorInitial = target?.let { resolveManualEditorInitial(it, state) }
     LaunchedEffect(target, state.semester?.id, state.profile?.id, state.manualItemsById.keys) {
         if (target != null && editorInitial == null) overlays.dismissManual()
@@ -208,6 +233,7 @@ fun TimetableScreen(
     onReloginClick: () -> Unit = {},
     onCancelAuthExpired: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onOverlapMarkerClick: (Int, String, OverlapMarkerKind) -> Unit = { _, _, _ -> },
 ) {
     if (state.isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -302,6 +328,8 @@ fun TimetableScreen(
                             periods = profile.periods,
                             segmentedAxis = segmentedAxis,
                             showTimeRail = false,
+                            overlapProjection = page.overlapProjection,
+                            onOverlapMarkerClick = { key, kind -> onOverlapMarkerClick(page.week, key, kind) },
                         )
                     }
                 }

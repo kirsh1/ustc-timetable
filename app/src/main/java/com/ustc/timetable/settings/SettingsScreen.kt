@@ -73,6 +73,7 @@ import com.ustc.timetable.appearance.WallpaperSelection
 import com.ustc.timetable.appearance.WallpaperRuntimeState
 
 data class SettingsCallbacks(
+    val onExactOverlapSelected: (com.ustc.timetable.timetable.ui.ExactOverlapMode) -> Unit = {},
     val onBack: () -> Unit = {},
     val onOpenSemesterSwitcher: () -> Unit = {},
     val onOpenProfile: () -> Unit = {},
@@ -142,6 +143,7 @@ fun SettingsRoute(
     SettingsScreen(
         state = state.copy(wallpaperUnavailable = state.timetableWallpaperUri != null && unavailableWallpaperUri == state.timetableWallpaperUri),
         callbacks = SettingsCallbacks(
+            onExactOverlapSelected = viewModel::onExactOverlapSelected,
             onBack = onBack,
             onOpenSemesterSwitcher = { semesterSheetOpen = true },
             onOpenProfile = onOpenProfile,
@@ -205,6 +207,24 @@ fun SettingsScreen(
     paletteSeedSource: PaletteSeedSource = SecurePaletteSeedSource,
 ) {
     var themeSheetOpen by remember { mutableStateOf(false) }
+    var exactOverlapSheetOpen by remember { mutableStateOf(false) }
+    if (exactOverlapSheetOpen) {
+        ModalBottomSheet(onDismissRequest = { exactOverlapSheetOpen = false }) {
+            Text("完全重叠内容", Modifier.padding(20.dp), style = MaterialTheme.typography.titleLarge)
+            Text("手动事项按创建时间；学校课程按学期导入时间，同批按稳定课程标识排序", Modifier.padding(horizontal = 20.dp))
+            com.ustc.timetable.timetable.ui.ExactOverlapMode.entries.forEach { mode ->
+                ListItem(
+                    headlineContent = { Text(if (mode == com.ustc.timetable.timetable.ui.ExactOverlapMode.SPLIT) "并排显示（默认）" else "优先较早添加") },
+                    leadingContent = { RadioButton(selected = state.exactOverlapMode == mode, onClick = null) },
+                    modifier = Modifier.testTag("exact_overlap_${mode.name}").clickable {
+                        callbacks.onExactOverlapSelected(mode)
+                        exactOverlapSheetOpen = false
+                    },
+                )
+            }
+            TextButton(onClick = { exactOverlapSheetOpen = false }, modifier = Modifier.testTag("exact_overlap_cancel")) { Text("取消") }
+        }
+    }
     var wallpaperSheetOpen by remember { mutableStateOf(false) }
     var paletteEditor by remember { mutableStateOf<PaletteCandidateState?>(null) }
     val spacing = LocalTimetableSpacing.current
@@ -254,6 +274,8 @@ fun SettingsScreen(
                 SettingsNavigationRow("学校作息时间", state.workingProfile?.name ?: "—", "working_profile", callbacks.onOpenProfile)
                 SettingsDivider()
                 SettingsToggleRow("显示非当前周课程", state.showNonCurrentWeek, "show_noncurrent", callbacks.onToggleShowNonCurrent)
+                SettingsDivider()
+                SettingsActionRow("完全重叠内容", "exact_overlap", { exactOverlapSheetOpen = true })
                 if (state.canApplyWorkingToAcademicCurrent) {
                     SettingsDivider()
                     SettingsActionRow("应用为当前学期作息", "apply_working", callbacks.onApplyWorking)

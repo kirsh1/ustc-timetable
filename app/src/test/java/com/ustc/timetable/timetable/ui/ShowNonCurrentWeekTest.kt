@@ -366,13 +366,16 @@ class ShowNonCurrentWeekTest {
         val model = runningViewModel().model
         awaitUsable(model)
         model.onToggleShowNonCurrentWeek(true)
-        awaitUntil { model.state.value.placedSchool.isNotEmpty() && model.state.value.placedManual.isNotEmpty() }
+        awaitUntil { model.state.value.showNonCurrentWeek }
+        val projection = model.state.value.weekPages[1].overlapProjection!!
+        assertEquals(1, projection.retained.size)
+        assertEquals(1, projection.attachments.values.single().crossWeek.size)
         model.onToggleShowNonCurrentWeek(false)
         awaitUntil { model.state.value.placedSchool.isEmpty() && model.state.value.placedManual.isEmpty() }
         assertFalse(model.state.value.showNonCurrentWeek)
     }
 
-    @Test fun visible_noncurrent_block_does_consume_overlap_column() = runBlocking {
+    @Test fun visible_noncurrent_manual_attaches_without_consuming_overlap_column() = runBlocking {
         val semester = seedSemester("A", current = true)
         seedSchool(semester.id, meetingId = "active", weeks = WeekPattern.of(2))
         seedManual(semester.id, itemId = "ghost", weeks = WeekPattern.of(3))
@@ -381,9 +384,11 @@ class ShowNonCurrentWeekTest {
         assertEquals(1, model.state.value.placedSchool.single().columnsInGroup)
 
         model.onToggleShowNonCurrentWeek(true)
-        awaitUntil { model.state.value.placedManual.isNotEmpty() }
-        assertEquals(2, model.state.value.placedSchool.single().columnsInGroup)
-        assertEquals(2, model.state.value.placedManual.single().columnsInGroup)
+        awaitUntil { model.state.value.showNonCurrentWeek }
+        assertEquals(1, model.state.value.placedSchool.single().columnsInGroup)
+        assertTrue(model.state.value.placedManual.isEmpty())
+        assertEquals("manual:ghost", model.state.value.weekPages[1].overlapProjection!!
+            .attachments.values.single().crossWeek.single().identity)
     }
 
     @Test fun attached_school_ghost_does_not_consume_active_column_and_adds_marker() = runBlocking {

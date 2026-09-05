@@ -84,6 +84,7 @@ data class TimetableWeekPageUiState(
     val nowLine: LocalTime?,
     val schoolMarkersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers> = emptyMap(),
     val attachedSchoolGhostsByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolGhostAttachment> = emptyMap(),
+    val overlapProjection: OverlapProjection? = null,
 )
 
 enum class SchoolMarkerKind { DIFFERENT_COURSE, SAME_COURSE_VARIANT }
@@ -308,15 +309,16 @@ class TimetableViewModel(
         settings.showNonCurrentWeek,
         requestedWeek,
         nowTicks,
-    ) { data, showNonCurrent, reqWeek, tick ->
-        buildState(data, showNonCurrent, reqWeek, tick)
+        settings.exactOverlapMode,
+    ) { data, showNonCurrent, reqWeek, tick, mode ->
+        buildState(data, showNonCurrent, reqWeek, tick, mode)
     }
 
     val state: StateFlow<TimetableUiState> = combine(timetableState, settings.coursePaletteSeed) { state, seed ->
         state.copy(coursePaletteSeed = seed)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimetableUiState())
 
-    private fun buildState(data: SemesterData, showNonCurrentWeek: Boolean, reqWeek: RequestedWeek?, tick: Instant): TimetableUiState {
+    private fun buildState(data: SemesterData, showNonCurrentWeek: Boolean, reqWeek: RequestedWeek?, tick: Instant, mode: ExactOverlapMode): TimetableUiState {
         val zoned = tick.atZone(clock.zone)
         val today = zoned.toLocalDate()
         val now = zoned.toLocalTime()
@@ -351,11 +353,15 @@ class TimetableViewModel(
         val courseDetails = buildCourseDetailsByMeetingId(data.school.first, data.school.second)
         val manualItemsById = data.manual.associateBy { it.id }
 
-        // 每周独立 projection：SCHOOL ghost association + unchanged MANUAL filter → one joint placement.
+        // Each week shares one typed SCHOOL/MANUAL projection; overview remains active-only.
         val weekPages = (1..semester.totalWeeks).map { week ->
             val association = SchoolGhostProjection.associate(rawSchool, week, showNonCurrentWeek)
-            val manualForWeek = weekFilter(rawManual, week, showNonCurrentWeek)
-            val jointBlocks: List<TimedBlock> = association.retainedSchoolBlocks + manualForWeek
+            val projection = UnifiedOverlapProjection.project(
+                rawSchool.map { OverlapEntry(it, semester.importedAt) } + rawManual.map {
+                    OverlapEntry(it, manualItemsById.getValue(it.manualItemId).createdAt)
+                }, week, showNonCurrentWeek, mode,
+            )
+            val jointBlocks: List<TimedBlock> = projection.retained.map { it.block }
             val placed = WeeklyTimetableLayout.place(
                 jointBlocks,
                 axis,
@@ -376,6 +382,7 @@ class TimetableViewModel(
                 nowLine = NowLinePolicy.line(semester, week, WeekCalculator.weekRange(semester, week), today, now),
                 schoolMarkersByPresentationKey = markers,
                 attachedSchoolGhostsByPresentationKey = association.attachmentsByRepresentativeKey,
+                overlapProjection = projection,
             )
         }
         val weekOverviewPages = buildWeekOverviewPages(semester, rawSchool + rawManual, axis)

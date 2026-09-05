@@ -5,7 +5,7 @@ import java.time.Duration
 import java.time.Instant
 
 enum class ExactOverlapMode { SPLIT, EARLIEST }
-enum class OverlapMarkerKind { CROSS_WEEK, VARIANT, CURRENT_CONFLICT }
+enum class OverlapMarkerKind { CROSS_WEEK, VARIANT, CURRENT_CONFLICT, ALL_CONTENT }
 
 data class OverlapEntry(val block: TimedBlock, val addedAt: Instant) {
     val identity: String get() = block.manualItemId?.let { "manual:${it.value}" } ?: "school:${block.colorKey}"

@@ -54,6 +54,7 @@ class SettingsViewModel(
         val wallpaperUri: String? = null,
         val coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
         val wallpaperVisibilityPercent: Int = com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT,
+        val exactOverlapMode: com.ustc.timetable.timetable.ui.ExactOverlapMode = com.ustc.timetable.timetable.ui.ExactOverlapMode.SPLIT,
     )
     private data class SessionStatus(val loading: Boolean, val blob: SessionBlob?)
 
@@ -79,8 +80,8 @@ class SettingsViewModel(
     ) { value, viewedId, appearance, wallpaper ->
         value.copy(viewedSemesterId = viewedId, appearanceMode = appearance, wallpaperUri = wallpaper)
     }
-    private val persisted = combine(persistedAppearance, settings.coursePaletteSeed, settings.wallpaperVisibilityPercent) { p, seed, visibility ->
-        p.copy(coursePaletteSeed = seed, wallpaperVisibilityPercent = visibility)
+    private val persisted = combine(persistedAppearance, settings.coursePaletteSeed, settings.wallpaperVisibilityPercent, settings.exactOverlapMode) { p, seed, visibility, overlap ->
+        p.copy(coursePaletteSeed = seed, wallpaperVisibilityPercent = visibility, exactOverlapMode = overlap)
     }
 
     val state = combine(persisted, profiles.observeWorking(), semesters.observeSemesters(), sessionStatus, notificationsEnabled) {
@@ -92,6 +93,7 @@ class SettingsViewModel(
         }
         val hasPortalTarget = semesterList.any { it.isCurrentAcademicSemester && it.portalLinked }
         SettingsUiState(
+            exactOverlapMode = p.exactOverlapMode,
             coursePaletteSeed = p.coursePaletteSeed,
             wallpaperVisibilityPercent = p.wallpaperVisibilityPercent,
             appearanceMode = p.appearanceMode,
@@ -124,6 +126,7 @@ class SettingsViewModel(
     init { refreshSession() }
 
     fun onToggleShowNonCurrentWeek(value: Boolean) { viewModelScope.launch { settings.setShowNonCurrentWeek(value) } }
+    fun onExactOverlapSelected(mode: com.ustc.timetable.timetable.ui.ExactOverlapMode) { viewModelScope.launch { settings.setExactOverlapMode(mode) } }
     fun onAppearanceModeSelected(mode: AppearanceMode) { viewModelScope.launch { settings.setAppearanceMode(mode) } }
     fun onWallpaperSelected(uri: String) { viewModelScope.launch { settings.setTimetableWallpaperUri(uri) } }
     fun onWallpaperCleared() { viewModelScope.launch { settings.setTimetableWallpaperUri(null) } }

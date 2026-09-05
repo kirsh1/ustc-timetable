@@ -27,6 +27,18 @@ import com.ustc.timetable.sync.ManualSyncState
 class SettingsScreenTest {
     @get:Rule val rule = createComposeRule()
 
+    @Test fun exact_overlap_selection_emits_only_confirmed_choice() {
+        val choices = mutableListOf<com.ustc.timetable.timetable.ui.ExactOverlapMode>()
+        rule.setContent { SettingsScreen(state(), SettingsCallbacks(onExactOverlapSelected = { choices += it })) }
+        rule.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("exact_overlap"))
+        rule.onNodeWithTag("exact_overlap").performClick()
+        rule.onNodeWithTag("exact_overlap_cancel").performClick()
+        assertEquals(emptyList<com.ustc.timetable.timetable.ui.ExactOverlapMode>(), choices)
+        rule.onNodeWithTag("exact_overlap").performClick()
+        rule.onNodeWithTag("exact_overlap_EARLIEST").performClick()
+        assertEquals(listOf(com.ustc.timetable.timetable.ui.ExactOverlapMode.EARLIEST), choices)
+    }
+
     @Test fun wallpaper_slider_exists_only_with_uri_and_finish_persists() {
         val finished = mutableListOf<Int>()
         rule.setContent { SettingsScreen(state().copy(timetableWallpaperUri = "content://test/image"), SettingsCallbacks(onWallpaperVisibilityFinished = { finished += it })) }

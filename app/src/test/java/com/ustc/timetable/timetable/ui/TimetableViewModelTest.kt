@@ -414,10 +414,11 @@ class TimetableViewModelTest {
         awaitUntil { m.state.value.placedSchool.isNotEmpty() }
         assertEquals(1, m.state.value.placedSchool.first().columnsInGroup)  // ghost 在 place() 前被过滤 → 学校课整列
         assertTrue(m.state.value.placedManual.isEmpty())
-        settings.setShowNonCurrentWeek(true)   // 开关打开后 ghost 参与联合布局（B2 以 0.35 alpha 绘制）
-        awaitUntil { m.state.value.placedManual.isNotEmpty() }
-        assertEquals(2, m.state.value.placedSchool.first().columnsInGroup)
-        assertEquals(2, m.state.value.placedManual.first().columnsInGroup)
+        settings.setShowNonCurrentWeek(true)
+        awaitUntil { m.state.value.showNonCurrentWeek }
+        assertTrue(m.state.value.placedManual.isEmpty())
+        assertEquals(1, m.state.value.placedSchool.first().columnsInGroup)
+        assertEquals("manual:i1", m.state.value.viewedPage!!.overlapProjection!!.attachments.values.single().crossWeek.single().block.colorKey)
     }
 
     // ---- selectViewedSemester 边界 ----

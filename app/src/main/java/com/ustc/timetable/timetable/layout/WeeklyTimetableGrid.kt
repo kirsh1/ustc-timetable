@@ -92,6 +92,7 @@ fun teachingTimeGroups(periods: List<PeriodTime>): List<TeachingTimeGroup> {
 internal const val HEADER_HEIGHT_DP: Int = 36
 
 sealed interface GridHitTarget {
+    data class Marker(val key: String, val kind: com.ustc.timetable.timetable.ui.OverlapMarkerKind) : GridHitTarget
     data class School(val meetingId: MeetingId) : GridHitTarget
     data class Manual(val manualItemId: ManualItemId) : GridHitTarget
     data class Empty(val draft: LongPressDraft) : GridHitTarget
@@ -124,7 +125,10 @@ fun WeeklyTimetableGrid(
     segmentedAxis: SegmentedTimelineAxis? = null,
     showTimeRail: Boolean = true,
     coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
+    overlapProjection: com.ustc.timetable.timetable.ui.OverlapProjection? = null,
+    onOverlapMarkerClick: (String, com.ustc.timetable.timetable.ui.OverlapMarkerKind) -> Unit = { _, _ -> },
 ) {
+    val markerUnitPx = with(LocalDensity.current) { 1.dp.toPx() }
     val gutterWidth = if (showTimeRail) {
         rememberMeasuredTimeRailWidth(
             periods = periods,
@@ -201,6 +205,7 @@ fun WeeklyTimetableGrid(
                             showNonCurrentWeek,
                             renderingAxis,
                             viewConfiguration,
+                            overlapProjection,
                         ) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -214,6 +219,8 @@ fun WeeklyTimetableGrid(
                                     viewedWeek = viewedWeek,
                                     showNonCurrentWeek = showNonCurrentWeek,
                                     axis = renderingAxis,
+                                    projection = overlapProjection,
+                                    markerUnitPx = markerUnitPx,
                                 )
                                 val arbitrator = OverviewGestureArbitrator(viewConfiguration.touchSlop)
                                 arbitrator.onDown(target.pressTarget())
@@ -225,6 +232,7 @@ fun WeeklyTimetableGrid(
                                 fun dispatch(decision: GridGestureDecision) {
                                     when (decision) {
                                         GridGestureDecision.Click -> when (target) {
+                                            is GridHitTarget.Marker -> onOverlapMarkerClick(target.key, target.kind)
                                             is GridHitTarget.School -> onSchoolBlockClick(target.meetingId)
                                             is GridHitTarget.Manual -> onManualBlockClick(target.manualItemId)
                                             is GridHitTarget.Empty -> Unit
@@ -278,6 +286,18 @@ fun WeeklyTimetableGrid(
                             }
                         },
                 ) {
+                    if (overlapProjection != null) {
+                        val entries = overlapProjection.retained.associateBy { com.ustc.timetable.timetable.ui.OverlapEntry(it.block, java.time.Instant.EPOCH).key }
+                        SegmentedOverlapLayout.place(overlapProjection.retained.map { it.block }).forEach { shape ->
+                            val entry = entries.getValue(com.ustc.timetable.timetable.ui.OverlapEntry(shape.block, java.time.Instant.EPOCH).key)
+                            SegmentedCourseCard(entry, shape, gridWidth, bodyHeight, renderingAxis, viewedWeek, showNonCurrentWeek, coursePaletteSeed,
+                                overlapProjection.attachments[entry.key] ?: com.ustc.timetable.timetable.ui.OverlapAttachment(),
+                                onBodyClick = {
+                                    shape.block.manualItemId?.let(onManualBlockClick)
+                                        ?: shape.block.meetingId?.let(onSchoolBlockClick)
+                                }, onMarkerClick = { onOverlapMarkerClick(entry.key, it) })
+                        }
+                    } else {
                     for (pb in placedSchool) {
                         if (!pb.block.weeks.contains(viewedWeek) && !showNonCurrentWeek) continue
                         require(pb.block.meetingId != null) {
@@ -307,6 +327,7 @@ fun WeeklyTimetableGrid(
                             "manual list contains school block: ${pb.block.colorKey}"
                         }
                         ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, coursePaletteSeed, onManualBlockClick)
+                    }
                     }
                 }
             }
@@ -492,6 +513,7 @@ private fun SchoolMarker(kind: SchoolMarkerKind, tag: String, onClick: () -> Uni
 }
 
 private fun GridHitTarget.pressTarget(): GridPressTarget = when (this) {
+    is GridHitTarget.Marker -> GridPressTarget.SCHOOL_CARD
     is GridHitTarget.Empty -> GridPressTarget.EMPTY
     is GridHitTarget.School -> GridPressTarget.SCHOOL_CARD
     is GridHitTarget.Manual -> GridPressTarget.MANUAL_CARD
@@ -507,7 +529,31 @@ private fun hitTargetAt(
     viewedWeek: Int,
     showNonCurrentWeek: Boolean,
     axis: ReversibleTimelineAxis,
+    projection: com.ustc.timetable.timetable.ui.OverlapProjection? = null,
+    markerUnitPx: Float = 1f,
 ): GridHitTarget {
+    if (projection != null) {
+        val dayWidth = gridWidthPx / 7f
+        val day = (xPx / dayWidth).toInt() + 1
+        val localX = xPx - (day - 1) * dayWidth
+        val time = axis.timeAt((yPx / bodyHeightPx).coerceIn(0f, 1f))
+        val shapes = SegmentedOverlapLayout.place(projection.retained.map { it.block }).filter { it.block.weekday == day }
+        for (shape in shapes) {
+            val key = com.ustc.timetable.timetable.ui.OverlapEntry(shape.block, java.time.Instant.EPOCH).key
+            val kinds = projection.attachments[key]?.kinds.orEmpty()
+            val regions = overlapMarkerRegions(shape, kinds, dayWidth, bodyHeightPx, axis, markerUnitPx)
+            regions.firstOrNull { it.rect.contains(androidx.compose.ui.geometry.Offset(localX, yPx)) }?.let {
+                return GridHitTarget.Marker(key, it.kind)
+            }
+            if (shape.contains(localX / dayWidth, time)) {
+                if (regions.isEmpty() && kinds.isNotEmpty()) return GridHitTarget.Marker(key, com.ustc.timetable.timetable.ui.OverlapMarkerKind.ALL_CONTENT)
+                shape.block.manualItemId?.let { return GridHitTarget.Manual(it) }
+                shape.block.meetingId?.let { return GridHitTarget.School(it) }
+            }
+        }
+        return GridHitTarget.Empty(LongPressResolver.resolve(
+            (xPx / gridWidthPx).coerceIn(0f, .999f), (yPx / bodyHeightPx).coerceIn(0f, .999f), axis))
+    }
     val visible = (school + manual).filter { placed ->
         placed.block.weeks.contains(viewedWeek) || showNonCurrentWeek
     }

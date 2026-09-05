@@ -33,6 +33,7 @@ sealed interface SchoolLoginUiState {
 }
 
 data class SettingsUiState(
+    val exactOverlapMode: com.ustc.timetable.timetable.ui.ExactOverlapMode = com.ustc.timetable.timetable.ui.ExactOverlapMode.SPLIT,
     val coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
     val wallpaperVisibilityPercent: Int = com.ustc.timetable.timetable.data.DEFAULT_WALLPAPER_VISIBILITY_PERCENT,
     val appearanceMode: AppearanceMode = AppearanceMode.LIGHT,

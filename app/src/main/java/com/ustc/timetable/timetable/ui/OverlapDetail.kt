@@ -25,11 +25,24 @@ object OverlapDetail {
             OverlapMarkerKind.CROSS_WEEK -> attachment.crossWeek
             OverlapMarkerKind.CURRENT_CONFLICT -> attachment.currentConflicts
             OverlapMarkerKind.VARIANT -> emptyList()
+            OverlapMarkerKind.ALL_CONTENT -> attachment.crossWeek + attachment.currentConflicts
         }
         val alternatives = candidates.filter { it.identity != representative.identity }.groupBy { it.identity }.values.mapNotNull { group ->
             group.sortedWith(compareBy<OverlapEntry> { if (week in it.block.weeks) 0 else 1 }
                 .then(UnifiedOverlapProjection.ghostOrder)).firstOrNull { resolve(it) != null }
-        }.sortedWith(UnifiedOverlapProjection.order).mapNotNull(::resolve)
+        }.sortedWith(UnifiedOverlapProjection.order).mapNotNull(::resolve).map { page ->
+            val detail = page.school ?: return@map page
+            // Candidates attach by overlap, but their header represents the full course.
+            // The clicked representative above deliberately keeps its original meeting.
+            val anchor = detail.allMeetings.minWithOrNull(compareBy(
+                { if (week in it.weekPattern) 0 else 1 },
+                { meeting -> (1..63).firstOrNull { it in meeting.weekPattern } ?: 64 },
+                { it.weekday }, { it.startPeriod }, { it.endPeriod }, { it.location.trim() },
+                { it.teacherNames.map(String::trim).distinct().sorted().joinToString("\u0000") },
+                { it.weekPattern.mask },
+            )) ?: detail.selectedMeeting
+            page.copy(school = detail.copy(selectedMeeting = anchor))
+        }
         return listOf(first) + alternatives
     }
 }
