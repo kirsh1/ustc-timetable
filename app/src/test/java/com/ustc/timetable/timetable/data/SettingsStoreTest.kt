@@ -23,7 +23,43 @@ import org.junit.Before
 import org.junit.Test
 import com.ustc.timetable.appearance.AppearanceMode
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(application = android.app.Application::class, sdk = [36])
 class SettingsStoreTest {
+
+    @Test fun new_appearance_preferences_default_and_roundtrip() = runBlocking {
+        assertEquals(0L, store.coursePaletteSeed.first())
+        assertEquals(65, store.wallpaperVisibilityPercent.first())
+        store.setCoursePaletteSeed(Long.MIN_VALUE)
+        assertEquals(Long.MIN_VALUE, SettingsStore(dataStore).coursePaletteSeed.first())
+        for (value in listOf(0, 65, 100)) {
+            store.setWallpaperVisibilityPercent(value)
+            assertEquals(value, store.wallpaperVisibilityPercent.first())
+        }
+    }
+
+    @Test fun wallpaper_visibility_clamps_read_and_write_without_rewriting_on_read() = runBlocking {
+        val key = androidx.datastore.preferences.core.intPreferencesKey("wallpaper_visibility_percent")
+        for ((raw, expected) in listOf(-12 to 0, 140 to 100)) {
+            dataStore.edit { it[key] = raw }
+            assertEquals(expected, store.wallpaperVisibilityPercent.first())
+            assertEquals(raw, dataStore.data.first()[key])
+            store.setWallpaperVisibilityPercent(raw)
+            assertEquals(expected, dataStore.data.first()[key])
+        }
+    }
+
+    @Test fun palette_and_visibility_preserve_existing_appearance_and_uri() = runBlocking {
+        store.setAppearanceMode(AppearanceMode.DARK)
+        store.setTimetableWallpaperUri("content://test/wallpaper")
+        store.setCoursePaletteSeed(99L)
+        store.setWallpaperVisibilityPercent(80)
+        assertEquals(AppearanceMode.DARK, store.appearanceMode.first())
+        assertEquals("content://test/wallpaper", store.timetableWallpaperUri.first())
+        store.setTimetableWallpaperUri(null)
+        assertEquals(80, store.wallpaperVisibilityPercent.first())
+        assertEquals(99L, store.coursePaletteSeed.first())
+    }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var file: File

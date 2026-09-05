@@ -5,10 +5,14 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import com.ustc.timetable.appearance.AppearanceMode
+
+const val DEFAULT_COURSE_PALETTE_SEED: Long = 0L
+const val DEFAULT_WALLPAPER_VISIBILITY_PERCENT: Int = 65
 
 /**
  * 冻结设置键与默认值（SPEC §9.2）。activeWorkingProfileId 为 null 时解释为 bundled official。
@@ -26,6 +30,8 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         val NOTIFICATIONS_REQUEST_SHOWN = booleanPreferencesKey("notifications_request_shown")
         val APPEARANCE_MODE = stringPreferencesKey("appearance_mode")
         val TIMETABLE_WALLPAPER_URI = stringPreferencesKey("timetable_wallpaper_uri")
+        val COURSE_PALETTE_SEED = longPreferencesKey("course_palette_seed")
+        val WALLPAPER_VISIBILITY_PERCENT = intPreferencesKey("wallpaper_visibility_percent")
     }
 
     val viewedSemesterId: Flow<String?> = dataStore.data.map { it[Keys.VIEWED_SEMESTER_ID] }
@@ -41,6 +47,15 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
             ?: AppearanceMode.LIGHT
     }
     val timetableWallpaperUri: Flow<String?> = dataStore.data.map { it[Keys.TIMETABLE_WALLPAPER_URI] }
+    val coursePaletteSeed: Flow<Long> = dataStore.data.map { it[Keys.COURSE_PALETTE_SEED] ?: DEFAULT_COURSE_PALETTE_SEED }
+    val wallpaperVisibilityPercent: Flow<Int> = dataStore.data.map {
+        (it[Keys.WALLPAPER_VISIBILITY_PERCENT] ?: DEFAULT_WALLPAPER_VISIBILITY_PERCENT).coerceIn(0, 100)
+    }
+
+    suspend fun setCoursePaletteSeed(seed: Long) { dataStore.edit { it[Keys.COURSE_PALETTE_SEED] = seed } }
+    suspend fun setWallpaperVisibilityPercent(percent: Int) {
+        dataStore.edit { it[Keys.WALLPAPER_VISIBILITY_PERCENT] = percent.coerceIn(0, 100) }
+    }
 
     suspend fun setViewedSemesterId(id: String) = dataStore.edit { it[Keys.VIEWED_SEMESTER_ID] = id }
 
