@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="512" height="512">
+  <defs>
+    <!-- Soft Harmonious Pastel Gradients (Low contrast, eye-friendly) -->
+    <!-- Ribbon: Soft Warm Rosy Coral -->
+    <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FF8FA3"/>
+      <stop offset="100%" stop-color="#FF758F"/>
+    </linearGradient>
+
+    <!-- Monday Morning: Soft Peach Rose -->
+    <linearGradient id="c1Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFAAA6"/>
+      <stop offset="100%" stop-color="#FF928B"/>
+    </linearGradient>
+
+    <!-- Monday Afternoon: Soft Mint Green -->
+    <linearGradient id="c2Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#98E4B7"/>
+      <stop offset="100%" stop-color="#76D7A0"/>
+    </linearGradient>
+
+    <!-- Tuesday Core Class: Soft Serenity Sky Blue -->
+    <linearGradient id="c3Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+
+    <!-- Wednesday Morning: Soft Butter Yellow -->
+    <linearGradient id="c4Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#FCD34D"/>
+    </linearGradient>
+
+    <!-- Wednesday Afternoon: Soft Lavender Iris -->
+    <linearGradient id="c5Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#D8B4FE"/>
+      <stop offset="100%" stop-color="#C084FC"/>
+    </linearGradient>
+
+    <!-- Natural Soft Elevation Drop Shadow for Card -->
+    <filter id="cardShadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="3.5" stdDeviation="3.5" flood-color="#0F172A" flood-opacity="0.09"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#0F172A" flood-opacity="0.05"/>
+    </filter>
+  </defs>
+
+  <!-- The White Schedule Card (1:1 Ratio: 82x82, rounded corners) -->
+  <g id="schedule_card" filter="url(#cardShadow)">
+    <!-- Main Card Body: Exactly 82 x 82 (Aspect Ratio 1:1) -->
+    <rect x="13" y="15" width="82" height="82" rx="19" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.2"/>
+
+    <!-- Bookmark Ribbon on Top-Right (Hanging over top edge) -->
+    <path d="M 70,11 L 79,11 L 79,33.5 L 74.5,29.5 L 70,33.5 Z" fill="url(#ribbonGrad)"/>
+
+    <!-- Header Day Indicators -->
+    <rect x="22.5" y="24" width="11" height="4.5" rx="2.25" fill="#E2E8F0"/>
+    <!-- Tuesday Active Pill -->
+    <rect x="39" y="23" width="20" height="6.5" rx="3.25" fill="#60A5FA"/>
+    <!-- Wednesday Dot (Placed cleanly to the left of ribbon) -->
+    <circle cx="64.5" cy="26.25" r="2.25" fill="#E2E8F0"/>
+
+    <!-- Header Divider Line -->
+    <line x1="20" y1="33.5" x2="88" y2="33.5" stroke="#F1F5F9" stroke-width="1.2"/>
+
+    <!-- 3 Course Columns -->
+    <!-- Column 1: Monday -->
+    <g id="col_monday">
+      <rect x="22.5" y="39" width="17" height="24.5" rx="5" fill="url(#c1Grad)"/>
+      <line x1="26.5" y1="46" x2="35.5" y2="46" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.95"/>
+      <line x1="26.5" y1="51.5" x2="32.5" y2="51.5" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.8"/>
+
+      <rect x="22.5" y="68.5" width="17" height="18" rx="5" fill="url(#c2Grad)"/>
+      <line x1="26.5" y1="77.5" x2="35.5" y2="77.5" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.95"/>
+    </g>
+
+    <!-- Column 2: Tuesday (Today - Active Core Class) -->
+    <g id="col_tuesday">
+      <rect x="44.5" y="39" width="17" height="37.5" rx="5" fill="url(#c3Grad)"/>
+      <!-- Punctuality Clock Accent Glyph -->
+      <circle cx="53" cy="48" r="4.8" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.95"/>
+      <polyline points="53,45.2 53,48 55.5,48" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+      <line x1="48.5" y1="58" x2="57.5" y2="58" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.9"/>
+      <line x1="48.5" y1="64.5" x2="54.5" y2="64.5" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.75"/>
+    </g>
+
+    <!-- Column 3: Wednesday -->
+    <g id="col_wednesday">
+      <rect x="66.5" y="39" width="17" height="19.5" rx="5" fill="url(#c4Grad)"/>
+      <line x1="70.5" y1="46" x2="79.5" y2="46" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.95"/>
+
+      <rect x="66.5" y="63.5" width="17" height="23" rx="5" fill="url(#c5Grad)"/>
+      <line x1="70.5" y1="71" x2="79.5" y2="71" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.95"/>
+      <line x1="70.5" y1="76.5" x2="76" y2="76.5" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" opacity="0.8"/>
+    </g>
+  </g>
+</svg>
