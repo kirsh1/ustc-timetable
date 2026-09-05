@@ -301,7 +301,11 @@ class ManualItemFlowTest {
         seedManual(item("ghost", WeekPattern.of(7)))
         val model = runningViewModel()
         model.onToggleShowNonCurrentWeek(true)
-        awaitUntil { model.state.value.showNonCurrentWeek && model.state.value.manualItemsById.isNotEmpty() }
+        try {
+            awaitUntil { model.state.value.showNonCurrentWeek && model.state.value.manualItemsById.isNotEmpty() }
+        } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
+            throw AssertionError("ghost-state diagnostic: ${model.state.value}; stored=${stored()}", error)
+        }
         val state = model.state.value
         val editor = session(state, editTarget(state, "ghost", week = 5)).editor
         assertEquals(WeekMode.CUSTOM, editor.draft.value.mode)

@@ -92,6 +92,7 @@ data class SchoolCardMarkers(val kinds: Set<SchoolMarkerKind>)
 
 /** B3/C1 authoritative UI state。weekPages 是唯一 layout 真相；其余为 derived getters，无第二份 field。 */
 data class TimetableUiState(
+    val coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
     val semester: Semester? = null,
     val viewedWeek: Int = 1,
     val naturalWeek: Int? = null,
@@ -302,13 +303,17 @@ class TimetableViewModel(
         }
     }
 
-    val state: StateFlow<TimetableUiState> = combine(
+    private val timetableState: Flow<TimetableUiState> = combine(
         semesterData,
         settings.showNonCurrentWeek,
         requestedWeek,
         nowTicks,
     ) { data, showNonCurrent, reqWeek, tick ->
         buildState(data, showNonCurrent, reqWeek, tick)
+    }
+
+    val state: StateFlow<TimetableUiState> = combine(timetableState, settings.coursePaletteSeed) { state, seed ->
+        state.copy(coursePaletteSeed = seed)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TimetableUiState())
 
     private fun buildState(data: SemesterData, showNonCurrentWeek: Boolean, reqWeek: RequestedWeek?, tick: Instant): TimetableUiState {

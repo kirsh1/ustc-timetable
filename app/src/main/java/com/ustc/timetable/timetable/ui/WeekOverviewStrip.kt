@@ -77,6 +77,7 @@ internal fun WeekOverviewStrip(
     onWeekSelected: (Int) -> Unit,
     axis: SegmentedTimelineAxis,
     modifier: Modifier = Modifier,
+    coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
 ) {
     val initialIndex = if (pages.isEmpty()) 0 else (viewedWeek - 1).coerceIn(pages.indices)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
@@ -141,7 +142,7 @@ internal fun WeekOverviewStrip(
                         }
                     }
                     if (selected) Box(Modifier.testTag("week_overview_selected:${page.week}"))
-                    WeekOverviewMiniMap(page, axis)
+                    WeekOverviewMiniMap(page, axis, coursePaletteSeed)
                 }
             }
         }
@@ -149,7 +150,7 @@ internal fun WeekOverviewStrip(
 }
 
 @Composable
-internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedTimelineAxis) {
+internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedTimelineAxis, coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED) {
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     BoxWithConstraints(
         Modifier
@@ -181,7 +182,7 @@ internal fun WeekOverviewMiniMap(page: WeekOverviewPageUiState, axis: SegmentedT
                     .width((groupWidth - 1.dp).coerceAtLeast(1.dp))
                     .height(height)
                     .clip(RoundedCornerShape(1.dp))
-                    .background(CoursePalette.containerColor(CoursePalette.colorIndexFor(placed.block.colorKey), dark))
+                    .background(CoursePalette.containerColor(CoursePalette.colorIndexFor(placed.block.colorKey, coursePaletteSeed), dark))
                     .testTag("week_overview_block:${page.week}:$identity"),
             )
         }

@@ -123,6 +123,7 @@ fun WeeklyTimetableGrid(
     periods: List<PeriodTime> = emptyList(),
     segmentedAxis: SegmentedTimelineAxis? = null,
     showTimeRail: Boolean = true,
+    coursePaletteSeed: Long = com.ustc.timetable.timetable.data.DEFAULT_COURSE_PALETTE_SEED,
 ) {
     val gutterWidth = if (showTimeRail) {
         rememberMeasuredTimeRailWidth(
@@ -286,6 +287,7 @@ fun WeeklyTimetableGrid(
                             "school list contains manual block: ${pb.block.colorKey}"
                         }
                         SchoolBlockNode(
+                            coursePaletteSeed = coursePaletteSeed,
                             pb = pb,
                             viewedWeek = viewedWeek,
                             showNonCurrentWeek = showNonCurrentWeek,
@@ -304,7 +306,7 @@ fun WeeklyTimetableGrid(
                         require(pb.block.meetingId == null) {
                             "manual list contains school block: ${pb.block.colorKey}"
                         }
-                        ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, onManualBlockClick)
+                        ManualBlockNode(pb, viewedWeek, showNonCurrentWeek, gridWidth, bodyHeight, renderingAxis, coursePaletteSeed, onManualBlockClick)
                     }
                 }
             }
@@ -321,6 +323,7 @@ private fun BoxScope.SchoolBlockNode(
     gridH: Dp,
     axis: ReversibleTimelineAxis,
     markersByPresentationKey: Map<SchoolCanonicalPresentationKey, SchoolCardMarkers>,
+    coursePaletteSeed: Long,
     onClick: (MeetingId) -> Unit,
 ) {
     val id = pb.block.meetingId!!
@@ -328,7 +331,7 @@ private fun BoxScope.SchoolBlockNode(
     val markers = schoolBlock?.let { markersByPresentationKey[SchoolGhostProjection.canonicalPresentationKey(it)] }
         ?.kinds
         .orEmpty()
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}", markers) { onClick(id) }
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "school_block:${id.value}", markers, coursePaletteSeed) { onClick(id) }
 }
 
 @Composable
@@ -339,10 +342,11 @@ private fun BoxScope.ManualBlockNode(
     gridW: Dp,
     gridH: Dp,
     axis: ReversibleTimelineAxis,
+    coursePaletteSeed: Long,
     onClick: (ManualItemId) -> Unit,
 ) {
     val id = pb.block.manualItemId!!
-    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "manual_block:${id.value}", emptySet()) { onClick(id) }
+    BlockNode(pb, viewedWeek, showNonCurrentWeek, gridW, gridH, axis, "manual_block:${id.value}", emptySet(), coursePaletteSeed) { onClick(id) }
 }
 
 /** 单块：绝对定位 + 稳定 tag + a11y 全描述 + 点击；onLongPress 空实现消费长按（不冒泡到空白区新建）。 */
@@ -356,6 +360,7 @@ private fun BoxScope.BlockNode(
     axis: ReversibleTimelineAxis,
     tag: String,
     markerKinds: Set<SchoolMarkerKind>,
+    coursePaletteSeed: Long,
     onClick: () -> Unit,
 ) {
     val columnWidth = gridW / 7f
@@ -382,7 +387,7 @@ private fun BoxScope.BlockNode(
         hasTeachers = pb.block.teacherNames.isNotEmpty(),
         markerCount = markerKinds.size,
     )
-    val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey)
+    val paletteIndex = CoursePalette.colorIndexFor(pb.block.colorKey, coursePaletteSeed)
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     val alpha = CoursePalette.alphaFor(pb.block.weeks.contains(viewedWeek), showNonCurrentWeek)
     val shape = RoundedCornerShape(6.dp)

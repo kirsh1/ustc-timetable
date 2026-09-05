@@ -148,6 +148,24 @@ class TimetableViewModelTest {
 
     // ---- weekFilter 纯函数 ----
 
+    @Test fun applied_palette_survives_recreation_and_week_navigation_without_changing_geometry() = runBlocking {
+        seedSemester("s-cur", current = true)
+        val m = vm()
+        awaitUntil { m.state.value.semester != null }
+        assertEquals(0L, m.state.value.coursePaletteSeed)
+        val pages = m.state.value.weekPages
+        settings.setCoursePaletteSeed(13L)
+        awaitUntil { m.state.value.coursePaletteSeed == 13L }
+        assertEquals(pages, m.state.value.weekPages)
+        m.onWeekSelected(3)
+        awaitUntil { m.state.value.viewedWeek == 3 }
+        assertEquals(13L, m.state.value.coursePaletteSeed)
+        val recreated = vm()
+        awaitUntil { recreated.state.value.semester != null }
+        assertEquals(13L, recreated.state.value.coursePaletteSeed)
+        assertEquals(2, recreated.state.value.viewedWeek)
+    }
+
 
 
     @Test fun weekFilter_uses_contains() {

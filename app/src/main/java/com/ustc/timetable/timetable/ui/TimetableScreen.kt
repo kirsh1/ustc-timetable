@@ -240,6 +240,7 @@ fun TimetableScreen(
         )
         if (overviewExpanded) {
             WeekOverviewStrip(
+                coursePaletteSeed = state.coursePaletteSeed,
                 pages = state.weekOverviewPages,
                 viewedWeek = state.viewedWeek,
                 naturalWeek = state.naturalWeek,
@@ -281,6 +282,7 @@ fun TimetableScreen(
                     val page = state.weekPages[pageIndex]
                     Box(Modifier.fillMaxSize().testTag("week_page_${page.week}")) {
                         WeeklyTimetableGrid(
+                            coursePaletteSeed = state.coursePaletteSeed,
                             weekDates = page.weekDates,
                             axis = axis,
                             periodStarts = profile.periods.map { it.start },
