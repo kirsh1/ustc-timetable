@@ -24,4 +24,10 @@ internal class J1MainActivityHarness(private val compose: ComposeTestRule) {
         checkNotNull(scenario).recreate()
         compose.waitForIdle()
     }
+
+    fun fontScale(): Float {
+        var scale = Float.NaN
+        checkNotNull(scenario).onActivity { scale = it.resources.configuration.fontScale }
+        return scale
+    }
 }

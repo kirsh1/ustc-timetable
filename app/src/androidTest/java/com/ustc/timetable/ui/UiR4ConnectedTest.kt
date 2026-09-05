@@ -240,11 +240,16 @@ class UiR4ConnectedTest {
         capture("dark-overview-expanded")
         compose.onNodeWithTag("week_overview_toggle").performClick()
         capture("dark-collapsed")
+        val normalRailWidth = compose.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot().let { it.right - it.left }
         val oldScale = shell("settings get system font_scale")
         try {
             shell("settings put system font_scale 1.3")
+            compose.waitUntil(5_000) { kotlin.math.abs(activity.fontScale() - 1.3f) < 0.001f }
             activity.recreate()
             awaitTag("school_block:a1")
+            compose.waitUntil(5_000) {
+                compose.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot().let { it.right - it.left } > normalRailWidth
+            }
             val rail = compose.onNodeWithTag("fixed_time_rail").getUnclippedBoundsInRoot()
             val label = compose.onNodeWithTag("time_boundary:21:55").getUnclippedBoundsInRoot()
             val body = grid().getUnclippedBoundsInRoot()
