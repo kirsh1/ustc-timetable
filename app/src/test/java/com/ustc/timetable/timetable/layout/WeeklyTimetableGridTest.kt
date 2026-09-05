@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -327,9 +328,12 @@ class WeeklyTimetableGridTest {
         assertTrue("location must stay inside card: $locationBounds vs $card", locationBounds.left >= card.left && locationBounds.right <= card.right)
     }
 
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
     @Test fun course_name_and_location_have_priority_over_teacher() {
         setContentGrid(
-            school = placed(schoolBlock("priority", 2, LocalTime.of(9, 0), LocalTime.of(10, 30))),
+            // One hour leaves room for identity text, but not an additional teacher line.
+            // A 90-minute card can now show teachers after measuring the actual title lines.
+            school = placed(schoolBlock("priority", 2, LocalTime.of(9, 0), LocalTime.of(10, 0))),
             width = 600.dp,
             height = 500.dp,
         )
