@@ -64,13 +64,14 @@ class ManualItemUiTest {
         val schoolBefore = schoolRows()
         val before = manualRows().single { it.id == "debug-i-lecture" }
         compose.onNodeWithTag("manual_block:${before.id}").performClick()
+        editDetail()
         replaceText("editor_title", "修改后的讲座")
         saveEditor()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("editor_content").fetchSemanticsNodes().isEmpty() }
 
         val afterTitle = manualRows().single { it.id == before.id }
         assertEquals("修改后的讲座", afterTitle.title)
-        compose.onNodeWithTag("manual_block:${before.id}").performClick()
+        editDetail()
         replaceText("editor_location", "J1-ROOM")
         saveEditor()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("editor_content").fetchSemanticsNodes().isEmpty() }
@@ -81,7 +82,7 @@ class ManualItemUiTest {
         assertEquals(before.createdAtEpochMilli, after.createdAtEpochMilli)
         assertTrue(after.updatedAtEpochMilli >= before.updatedAtEpochMilli)
         assertEquals("J1-ROOM", after.location)
-        compose.onNodeWithTag("manual_block:${after.id}").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
         assertEquals(schoolBefore, schoolRows())
     }
 
@@ -89,6 +90,7 @@ class ManualItemUiTest {
     fun manual_delete_requires_confirmation() {
         launchWeekTwo()
         compose.onNodeWithTag("manual_block:debug-i-lecture").performClick()
+        editDetail()
         compose.onNodeWithTag("editor_delete").performClick()
         compose.onNodeWithTag("delete_cancel").performClick()
         assertTrue(manualRows().any { it.id == "debug-i-lecture" })
@@ -100,6 +102,7 @@ class ManualItemUiTest {
         launchWeekTwo()
         val schoolBefore = schoolRows()
         compose.onNodeWithTag("manual_block:debug-i-lecture").performClick()
+        editDetail()
         compose.onNodeWithTag("editor_delete").performClick()
         compose.onNodeWithTag("delete_confirm").performClick()
         compose.waitUntil(10_000) { manualRows().none { it.id == "debug-i-lecture" } }
@@ -112,6 +115,7 @@ class ManualItemUiTest {
         val before = schoolRows()
         launchWeekTwo()
         compose.onNodeWithTag("manual_block:debug-i-lecture").performClick()
+        editDetail()
         replaceText("editor_title", "学校行不变")
         saveEditor()
         compose.waitUntil(10_000) { manualRows().single().title == "学校行不变" }
@@ -141,6 +145,12 @@ class ManualItemUiTest {
     private fun saveEditor() {
         compose.onNodeWithTag("editor_save")
             .performSemanticsAction(SemanticsActions.OnClick) { onClick -> onClick() }
+    }
+
+    private fun editDetail() {
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_edit_manual")
+            .performSemanticsAction(SemanticsActions.OnClick) { it() }
     }
 
     private fun schoolRows() = runBlocking {

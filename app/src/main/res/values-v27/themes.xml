@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.UstcTimetable.StartingBars" parent="Theme.UstcTimetable.StartingBase">
+        <item name="android:navigationBarColor">@color/startup_background_color</item>
+        <item name="android:windowLightNavigationBar">@bool/startup_light_bars</item>
+    </style>
+</resources>

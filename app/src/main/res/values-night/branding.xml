@@ -1,0 +1,4 @@
+<resources>
+    <color name="startup_background_color">#141218</color>
+    <bool name="startup_light_bars">false</bool>
+</resources>

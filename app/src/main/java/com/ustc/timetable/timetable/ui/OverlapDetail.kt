@@ -5,9 +5,38 @@ import com.ustc.timetable.timetable.domain.ManualScheduleItem
 import com.ustc.timetable.timetable.domain.MeetingId
 
 data class OverlapDetailPage(val identity: String, val school: CourseDetailUiModel? = null, val manual: ManualScheduleItem? = null)
-data class OverlapDetailSelection(val week: Int, val representativeKey: String, val kind: OverlapMarkerKind)
+data class OverlapDetailSelection(
+    val week: Int,
+    val representativeKey: String,
+    val kind: OverlapMarkerKind,
+    val isBody: Boolean = false,
+    val representativeIdentity: String? = null,
+    val selectedIdentity: String? = null,
+)
 
 object OverlapDetail {
+    /** Keep the selected editor result visible even if its new schedule leaves the group. */
+    fun retainSelectedManual(pages: List<OverlapDetailPage>, selectedIdentity: String?,
+        manuals: Map<ManualItemId, ManualScheduleItem>): List<OverlapDetailPage> {
+        if (pages.any { it.identity == selectedIdentity }) return pages
+        val selected = manuals.values.firstOrNull { "manual:${it.id.value}" == selectedIdentity } ?: return pages
+        return pages + OverlapDetailPage(requireNotNull(selectedIdentity), manual = selected)
+    }
+    /** Same-week connected conflict component; the clicked sub-card is always first. */
+    fun forBody(clicked: OverlapEntry, projection: OverlapProjection, week: Int,
+        schools: Map<MeetingId, CourseDetailUiModel>, manuals: Map<ManualItemId, ManualScheduleItem>): List<OverlapDetailPage> {
+        val pool = (projection.retained + projection.attachments.values.flatMap { it.currentConflicts } + clicked)
+            .distinctBy { it.key }.filter { (week in it.block.weeks) == (week in clicked.block.weeks) }
+        val connected = linkedMapOf(clicked.key to clicked)
+        do {
+            val next = pool.filter { it.key !in connected && connected.values.any { member ->
+                UnifiedOverlapProjection.overlapMinutes(member.block, it.block) > 0
+            } }
+            next.forEach { connected[it.key] = it }
+        } while (next.isNotEmpty())
+        return build(clicked, OverlapAttachment(currentConflicts = connected.values.filter { it.key != clicked.key }),
+            OverlapMarkerKind.CURRENT_CONFLICT, week, schools, manuals)
+    }
     fun build(
         representative: OverlapEntry,
         attachment: OverlapAttachment,

@@ -18,11 +18,13 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile, onDismiss: () -> Unit, onEdit: (ManualItemId) -> Unit) {
+fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile, onDismiss: () -> Unit,
+    selectedIdentity: String? = null, onPageSelected: (String) -> Unit = {}, onEdit: (ManualItemId) -> Unit) {
     if (pages.isEmpty()) return
     ModalBottomSheet(onDismissRequest = onDismiss) {
         key(pages.map { it.identity }) {
-            val pager = rememberPagerState(pageCount = { pages.size })
+            val pager = rememberPagerState(initialPage = pages.indexOfFirst { it.identity == selectedIdentity }.coerceAtLeast(0), pageCount = { pages.size })
+            LaunchedEffect(pager.currentPage, pages) { onPageSelected(pages[pager.currentPage].identity) }
             val scope = rememberCoroutineScope()
             Column(Modifier.fillMaxWidth()) {
                 if (pages.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -37,12 +39,21 @@ fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile,
                     page.school?.let { CourseDetailContent(it, profile) }
                     page.manual?.let { item ->
                         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp).testTag("overlap_manual_detail")) {
-                            Text(item.title, style = MaterialTheme.typography.titleLarge)
-                            Text("周${item.weekday} ${item.startTime}–${item.endTime}")
-                            Text("第${item.weekPattern.format()}周")
-                            Text("地点：${item.location.orEmpty()}")
-                            item.note?.let { Text(it) }
-                            TextButton(onClick = { onEdit(item.id) }, modifier = Modifier.testTag("overlap_edit_manual")) { Text("编辑此事项") }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(item.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                                IconButton(onClick = { onEdit(item.id) }, modifier = Modifier.testTag("overlap_edit_manual")) {
+                                    Icon(AppIcons.Edit, contentDescription = "编辑此事项")
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text("${BlockTexts.weekdayText(item.weekday)} ${BlockTexts.timeText(item.startTime,item.endTime)}", style = MaterialTheme.typography.titleSmall)
+                            Text(BlockTexts.weekText(item.weekPattern))
+                            Text("地点　${item.location?.takeIf { it.isNotBlank() } ?: "未设置"}")
+                            item.note?.takeIf { it.isNotBlank() }?.let {
+                                Spacer(Modifier.height(16.dp))
+                                Text("备注", style = MaterialTheme.typography.titleMedium)
+                                Text(it)
+                            }
                         }
                     }
                 }

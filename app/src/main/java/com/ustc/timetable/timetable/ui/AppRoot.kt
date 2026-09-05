@@ -8,14 +8,12 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.background
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 
@@ -43,10 +41,7 @@ fun AppRoot(
             .testTag("app_safe_content"),
     ) {
         when (gate) {
-            FirstLaunchGate.Loading -> Box(
-                modifier = Modifier.fillMaxSize().testTag("app_root_loading"),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
+            FirstLaunchGate.Loading -> com.ustc.timetable.ui.AppLoading(Modifier.testTag("app_root_loading"))
             FirstLaunchGate.Empty -> firstLaunchContent()
             FirstLaunchGate.Ready -> {
                 BackHandler(enabled = destination != AppDestination.TIMETABLE) {

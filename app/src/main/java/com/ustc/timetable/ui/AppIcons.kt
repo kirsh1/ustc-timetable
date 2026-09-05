@@ -16,9 +16,11 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.graphics.vector.ImageVector
 
 object AppIcons {
+    val Edit: ImageVector = Icons.Filled.Edit
     val Back: ImageVector = Icons.AutoMirrored.Filled.ArrowBack
     val ChevronLeft: ImageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft
     val ChevronRight: ImageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight

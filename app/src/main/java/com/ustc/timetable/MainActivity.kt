@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
     private val importFlowViewModel: ImportFlowViewModel by viewModels { activityViewModelFactory }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(R.style.Theme_UstcTimetable)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.light(

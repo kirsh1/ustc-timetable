@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SnackbarHost
@@ -141,15 +140,16 @@ fun TimetableRoute(
             onNextWeek = viewModel::onNextWeek,
             onWeekSelected = viewModel::onWeekSelected,
             onSchoolBlockClick = { id, pageWeek ->
-                overlapSelection = null
                 overlays.dismissManual()
-                schoolSelection = SchoolDetailSelection(pageWeek, id)
+                schoolSelection = null
+                val entry = state.weekPages.getOrNull(pageWeek - 1)?.overlapProjection?.retained?.firstOrNull { it.block.meetingId == id }
+                overlapSelection = entry?.let { OverlapDetailSelection(pageWeek,it.key,OverlapMarkerKind.ALL_CONTENT,true,it.identity,it.identity) }
             },
             onManualBlockClick = { id, pageWeek ->
-                overlapSelection = null
                 schoolSelection = null
-                val target = createEditManualEditorTarget(state, id, pageWeek)
-                if (target == null) overlays.dismissManual() else overlays.openManual(target)
+                overlays.dismissManual()
+                val entry = state.manualItemsById[id]?.let { OverlapEntry(manualTimedBlock(it),it.createdAt) }
+                overlapSelection = entry?.let { OverlapDetailSelection(pageWeek,it.key,OverlapMarkerKind.ALL_CONTENT,true,it.identity,it.identity) }
             },
             onEmptyLongPress = { pageWeek, draft ->
                 overlapSelection = null
@@ -166,7 +166,8 @@ fun TimetableRoute(
             onOverlapMarkerClick = { week, key, kind ->
                 schoolSelection = null
                 overlays.dismissManual()
-                overlapSelection = OverlapDetailSelection(week, key, kind)
+                val identity = state.weekPages.getOrNull(week - 1)?.overlapProjection?.retained?.firstOrNull { it.key == key }?.identity
+                overlapSelection = OverlapDetailSelection(week, key, kind, representativeIdentity = identity, selectedIdentity = identity)
             },
         )
         SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
@@ -174,16 +175,27 @@ fun TimetableRoute(
     val target = overlays.manualTarget
     val overlap = overlapSelection
     val projection = overlap?.let { state.weekPages.getOrNull(it.week - 1)?.overlapProjection }
-    val representative = projection?.retained?.firstOrNull { it.key == overlap?.representativeKey }
-    val overlapPages = if (overlap != null && representative != null) OverlapDetail.build(representative,
-        projection.attachments[representative.key] ?: OverlapAttachment(), overlap.kind, overlap.week,
-        state.courseDetailsByMeetingId, state.manualItemsById) else emptyList()
-    LaunchedEffect(overlap, overlapPages) { if (overlapPages.isEmpty()) overlapSelection = null }
-    if (overlap != null && overlapPages.isNotEmpty() && state.profile != null) {
-        OverlapDetailSheet(overlapPages, requireNotNull(state.profile), { overlapSelection = null }) { id ->
+    val representative = state.manualItemsById.values.firstOrNull { "manual:${it.id.value}" == overlap?.representativeIdentity }
+        ?.let { OverlapEntry(manualTimedBlock(it),it.createdAt) }
+        ?: projection?.retained?.firstOrNull { it.key == overlap.representativeKey }
+    val projectedPages = if (overlap != null && representative != null && projection != null) {
+        if (overlap.isBody) OverlapDetail.forBody(representative,projection,overlap.week,state.courseDetailsByMeetingId,state.manualItemsById)
+        else OverlapDetail.build(representative, projection.attachments[representative.key] ?: OverlapAttachment(), overlap.kind, overlap.week,
+            state.courseDetailsByMeetingId, state.manualItemsById)
+    } else emptyList()
+    val overlapPages = OverlapDetail.retainSelectedManual(projectedPages, overlap?.selectedIdentity, state.manualItemsById)
+    LaunchedEffect(overlap, overlapPages, target, state.manualItemsById) {
+        val selected = overlap?.selectedIdentity
+        val deleted = selected?.startsWith("manual:") == true && state.manualItemsById.keys.none { "manual:${it.value}" == selected }
+        if (target == null && (overlapPages.isEmpty() || deleted)) overlapSelection = null
+    }
+    if (target == null && overlap != null && overlapPages.isNotEmpty() && state.profile != null) {
+        OverlapDetailSheet(overlapPages, requireNotNull(state.profile), { overlapSelection = null },
+            selectedIdentity = overlap.selectedIdentity,
+            onPageSelected = { identity -> overlapSelection = overlapSelection?.copy(selectedIdentity = identity) }) { id ->
             val editTarget = createEditManualEditorTarget(state, id, overlap.week)
             if (editTarget != null) {
-                overlapSelection = null
+                overlapSelection = overlapSelection?.copy(selectedIdentity = "manual:${id.value}")
                 overlays.openManual(editTarget)
             }
         }
@@ -236,7 +248,7 @@ fun TimetableScreen(
     onOverlapMarkerClick: (Int, String, OverlapMarkerKind) -> Unit = { _, _, _ -> },
 ) {
     if (state.isLoading) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        com.ustc.timetable.ui.AppLoading()
         return
     }
     val semester = state.semester

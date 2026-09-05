@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.UstcTimetable.Starting" parent="Theme.UstcTimetable.StartingBars">
+        <item name="android:windowSplashScreenBackground">@color/startup_background_color</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+    </style>
+</resources>

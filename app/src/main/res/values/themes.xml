@@ -1,3 +1,11 @@
 <resources>
     <style name="Theme.UstcTimetable" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.UstcTimetable.StartingBase" parent="Theme.UstcTimetable">
+        <item name="android:windowBackground">@drawable/startup_background</item>
+        <item name="android:statusBarColor">@color/startup_background_color</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">@bool/startup_light_bars</item>
+    </style>
+    <style name="Theme.UstcTimetable.StartingBars" parent="Theme.UstcTimetable.StartingBase" />
+    <style name="Theme.UstcTimetable.Starting" parent="Theme.UstcTimetable.StartingBars" />
 </resources>

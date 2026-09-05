@@ -7,6 +7,29 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class OverlapDetailTest {
+    @Test fun edited_selected_manual_remains_visible_after_leaving_conflict_group() {
+        val moved=item("b").copy(weekday=3,location="new room")
+        val first=OverlapDetailPage("manual:a",manual=item("a"))
+        val pages=OverlapDetail.retainSelectedManual(listOf(first),"manual:b",mapOf(moved.id to moved))
+        assertEquals(listOf("manual:a","manual:b"),pages.map { it.identity })
+        assertEquals(moved,pages.last().manual)
+        assertEquals(listOf(first),OverlapDetail.retainSelectedManual(listOf(first),"manual:b",emptyMap()))
+    }
+    @Test fun clicked_conflict_is_first_and_transitively_connected_items_are_switchable() {
+        val items=listOf(item("a"),item("b").copy(startTime=LocalTime.of(11,0),endTime=LocalTime.of(13,0)),
+            item("c").copy(startTime=LocalTime.of(12,0),endTime=LocalTime.of(14,0)),
+            item("unrelated").copy(weekday=2))
+        val entries=items.map { OverlapEntry(manualTimedBlock(it),it.createdAt) }
+        val projection=UnifiedOverlapProjection.project(entries,1,true,ExactOverlapMode.SPLIT)
+        val pages=OverlapDetail.forBody(entries[1],projection,1,emptyMap(),items.associateBy { it.id })
+        assertEquals(listOf("manual:b","manual:a","manual:c"),pages.map { it.identity })
+    }
+    @Test fun earliest_hidden_current_conflict_remains_in_body_details() {
+        val a=entry("a"); val b=entry("b")
+        val pages=OverlapDetail.forBody(a,UnifiedOverlapProjection.project(listOf(a,b),1,false,ExactOverlapMode.EARLIEST),1,
+            emptyMap(),listOf(item("a"),item("b")).associateBy { it.id })
+        assertEquals(listOf("manual:a","manual:b"),pages.map { it.identity })
+    }
     @Test fun alternate_school_anchor_prefers_current_week_even_on_another_day() {
         val course=Course(CourseId("s"),SemesterId("s"),"stable","CODE","school",3.0,null)
         val ghost=CourseMeeting(MeetingId("ghost"),course.id,1,3,5,WeekPattern.of(2),"room",emptyList())

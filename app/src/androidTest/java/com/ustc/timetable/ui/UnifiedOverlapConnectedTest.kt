@@ -119,6 +119,7 @@ class UnifiedOverlapConnectedTest {
         compose.onNodeWithTag("overlap_marker:CROSS_WEEK",true).performClick()
         settleFrames()
         compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("1 / 2")
+        compose.onNodeWithTag("overlap_edit_manual").assertDoesNotExist()
         compose.onNodeWithTag("overlap_detail_next").performClick()
         settleFrames()
         compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("2 / 2")
@@ -139,6 +140,49 @@ class UnifiedOverlapConnectedTest {
         assertEquals("future edited",items.single { it.id=="future" }.title)
         assertEquals("A",items.single { it.id=="A" }.title)
     }
+    @Test fun manual_body_opens_read_only_conflict_details_and_edits_only_selected_page() {
+        launch()
+        compose.onNodeWithTag("manual_block:A").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        settleFrames()
+        compose.onNodeWithTag("editor_title").assertDoesNotExist()
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("1 / 2")
+        compose.onNodeWithTag("overlap_detail_next").performClick()
+        settleFrames()
+        compose.onNode(hasText("B") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_edit_manual").performClick()
+        settleFrames()
+        compose.onNodeWithTag("editor_title").assertTextContains("B")
+        compose.onNodeWithTag("editor_title").performTextReplacement("B edited")
+        compose.onNodeWithTag("editor_save").performScrollTo().performClick()
+        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.title=="B edited" } }
+        settleFrames()
+        compose.onNodeWithTag("editor_title").assertDoesNotExist()
+        compose.onNode(hasText("B edited") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
+        capture("manual-detail")
+        compose.onNodeWithTag("overlap_edit_manual").performClick()
+        settleFrames()
+        compose.onNodeWithTag("editor_title").performTextReplacement("discarded")
+        compose.onNodeWithText("取消").performScrollTo().performClick()
+        settleFrames()
+        compose.onNode(hasText("B edited") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_edit_manual").performClick()
+        settleFrames()
+        compose.onNodeWithTag("weekday_4").performScrollTo().performClick()
+        compose.onNodeWithTag("editor_save").performScrollTo().performClick()
+        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.weekday==4 } }
+        settleFrames()
+        compose.onNode(hasText("B edited") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_edit_manual").performClick()
+        settleFrames()
+        compose.onNodeWithTag("editor_delete").performScrollTo().performClick()
+        compose.onNodeWithTag("delete_confirm").performClick()
+        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.none { it.id=="B" } }
+        settleFrames()
+        compose.onNodeWithTag("overlap_manual_detail").assertDoesNotExist()
+        val items=runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
+        assertEquals("A",items.single { it.id=="A" }.title)
+    }
     @Test fun partial_shapes_own_exclusive_and_shared_pixels_and_clicks() {
         launch()
         // Map wall-clock positions via visible rail labels, not a replacement axis formula.
@@ -156,7 +200,10 @@ class UnifiedOverlapConnectedTest {
         assertNotEquals(image.getPixel(xLeft,shared),image.getPixel(xRight,shared))
         image.recycle()
         grid().performTouchInput { click(Offset(xRight-body.left,shared-body.top)) }
-        compose.onNodeWithTag("editor_title").assertTextContains("B")
+        settleFrames()
+        compose.onNodeWithTag("editor_title").assertDoesNotExist()
+        compose.onNode(hasText("B") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
+        compose.onNodeWithTag("overlap_detail_indicator").assertTextEquals("1 / 2")
     }
     @Test fun card_outer_corner_is_rounded_not_square() {
         launch(); settleFrames()

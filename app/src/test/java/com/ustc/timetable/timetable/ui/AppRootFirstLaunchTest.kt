@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
 import org.junit.Rule
 import org.junit.Test
@@ -20,6 +22,14 @@ import org.robolectric.annotation.Config
 @Config(sdk = [36])
 class AppRootFirstLaunchTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test fun loading_uses_brand_logo_and_ready_removes_it() {
+        var gate by mutableStateOf<FirstLaunchGate>(FirstLaunchGate.Loading)
+        rule.setContent { root(gate) }
+        rule.onNodeWithTag("app_loading_logo").assertIsDisplayed()
+        rule.runOnIdle { gate = FirstLaunchGate.Ready }
+        rule.onNodeWithTag("app_loading_logo").assertDoesNotExist()
+    }
 
     @Test fun first_launch_to_timetable_transition_preserves_single_root() {
         var gate by mutableStateOf<FirstLaunchGate>(FirstLaunchGate.Empty)

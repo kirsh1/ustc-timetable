@@ -299,8 +299,10 @@ class ManualItemFlowTest {
 
     @Test fun ghost_manual_click_preserves_original_week_pattern() = runBlocking {
         seedManual(item("ghost", WeekPattern.of(7)))
+        // This test checks editing a ghost, not an asynchronous settings-button action.
+        // Seed the preference before collecting the ViewModel, just like the manual row.
+        settings.setShowNonCurrentWeek(true)
         val model = runningViewModel()
-        model.onToggleShowNonCurrentWeek(true)
         try {
             awaitUntil { model.state.value.showNonCurrentWeek && model.state.value.manualItemsById.isNotEmpty() }
         } catch (error: kotlinx.coroutines.TimeoutCancellationException) {
