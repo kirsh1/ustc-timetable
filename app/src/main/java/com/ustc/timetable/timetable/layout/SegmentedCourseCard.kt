@@ -74,6 +74,11 @@ fun BoxScope.SegmentedCourseCard(
     val footer = if (regions.any { it.rect.top < gridHeight.value * content.bottom && it.rect.bottom > gridHeight.value * content.top &&
             it.rect.left < dayWidth.value * content.right && it.rect.right > dayWidth.value * content.left }) 12.dp else 0.dp
     val contentHeight = (gridHeight * (content.bottom - content.top) - 2.dp - footer).coerceAtLeast(0.dp)
+    val pills = boundaryTimePills(block.start, block.endInclusive, periods)
+    val pillHeight = 11.dp
+    val pillContentClearance = 2.dp
+    val reservedTop = if (pills.start != null) pillHeight + pillContentClearance else 0.dp
+    val reservedBottom = if (pills.end != null) pillHeight + pillContentClearance else 0.dp
     val measurer = rememberTextMeasurer()
     val constraints = Constraints(maxWidth = with(density) { (contentWidth - 4.dp).roundToPx().coerceAtLeast(1) })
     val titleLines = measurer.measure(block.title, TimetableTypography.courseTitle, constraints = constraints).lineCount
@@ -82,13 +87,16 @@ fun BoxScope.SegmentedCourseCard(
         with(density) { TimetableTypography.courseTitle.lineHeight.toDp().value },
         with(density) { TimetableTypography.courseLocation.lineHeight.toDp().value },
         with(density) { TimetableTypography.courseMetadata.lineHeight.toDp().value },
-        titleRequiredLines = titleLines, locationRequiredLines = locationLines), block.location.isNotBlank(), block.teacherNames.isNotEmpty(), 0)
+        titleRequiredLines = titleLines,
+        locationRequiredLines = locationLines,
+        reservedTopDp = reservedTop.value,
+        reservedBottomDp = reservedBottom.value,
+    ), block.location.isNotBlank(), block.teacherNames.isNotEmpty(), 0)
     val dark = LocalResolvedAppearance.current == ResolvedAppearance.DARK
     val index = CoursePalette.colorIndexFor(block.colorKey, paletteSeed)
     val alpha = CoursePalette.alphaFor(viewedWeek in block.weeks, showOtherWeeks)
     val background = CoursePalette.containerColor(index, dark).copy(alpha = alpha)
     val foreground = CoursePalette.onContainerColor(index, dark).copy(alpha = alpha)
-    val pills = boundaryTimePills(block.start, block.endInclusive, periods)
     Box(Modifier.offset(x = left).size(dayWidth, gridHeight).drawBehind {
         var union = Path()
         shape.slices.forEachIndexed { i, slice ->
@@ -114,7 +122,15 @@ fun BoxScope.SegmentedCourseCard(
         .testTag(tag).semantics {
             contentDescription = BlockTexts.a11y(block) + if (kinds.isEmpty()) "" else "，跨周其他内容：${attachment.crossWeek.size}，本周完全冲突：${attachment.currentConflicts.size}，安排变体：${attachment.sameCourseVariants.size}"
             onClick { if (regions.isEmpty() && kinds.isNotEmpty()) onMarkerClick(OverlapMarkerKind.ALL_CONTENT) else onBodyClick(); true }
-        }) { BlockTexts.Content(block, budget, foreground) }
+        }) {
+        BlockTexts.Content(
+            block,
+            budget,
+            foreground,
+            reservedTopDp = reservedTop.value,
+            reservedBottomDp = reservedBottom.value,
+        )
+    }
     regions.forEach { region ->
         val color = MaterialTheme.colorScheme.primary
         Canvas(Modifier.offset(x = left + region.rect.left.dp, y = region.rect.top.dp).size(region.rect.width.dp, region.rect.height.dp)
@@ -145,27 +161,32 @@ fun BoxScope.SegmentedCourseCard(
         }
     }
     val pillWidth = 30.dp
-    val pillHeight = 11.dp
     pills.start?.let { label ->
         val first = shape.slices.first()
+        val availableWidth = (dayWidth * (first.right - first.left) - 2.dp).coerceAtLeast(1.dp)
+        val width = minOf(pillWidth, availableWidth)
         BoundaryTimePill(
             label = label,
             tag = "boundary_time:start",
+            edge = BoundaryTimePillEdge.START,
             modifier = Modifier.offset(
-                x = left + dayWidth * ((first.left + first.right) / 2f) - pillWidth / 2,
-                y = gridHeight * axis.fractionOf(first.start) - pillHeight / 2,
-            ).width(pillWidth),
+                x = left + dayWidth * ((first.left + first.right) / 2f) - width / 2,
+                y = gridHeight * axis.fractionOf(first.start) + 1.dp,
+            ).size(width, pillHeight),
         )
     }
     pills.end?.let { label ->
         val last = shape.slices.last()
+        val availableWidth = (dayWidth * (last.right - last.left) - 2.dp).coerceAtLeast(1.dp)
+        val width = minOf(pillWidth, availableWidth)
         BoundaryTimePill(
             label = label,
             tag = "boundary_time:end",
+            edge = BoundaryTimePillEdge.END,
             modifier = Modifier.offset(
-                x = left + dayWidth * ((last.left + last.right) / 2f) - pillWidth / 2,
-                y = gridHeight * axis.fractionOf(last.end) - pillHeight / 2,
-            ).width(pillWidth),
+                x = left + dayWidth * ((last.left + last.right) / 2f) - width / 2,
+                y = gridHeight * axis.fractionOf(last.end) - pillHeight - 1.dp,
+            ).size(width, pillHeight),
         )
     }
 }

@@ -17,12 +17,15 @@ import androidx.compose.ui.unit.dp
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.Instant
 import com.ustc.timetable.timetable.domain.LocalDateRange
 import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.domain.ManualItemId
 import com.ustc.timetable.timetable.domain.WeekPattern
 import com.ustc.timetable.timetable.ui.BlockTexts
 import com.ustc.timetable.timetable.ui.CoursePalette
+import com.ustc.timetable.timetable.ui.OverlapEntry
+import com.ustc.timetable.timetable.ui.OverlapProjection
 import com.ustc.timetable.scheduleprofile.PeriodTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -85,6 +88,10 @@ class WeeklyTimetableGridTest {
     }
 
     private fun placed(vararg blocks: TimedBlock): List<PlacedBlock> = WeeklyTimetableLayout.place(blocks.toList(), axis)
+    private fun projection(vararg blocks: TimedBlock) = OverlapProjection(
+        retained = blocks.map { OverlapEntry(it, Instant.EPOCH) },
+        attachments = emptyMap(),
+    )
 
     @get:Rule val rule = createComposeRule()
 
@@ -103,6 +110,7 @@ class WeeklyTimetableGridTest {
         onEmpty: (LongPressDraft) -> Unit = {},
         segmentedAxis: SegmentedTimelineAxis? = null,
         showTimeRail: Boolean = true,
+        overlapProjection: OverlapProjection? = null,
     ) {
         rule.setContent {
             val grid: @Composable () -> Unit = {
@@ -112,6 +120,7 @@ class WeeklyTimetableGridTest {
                     segmentedAxis = segmentedAxis,
                     periods = periods,
                     showTimeRail = showTimeRail,
+                    overlapProjection = overlapProjection,
                 )
             }
             if (width != null && height != null) {
@@ -326,6 +335,63 @@ class WeeklyTimetableGridTest {
         assertTrue("title and location must not overlap: $titleBounds vs $locationBounds", titleBounds.bottom <= locationBounds.top)
         assertTrue("title must stay inside card: $titleBounds vs $card", titleBounds.left >= card.left && titleBounds.right <= card.right)
         assertTrue("location must stay inside card: $locationBounds vs $card", locationBounds.left >= card.left && locationBounds.right <= card.right)
+    }
+
+    @Test fun nonstandard_start_pill_is_inside_card_and_title_starts_below_it() {
+        val title = "质谱分析化学"
+        val block = schoolBlock(
+            "exact-start",
+            4,
+            LocalTime.of(16, 10),
+            LocalTime.of(17, 30),
+            title = title,
+        )
+        setContentGrid(
+            school = placed(block),
+            width = 800.dp,
+            height = 900.dp,
+            overlapProjection = projection(block),
+        )
+
+        val card = rule.onNodeWithTag("school_block:exact-start").fetchSemanticsNode().boundsInRoot
+        val pill = rule.onNodeWithTag("boundary_time:start", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val titleBounds = rule.onNodeWithText(title, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("start pill must be fully inside $card but was $pill", pill.top >= card.top && pill.bottom <= card.bottom)
+        assertTrue("title must start below the embedded start pill: $titleBounds / $pill", titleBounds.top >= pill.bottom)
+    }
+
+    @Test fun nonstandard_end_pill_is_fully_inside_card() {
+        val block = schoolBlock(
+            "exact-end",
+            4,
+            LocalTime.of(15, 55),
+            LocalTime.of(17, 50),
+        )
+        setContentGrid(
+            school = placed(block),
+            width = 800.dp,
+            height = 900.dp,
+            overlapProjection = projection(block),
+        )
+
+        val card = rule.onNodeWithTag("school_block:exact-end").fetchSemanticsNode().boundsInRoot
+        val pill = rule.onNodeWithTag("boundary_time:end", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("end pill must be fully inside $card but was $pill", pill.top >= card.top && pill.bottom <= card.bottom)
+    }
+
+    @Test fun adjacent_nonstandard_course_pills_do_not_overlap() {
+        val before = schoolBlock("before", 4, LocalTime.of(15, 55), LocalTime.of(16, 13))
+        val after = schoolBlock("after", 4, LocalTime.of(16, 14), LocalTime.of(16, 40))
+        setContentGrid(
+            school = placed(before, after),
+            width = 800.dp,
+            height = 900.dp,
+            overlapProjection = projection(before, after),
+        )
+
+        val previousEnd = rule.onNodeWithTag("boundary_time:end", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val nextStart = rule.onNodeWithTag("boundary_time:start", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("adjacent embedded pills must remain in their own cards: $previousEnd / $nextStart", previousEnd.bottom <= nextStart.top)
     }
 
     @GraphicsMode(GraphicsMode.Mode.NATIVE)

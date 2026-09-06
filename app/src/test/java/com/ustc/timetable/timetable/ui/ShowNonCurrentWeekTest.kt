@@ -368,8 +368,8 @@ class ShowNonCurrentWeekTest {
         model.onToggleShowNonCurrentWeek(true)
         awaitUntil { model.state.value.showNonCurrentWeek }
         val projection = model.state.value.weekPages[1].overlapProjection!!
-        assertEquals(1, projection.retained.size)
-        assertEquals(1, projection.attachments.values.single().crossWeek.size)
+        assertEquals(2, projection.retained.size)
+        assertTrue(projection.attachments.isEmpty())
         model.onToggleShowNonCurrentWeek(false)
         awaitUntil { model.state.value.placedSchool.isEmpty() && model.state.value.placedManual.isEmpty() }
         assertFalse(model.state.value.showNonCurrentWeek)

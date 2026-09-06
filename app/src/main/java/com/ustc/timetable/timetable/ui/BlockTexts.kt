@@ -32,6 +32,8 @@ data class CourseCardTextMetrics(
     val metadataLineHeightDp: Float,
     val locationRequiredLines: Int = 1,
     val titleRequiredLines: Int = 3,
+    val reservedTopDp: Float = 0f,
+    val reservedBottomDp: Float = 0f,
 )
 
 object CourseCardTextTokens {
@@ -84,7 +86,12 @@ object BlockTexts {
         require(metrics.locationLineHeightDp > 0f)
         require(metrics.metadataLineHeightDp > 0f)
         require(markerCount in 0..2)
-        val usableHeight = (metrics.cardHeightDp - CourseCardTextTokens.CONTENT_VERTICAL_PADDING_DP)
+        require(metrics.reservedTopDp >= 0f)
+        require(metrics.reservedBottomDp >= 0f)
+        val usableHeight = (
+            metrics.cardHeightDp - CourseCardTextTokens.CONTENT_VERTICAL_PADDING_DP -
+                metrics.reservedTopDp - metrics.reservedBottomDp
+        )
             .coerceAtLeast(0f)
         val firstLocationHeight = if (
             hasLocation &&
@@ -131,8 +138,17 @@ object BlockTexts {
         block: TimedBlock,
         budget: CourseCardTextBudget,
         contentColor: Color,
+        reservedTopDp: Float = 0f,
+        reservedBottomDp: Float = 0f,
     ) {
-        Column(Modifier.fillMaxSize().padding(2.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(
+                start = 2.dp,
+                top = (2f + reservedTopDp).dp,
+                end = 2.dp,
+                bottom = (2f + reservedBottomDp).dp,
+            ),
+        ) {
             Text(
                 block.title,
                 style = TimetableTypography.courseTitle,

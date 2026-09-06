@@ -36,13 +36,16 @@ object UnifiedOverlapProjection {
 
     fun project(entries: List<OverlapEntry>, week: Int, showOtherWeeks: Boolean, mode: ExactOverlapMode): OverlapProjection {
         val unique = entries.sortedWith(order).distinctBy { it.key }
-        val active = unique.filter { week in it.block.weeks }
         val attachments = linkedMapOf<String, OverlapAttachment>()
+        val active = collapseSameSchoolCourse(unique.filter { week in it.block.weeks }, attachments)
         val retainedActive = if (mode == ExactOverlapMode.SPLIT) active else active
             .groupBy { Triple(it.block.weekday, it.block.start, it.block.endInclusive) }.values.map { group ->
                 val sorted = group.sortedWith(order)
                 sorted.first().also { representative ->
-                    if (sorted.size > 1) attachments[representative.key] = OverlapAttachment(currentConflicts = sorted.drop(1))
+                    if (sorted.size > 1) {
+                        val old = attachments[representative.key] ?: OverlapAttachment()
+                        attachments[representative.key] = old.copy(currentConflicts = old.currentConflicts + sorted.drop(1))
+                    }
                 }
             }.sortedWith(order)
         if (!showOtherWeeks) return OverlapProjection(retainedActive, attachments)
@@ -62,15 +65,45 @@ object UnifiedOverlapProjection {
                 .sortedWith(compareByDescending<OverlapEntry> { overlapMinutes(it.block, ghost.block) }.then(order)).firstOrNull()
             if (representative == null) remaining += ghost else attach(representative, ghost)
         }
-        val ghosts = mutableListOf<OverlapEntry>()
-        while (remaining.isNotEmpty()) {
-            val representative = remaining.removeAt(0)
-            ghosts += representative
-            val attached = remaining.filter { overlapMinutes(it.block, representative.block) > 0 }
-            attached.forEach { attach(representative, it) }
-            remaining.removeAll(attached.toSet())
-        }
+        // A time region with no current-week card remains a truthful ghost-only layout:
+        // different stable identities participate in the segmented split, while duplicate
+        // presentations of the same school course collapse into one representative.
+        val ghosts = collapseSameSchoolCourse(remaining, attachments).sortedWith(ghostOrder)
         return OverlapProjection(retainedActive + ghosts, attachments)
+    }
+
+    private fun collapseSameSchoolCourse(
+        entries: List<OverlapEntry>,
+        attachments: MutableMap<String, OverlapAttachment>,
+    ): List<OverlapEntry> {
+        val retained = mutableListOf<OverlapEntry>()
+        entries.sortedWith(order).groupBy { it.identity }.values.forEach { identityGroup ->
+            if (identityGroup.first().block.manualItemId != null) {
+                retained += identityGroup
+                return@forEach
+            }
+            val remaining = identityGroup.sortedWith(order).toMutableList()
+            while (remaining.isNotEmpty()) {
+                val representative = remaining.removeAt(0)
+                val component = linkedSetOf(representative)
+                do {
+                    val next = remaining.filter { candidate ->
+                        component.any { overlapMinutes(it.block, candidate.block) > 0 }
+                    }
+                    component += next
+                    remaining.removeAll(next.toSet())
+                } while (next.isNotEmpty())
+                retained += representative
+                val variants = component.drop(1).filter { it.signature != representative.signature }
+                if (variants.isNotEmpty()) {
+                    val old = attachments[representative.key] ?: OverlapAttachment()
+                    attachments[representative.key] = old.copy(
+                        sameCourseVariants = (old.sameCourseVariants + variants).distinctBy { it.key }.sortedWith(order),
+                    )
+                }
+            }
+        }
+        return retained.sortedWith(order)
     }
 
     fun overlapMinutes(a: TimedBlock, b: TimedBlock): Long =

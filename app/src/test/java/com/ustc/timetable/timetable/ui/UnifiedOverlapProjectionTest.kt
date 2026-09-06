@@ -12,9 +12,17 @@ class UnifiedOverlapProjectionTest {
     private fun manual(id: String, week: Int, start: Int = 10, end: Int = 12, added: Long = 10) = OverlapEntry(
         UiManualTimedBlock("manual:$id", ManualItemId(id), 1, LocalTime.of(start, 0), LocalTime.of(end, 0),
             WeekPattern.of(week), "same name", "room", emptyList()), Instant.ofEpochSecond(added))
-    private fun school(id: String, week: Int, meeting: String = id, location: String = "room") = OverlapEntry(
-        UiSchoolTimedBlock("semester:$id", MeetingId(meeting), 1, LocalTime.of(10, 0), LocalTime.of(12, 0),
-            WeekPattern.of(week), "same name", location, listOf("teacher")), Instant.ofEpochSecond(1))
+    private fun school(
+        id: String,
+        week: Int,
+        meeting: String = id,
+        location: String = "room",
+        teacher: String = "teacher",
+        start: Int = 10,
+        end: Int = 12,
+    ) = OverlapEntry(
+        UiSchoolTimedBlock("semester:$id", MeetingId(meeting), 1, LocalTime.of(start, 0), LocalTime.of(end, 0),
+            WeekPattern.of(week), "same name", location, listOf(teacher)), Instant.ofEpochSecond(1))
     private fun project(vararg entries: OverlapEntry, mode: ExactOverlapMode = ExactOverlapMode.SPLIT, show: Boolean = true) =
         UnifiedOverlapProjection.project(entries.toList(), 1, show, mode)
 
@@ -33,12 +41,13 @@ class UnifiedOverlapProjectionTest {
     }
     @Test fun ghost_only_uses_earliest_week_not_input_order() {
         val result = project(manual("later", 5), manual("early", 2))
-        assertEquals("manual:early", result.retained.single().block.colorKey)
-        assertEquals("manual:later", result.attachments.values.single().crossWeek.single().block.colorKey)
+        assertEquals(listOf("manual:early", "manual:later"), result.retained.map { it.block.colorKey })
+        assertTrue(result.attachments.isEmpty())
     }
     @Test fun transitive_ghost_does_not_attach_without_direct_intersection() {
         val result = project(manual("a", 2, 10, 12), manual("b", 3, 11, 13), manual("c", 4, 12, 14))
-        assertEquals(listOf("manual:a", "manual:c"), result.retained.map { it.block.colorKey })
+        assertEquals(listOf("manual:a", "manual:b", "manual:c"), result.retained.map { it.block.colorKey })
+        assertTrue(result.attachments.isEmpty())
     }
     @Test fun exact_active_conflicts_split_by_default_but_earliest_uses_timestamp() {
         val a = manual("a", 1, added = 20)
@@ -71,5 +80,60 @@ class UnifiedOverlapProjectionTest {
     }
     @Test fun touching_intervals_remain_separate() {
         assertEquals(2, project(manual("a", 2), manual("b", 3, 12, 14)).retained.size)
+    }
+
+    @Test fun active_same_school_course_teacher_variants_use_one_full_card_and_variant_marker() {
+        val first = school("CHEM6023P.01", 1, meeting = "teacher-a", teacher = "教师甲")
+        val second = school("CHEM6023P.01", 1, meeting = "teacher-b", teacher = "教师乙")
+
+        val result = project(first, second, show = false)
+
+        assertEquals(1, result.retained.size)
+        assertEquals(setOf(OverlapMarkerKind.VARIANT), result.attachments.values.single().kinds)
+        assertEquals(1, result.attachments.values.single().sameCourseVariants.size)
+    }
+
+    @Test fun active_same_school_course_week_pattern_only_duplicate_has_no_marker() {
+        val broad = school("CHEM6023P.01", 1, meeting = "broad")
+        val overlap = broad.copy(
+            block = (broad.block as UiSchoolTimedBlock).copy(
+                meetingId = MeetingId("overlap"),
+                weeks = WeekPattern.range(1, 3),
+            ),
+        )
+
+        val result = project(broad, overlap, show = false)
+
+        assertEquals(1, result.retained.size)
+        assertTrue(result.attachments.isEmpty())
+    }
+
+    @Test fun active_different_school_courses_still_split() {
+        val result = project(school("course-a", 1), school("course-b", 1))
+
+        assertEquals(2, result.retained.size)
+        assertTrue(result.attachments.isEmpty())
+    }
+
+    @Test fun ghost_only_different_courses_remain_visible_for_segmented_split() {
+        val result = project(
+            school("course-a", 2, start = 10, end = 12),
+            school("course-b", 3, start = 11, end = 13),
+        )
+
+        assertEquals(listOf("school:semester:course-a", "school:semester:course-b"), result.retained.map { it.identity })
+        assertTrue(result.attachments.isEmpty())
+    }
+
+    @Test fun overlapping_ghosts_attach_when_any_current_card_is_present() {
+        val active = school("current", 1, start = 10, end = 13)
+        val result = project(
+            active,
+            school("future-a", 2, start = 10, end = 12),
+            school("future-b", 3, start = 11, end = 13),
+        )
+
+        assertEquals(listOf(active.key), result.retained.map { it.key })
+        assertEquals(2, result.attachments.getValue(active.key).crossWeek.size)
     }
 }
