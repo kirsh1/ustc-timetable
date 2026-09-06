@@ -1,6 +1,7 @@
 package com.ustc.timetable.timetable.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import java.security.MessageDigest
 import kotlin.math.max
 import kotlin.math.min
@@ -73,9 +74,25 @@ object CoursePalette {
 
     fun onContainerColor(index: Int, dark: Boolean = false): Color = (if (dark) darkPairs else lightPairs)[index].second
 
+    /** A compact in-card label tone derived from the owning course swatch. */
+    fun boundaryPillContainerColor(index: Int, dark: Boolean = false): Color {
+        val emphasis = if (dark) 0.22f else 0.14f
+        return lerp(containerColor(index, dark), onContainerColor(index, dark), emphasis)
+    }
+
+    fun boundaryPillContentColor(index: Int, dark: Boolean = false): Color =
+        onContainerColor(index, dark)
+
+    fun boundaryPillContrastRatio(index: Int, dark: Boolean = false): Double =
+        contrastRatio(boundaryPillContainerColor(index, dark), boundaryPillContentColor(index, dark))
+
     fun contrastRatio(index: Int, dark: Boolean = false): Double {
-        val a = relativeLuminance(containerColor(index, dark))
-        val b = relativeLuminance(onContainerColor(index, dark))
+        return contrastRatio(containerColor(index, dark), onContainerColor(index, dark))
+    }
+
+    private fun contrastRatio(first: Color, second: Color): Double {
+        val a = relativeLuminance(first)
+        val b = relativeLuminance(second)
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
     }
 

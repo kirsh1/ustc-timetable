@@ -2,11 +2,11 @@ package com.ustc.timetable.timetable.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
@@ -33,6 +33,8 @@ fun BoundaryTimePill(
     label: String,
     tag: String,
     edge: BoundaryTimePillEdge,
+    containerColor: Color,
+    contentColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val shape = when (edge) {
@@ -52,8 +54,8 @@ fun BoundaryTimePill(
     Surface(
         modifier = modifier.testTag(tag),
         shape = shape,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = containerColor,
+        contentColor = contentColor,
         tonalElevation = 1.dp,
     ) {
         Text(

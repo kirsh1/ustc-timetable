@@ -169,6 +169,8 @@ fun BoxScope.SegmentedCourseCard(
             label = label,
             tag = "boundary_time:start",
             edge = BoundaryTimePillEdge.START,
+            containerColor = CoursePalette.boundaryPillContainerColor(index, dark).copy(alpha = alpha),
+            contentColor = CoursePalette.boundaryPillContentColor(index, dark).copy(alpha = alpha),
             modifier = Modifier.offset(
                 x = left + dayWidth * ((first.left + first.right) / 2f) - width / 2,
                 y = gridHeight * axis.fractionOf(first.start) + 1.dp,
@@ -183,6 +185,8 @@ fun BoxScope.SegmentedCourseCard(
             label = label,
             tag = "boundary_time:end",
             edge = BoundaryTimePillEdge.END,
+            containerColor = CoursePalette.boundaryPillContainerColor(index, dark).copy(alpha = alpha),
+            contentColor = CoursePalette.boundaryPillContentColor(index, dark).copy(alpha = alpha),
             modifier = Modifier.offset(
                 x = left + dayWidth * ((last.left + last.right) / 2f) - width / 2,
                 y = gridHeight * axis.fractionOf(last.end) - pillHeight - 1.dp,
