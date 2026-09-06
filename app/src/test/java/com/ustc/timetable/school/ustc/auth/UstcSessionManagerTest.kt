@@ -41,10 +41,12 @@ class UstcSessionManagerTest {
 
     private class RecordingCookies(private val values: Map<String, String?>) : CookieRetriever {
         val urls = mutableListOf<String>()
+        var cleared = 0
         override fun cookieHeaderFor(url: String): String? {
             urls += url
             return values[url]
         }
+        override suspend fun clearAll() { cleared++ }
     }
 
     private lateinit var server: MockWebServer
@@ -284,6 +286,18 @@ class UstcSessionManagerTest {
         assertTrue(manager.hasSession())
         manager.clear()
         assertFalse(manager.hasSession())
+    }
+
+    @Test fun clear_removes_encrypted_session_and_webview_cookies() = runBlocking {
+        val descriptor = descriptor()
+        val cookies = RecordingCookies(emptyMap())
+        val manager = manager(descriptor, cookies)
+        store.save(SessionBlob(listOf(SessionCookieHeader(descriptor.probeUrl, "OLD=1")), fixedInstant))
+
+        manager.clear()
+
+        assertFalse(manager.hasSession())
+        assertEquals(1, cookies.cleared)
     }
 
     private fun manager(

@@ -63,6 +63,7 @@ class SettingsViewModel(
     private val eventChannel = Channel<SettingsEvent>(Channel.BUFFERED)
     val events = eventChannel.receiveAsFlow()
     private val requestMutex = Mutex()
+    private val clearLoginMutex = Mutex()
     private var requestEventIssued = false
 
     private val persistedCore = combine(
@@ -182,10 +183,15 @@ class SettingsViewModel(
     }
 
     fun onClearLogin() {
+        if (!clearLoginMutex.tryLock()) return
         viewModelScope.launch {
-            session?.clear()
-            settings.setNeedReauth(false)
-            sessionStatus.value = SessionStatus(false, null)
+            try {
+                session?.clear()
+                settings.setNeedReauth(false)
+                sessionStatus.value = SessionStatus(false, null)
+            } finally {
+                clearLoginMutex.unlock()
+            }
         }
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.ustc.timetable.notification.NotificationPermissionController
 import com.ustc.timetable.scheduleprofile.ProfileEditorScreen
 import com.ustc.timetable.settings.NotificationsEnabledChecker
@@ -33,6 +34,7 @@ import com.ustc.timetable.timetable.ui.TimetableViewModel
 import com.ustc.timetable.timetable.ui.minuteTicks
 import java.time.Clock
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import com.ustc.timetable.ui.theme.AppBackgroundLayer
 import com.ustc.timetable.ui.theme.TimetableTheme
 import com.ustc.timetable.appearance.AppearanceMode
@@ -99,7 +101,15 @@ class MainActivity : ComponentActivity() {
                 val firstLaunchState by firstLaunch.state.collectAsState()
                 AppRoot(
                     gate = firstLaunchState.gate,
-                    firstLaunchContent = { FirstLaunchRoute(firstLaunch, importFlow) },
+                    firstLaunchContent = {
+                        FirstLaunchRoute(firstLaunch, importFlow) {
+                            lifecycleScope.launch {
+                                container.ustcPortalRuntime.sessionManager.clear()
+                                importFlow.prepareForLogin()
+                                firstLaunchLoginLauncher.launch(Unit)
+                            }
+                        }
+                    },
                     timetableContent = { openSettings ->
                         AppBackgroundLayer(
                             wallpaperUri = wallpaperUri,
@@ -186,7 +196,7 @@ private class MainActivityViewModelFactory(
             notifications = NotificationsEnabledChecker(notificationsEnabled),
             session = object : SettingsSessionAccess {
                 override suspend fun load() = container.ustcPortalRuntime.sessionStore.load()
-                override suspend fun clear() = container.ustcPortalRuntime.sessionStore.clear()
+                override suspend fun clear() = container.ustcPortalRuntime.sessionManager.clear()
             },
             weeklyScheduling = weeklyScheduling,
             manualSync = SettingsManualSync(container.ustcPortalRuntime.manualSyncController::start),

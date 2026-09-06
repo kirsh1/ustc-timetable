@@ -33,6 +33,7 @@ import com.ustc.timetable.semester.SemesterConfirmSheet
 fun FirstLaunchRoute(
     viewModel: FirstLaunchViewModel,
     importFlow: ImportFlowViewModel? = null,
+    onClearSchoolLoginAndRetry: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val importStep = importFlow?.step?.collectAsStateWithLifecycle()?.value
@@ -54,6 +55,7 @@ fun FirstLaunchRoute(
         importErrorMessage = (importStep as? ImportStep.Error)?.let {
             "导入失败，请重试登录并导入"
         },
+        onClearSchoolLoginAndRetry = onClearSchoolLoginAndRetry,
         snackbarHostState = snackbar,
     )
     if (importFlow != null) {
@@ -74,6 +76,7 @@ fun FirstLaunchScreen(
     onLoginAndImport: () -> Unit,
     onSkipManualCreation: () -> Unit,
     importErrorMessage: String? = null,
+    onClearSchoolLoginAndRetry: () -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     Scaffold(
@@ -102,6 +105,19 @@ fun FirstLaunchScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.testTag("first_launch_import_error"),
                 )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "请确认使用 SC 学号登录；GID 虽可通过统一认证，但不能读取教务课表。",
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("first_launch_sc_account_hint"),
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = onClearSchoolLoginAndRetry,
+                    enabled = state.actionsEnabled,
+                    modifier = Modifier.fillMaxWidth().testTag("first_launch_clear_login_retry"),
+                ) { Text("清除学校登录并重新登录") }
             }
             Spacer(Modifier.height(32.dp))
             Button(

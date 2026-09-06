@@ -21,7 +21,10 @@ class UstcSessionManager(
 
     suspend fun hasSession(): Boolean = store.load() != null
 
-    suspend fun clear() = store.clear()
+    suspend fun clear() {
+        store.clear()
+        cookies.clearAll()
+    }
 
     suspend fun captureAndVerify(completionUrl: String? = null): SessionBlob {
         if (completionUrl != null) {
