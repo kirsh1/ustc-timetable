@@ -90,11 +90,11 @@ class ManualItemUiTest {
     fun manual_delete_requires_confirmation() {
         launchWeekTwo()
         compose.onNodeWithTag("manual_block:debug-i-lecture").performClick()
-        editDetail()
-        compose.onNodeWithTag("editor_delete").performClick()
-        compose.onNodeWithTag("delete_cancel").performClick()
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_delete_manual").performClick()
+        compose.onNodeWithTag("detail_delete_cancel").performClick()
         assertTrue(manualRows().any { it.id == "debug-i-lecture" })
-        compose.onNodeWithTag("editor_content").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
     }
 
     @Test
@@ -102,9 +102,9 @@ class ManualItemUiTest {
         launchWeekTwo()
         val schoolBefore = schoolRows()
         compose.onNodeWithTag("manual_block:debug-i-lecture").performClick()
-        editDetail()
-        compose.onNodeWithTag("editor_delete").performClick()
-        compose.onNodeWithTag("delete_confirm").performClick()
+        compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
+        compose.onNodeWithTag("overlap_delete_manual").performClick()
+        compose.onNodeWithTag("detail_delete_confirm").performClick()
         compose.waitUntil(10_000) { manualRows().none { it.id == "debug-i-lecture" } }
         compose.onNodeWithTag("manual_block:debug-i-lecture").assertDoesNotExist()
         assertEquals(schoolBefore, schoolRows())

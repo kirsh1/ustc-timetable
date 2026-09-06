@@ -2,6 +2,7 @@ package com.ustc.timetable.ui
 
 import android.content.ComponentName
 import android.content.res.Configuration
+import android.content.pm.ActivityInfo
 import android.os.Build
 import android.util.TypedValue
 import androidx.test.core.app.ApplicationProvider
@@ -14,6 +15,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [26, 36])
 class AppBrandingTest {
+    @Test fun timetable_and_login_activities_stay_portrait_without_changing_system_rotation() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val packageManager = context.packageManager
+        val activities = listOf(
+            com.ustc.timetable.MainActivity::class.java,
+            com.ustc.timetable.school.ustc.auth.WebViewLoginActivity::class.java,
+        )
+
+        activities.forEach { activity ->
+            val info = packageManager.getActivityInfo(ComponentName(context, activity), 0)
+            assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, info.screenOrientation)
+        }
+    }
+
     @Test fun launcher_and_starting_window_use_vector_branding() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val logo = context.resources.getIdentifier("ic_app_icon", "drawable", context.packageName)

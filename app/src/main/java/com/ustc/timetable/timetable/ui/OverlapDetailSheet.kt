@@ -19,8 +19,10 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile, onDismiss: () -> Unit,
-    selectedIdentity: String? = null, onPageSelected: (String) -> Unit = {}, onEdit: (ManualItemId) -> Unit) {
+    selectedIdentity: String? = null, onPageSelected: (String) -> Unit = {},
+    onEdit: (ManualItemId) -> Unit, onDelete: (ManualItemId) -> Unit) {
     if (pages.isEmpty()) return
+    var pendingDelete by remember { mutableStateOf<ManualItemId?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         key(pages.map { it.identity }) {
             val pager = rememberPagerState(initialPage = pages.indexOfFirst { it.identity == selectedIdentity }.coerceAtLeast(0), pageCount = { pages.size })
@@ -41,8 +43,13 @@ fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile,
                         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp).testTag("overlap_manual_detail")) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(item.title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                                IconButton(onClick = { onEdit(item.id) }, modifier = Modifier.testTag("overlap_edit_manual")) {
-                                    Icon(AppIcons.Edit, contentDescription = "编辑此事项")
+                                Column {
+                                    IconButton(onClick = { onEdit(item.id) }, modifier = Modifier.testTag("overlap_edit_manual")) {
+                                        Icon(AppIcons.Edit, contentDescription = "编辑此事项")
+                                    }
+                                    IconButton(onClick = { pendingDelete = item.id }, modifier = Modifier.testTag("overlap_delete_manual")) {
+                                        Icon(AppIcons.Delete, contentDescription = "删除此事项", tint = MaterialTheme.colorScheme.error)
+                                    }
                                 }
                             }
                             Spacer(Modifier.height(12.dp))
@@ -59,5 +66,27 @@ fun OverlapDetailSheet(pages: List<OverlapDetailPage>, profile: ScheduleProfile,
                 }
             }
         }
+    }
+    pendingDelete?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除手动项目") },
+            text = { Text("确认删除这个手动项目吗？") },
+            dismissButton = {
+                TextButton(
+                    onClick = { pendingDelete = null },
+                    modifier = Modifier.testTag("detail_delete_cancel"),
+                ) { Text("取消") }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        onDelete(id)
+                    },
+                    modifier = Modifier.testTag("detail_delete_confirm"),
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+        )
     }
 }

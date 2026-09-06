@@ -39,6 +39,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -71,6 +72,7 @@ import com.ustc.timetable.timetable.layout.SegmentedTimelineAxis
 import java.time.Clock
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 internal const val WEEK_BAR_CONTENT_HEIGHT_DP = 44
 internal const val WEEK_NUMBER_FONT_SP = 16
@@ -120,6 +122,7 @@ fun TimetableRoute(
         manualSyncController.state.collectAsState().value
     }
     val snackbarHostState = remember { SnackbarHostState() }
+    val routeScope = rememberCoroutineScope()
     val reloginLauncher = rememberLauncherForActivityResult(WebViewLoginContract()) { successful ->
         manualSyncController?.let { handleManualSyncLoginResult(it, successful) }
     }
@@ -192,13 +195,21 @@ fun TimetableRoute(
     if (target == null && overlap != null && overlapPages.isNotEmpty() && state.profile != null) {
         OverlapDetailSheet(overlapPages, requireNotNull(state.profile), { overlapSelection = null },
             selectedIdentity = overlap.selectedIdentity,
-            onPageSelected = { identity -> overlapSelection = overlapSelection?.copy(selectedIdentity = identity) }) { id ->
-            val editTarget = createEditManualEditorTarget(state, id, overlap.week)
-            if (editTarget != null) {
-                overlapSelection = overlapSelection?.copy(selectedIdentity = "manual:${id.value}")
-                overlays.openManual(editTarget)
-            }
-        }
+            onPageSelected = { identity -> overlapSelection = overlapSelection?.copy(selectedIdentity = identity) },
+            onEdit = { id ->
+                val editTarget = createEditManualEditorTarget(state, id, overlap.week)
+                if (editTarget != null) {
+                    overlapSelection = overlapSelection?.copy(selectedIdentity = "manual:${id.value}")
+                    overlays.openManual(editTarget)
+                }
+            },
+            onDelete = { id ->
+                routeScope.launch {
+                    runCatching { check(manualRepository.delete(id) == 1) }
+                        .onFailure { snackbarHostState.showSnackbar("删除失败，请重试") }
+                }
+            },
+        )
     }
     val editorInitial = target?.let { resolveManualEditorInitial(it, state) }
     LaunchedEffect(target, state.semester?.id, state.profile?.id, state.manualItemsById.keys) {
