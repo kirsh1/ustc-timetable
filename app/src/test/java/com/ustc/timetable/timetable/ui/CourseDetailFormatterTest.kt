@@ -103,6 +103,14 @@ class CourseDetailFormatterTest {
         assertEquals("周五 · 10:10–12:34", CourseDetailFormatter.formatMeetingTime(meeting(), customProfile()))
     }
 
+    @Test fun formatMeetingTime_prefers_exact_minutes() {
+        val exact = meeting().copy(
+            exactStartTime = LocalTime.of(16, 10),
+            exactEndTime = LocalTime.of(17, 50),
+        )
+        assertEquals("周五 · 16:10–17:50", CourseDetailFormatter.formatMeetingTime(exact, official))
+    }
+
     // ---- credits / code / teachers / location ----
 
     @Test fun credits_null_is_dash() {

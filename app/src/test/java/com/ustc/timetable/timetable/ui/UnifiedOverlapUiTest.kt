@@ -32,6 +32,7 @@ class UnifiedOverlapUiTest {
         rule.setContent { MaterialTheme { Box(Modifier.size(350.dp,600.dp)) {
             SegmentedCourseCard(entry,SegmentedOverlapLayout.place(listOf(a)).single(),350.dp,600.dp,
                 TimelineAxis(LocalTime.of(7,0),LocalTime.of(22,0)),1,true,0L,
+                emptyList(),
                 OverlapAttachment(crossWeek=listOf(OverlapEntry(b,Instant.EPOCH))), { body++ }, { markers+=it })
         } } }
         rule.onAllNodesWithText("Lecture").assertCountEquals(1)

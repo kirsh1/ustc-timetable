@@ -18,6 +18,7 @@ import com.ustc.timetable.timetable.domain.Semester
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.WeekCalculator
 import com.ustc.timetable.timetable.domain.WeekPattern
+import com.ustc.timetable.timetable.domain.effectiveTimeRange
 import com.ustc.timetable.timetable.layout.PlacedBlock
 import com.ustc.timetable.timetable.layout.TimedBlock
 import com.ustc.timetable.timetable.layout.WeeklyTimetableLayout
@@ -215,7 +216,7 @@ internal fun schoolTimedBlock(
     meeting: CourseMeeting,
     profile: ScheduleProfile,
 ): UiSchoolTimedBlock {
-    val range = profile.timeRange(meeting.startPeriod, meeting.endPeriod)
+    val range = meeting.effectiveTimeRange(profile)
     return UiSchoolTimedBlock(
         colorKey = "${semesterId.value}:${course.sourceCourseKey}",
         meetingId = meeting.id,

@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.ustc.timetable.appearance.ResolvedAppearance
+import com.ustc.timetable.scheduleprofile.PeriodTime
 import com.ustc.timetable.timetable.ui.*
 import com.ustc.timetable.ui.theme.LocalResolvedAppearance
 import com.ustc.timetable.ui.theme.TimetableTypography
@@ -56,6 +57,7 @@ fun BoxScope.SegmentedCourseCard(
     viewedWeek: Int,
     showOtherWeeks: Boolean,
     paletteSeed: Long,
+    periods: List<PeriodTime>,
     attachment: OverlapAttachment,
     onBodyClick: () -> Unit,
     onMarkerClick: (OverlapMarkerKind) -> Unit,
@@ -86,6 +88,7 @@ fun BoxScope.SegmentedCourseCard(
     val alpha = CoursePalette.alphaFor(viewedWeek in block.weeks, showOtherWeeks)
     val background = CoursePalette.containerColor(index, dark).copy(alpha = alpha)
     val foreground = CoursePalette.onContainerColor(index, dark).copy(alpha = alpha)
+    val pills = boundaryTimePills(block.start, block.endInclusive, periods)
     Box(Modifier.offset(x = left).size(dayWidth, gridHeight).drawBehind {
         var union = Path()
         shape.slices.forEachIndexed { i, slice ->
@@ -140,5 +143,29 @@ fun BoxScope.SegmentedCourseCard(
                 OverlapMarkerKind.ALL_CONTENT -> Unit // Whole-card fallback; never emitted as a marker.
             }
         }
+    }
+    val pillWidth = 30.dp
+    val pillHeight = 11.dp
+    pills.start?.let { label ->
+        val first = shape.slices.first()
+        BoundaryTimePill(
+            label = label,
+            tag = "boundary_time:start",
+            modifier = Modifier.offset(
+                x = left + dayWidth * ((first.left + first.right) / 2f) - pillWidth / 2,
+                y = gridHeight * axis.fractionOf(first.start) - pillHeight / 2,
+            ).width(pillWidth),
+        )
+    }
+    pills.end?.let { label ->
+        val last = shape.slices.last()
+        BoundaryTimePill(
+            label = label,
+            tag = "boundary_time:end",
+            modifier = Modifier.offset(
+                x = left + dayWidth * ((last.left + last.right) / 2f) - pillWidth / 2,
+                y = gridHeight * axis.fractionOf(last.end) - pillHeight / 2,
+            ).width(pillWidth),
+        )
     }
 }

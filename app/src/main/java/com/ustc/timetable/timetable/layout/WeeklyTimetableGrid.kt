@@ -290,7 +290,7 @@ fun WeeklyTimetableGrid(
                         val entries = overlapProjection.retained.associateBy { com.ustc.timetable.timetable.ui.OverlapEntry(it.block, java.time.Instant.EPOCH).key }
                         SegmentedOverlapLayout.place(overlapProjection.retained.map { it.block }).forEach { shape ->
                             val entry = entries.getValue(com.ustc.timetable.timetable.ui.OverlapEntry(shape.block, java.time.Instant.EPOCH).key)
-                            SegmentedCourseCard(entry, shape, gridWidth, bodyHeight, renderingAxis, viewedWeek, showNonCurrentWeek, coursePaletteSeed,
+                            SegmentedCourseCard(entry, shape, gridWidth, bodyHeight, renderingAxis, viewedWeek, showNonCurrentWeek, coursePaletteSeed, periods,
                                 overlapProjection.attachments[entry.key] ?: com.ustc.timetable.timetable.ui.OverlapAttachment(),
                                 onBodyClick = {
                                     shape.block.manualItemId?.let(onManualBlockClick)

@@ -3,6 +3,7 @@ package com.ustc.timetable.timetable.ui
 import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import com.ustc.timetable.timetable.domain.CourseMeeting
 import com.ustc.timetable.timetable.domain.WeekPattern
+import com.ustc.timetable.timetable.domain.effectiveTimeRange
 import java.time.format.DateTimeFormatter
 
 /**
@@ -25,7 +26,7 @@ object CourseDetailFormatter {
 
     /** 节次 → 真实时间：唯一 authority = viewed 学期绑定 profile；绝不 hardcode 官方作息。 */
     fun formatMeetingTime(meeting: CourseMeeting, profile: ScheduleProfile): String {
-        val range = profile.timeRange(meeting.startPeriod, meeting.endPeriod)
+        val range = meeting.effectiveTimeRange(profile)
         return "${weekdayName(meeting.weekday)} · ${range.start.format(hhmm)}–${range.endInclusive.format(hhmm)}"
     }
 
