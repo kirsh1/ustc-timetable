@@ -11,6 +11,7 @@ import com.ustc.timetable.timetable.data.SettingsStore
 import com.ustc.timetable.timetable.data.TimetableRepository
 import com.ustc.timetable.timetable.data.createSettingsDataStore
 import com.ustc.timetable.timetable.data.db.TimetableDatabase
+import com.ustc.timetable.timetable.data.db.TimetableMigrations
 import java.time.Clock
 import com.ustc.timetable.school.ustc.UstcPortalRuntime
 import com.ustc.timetable.school.ustc.auth.AndroidKeystoreKeyProvider
@@ -46,7 +47,9 @@ class AppContainer(context: Context) {
     private val appContext = context.applicationContext
 
     val db: TimetableDatabase =
-        Room.databaseBuilder(appContext, TimetableDatabase::class.java, TimetableDatabase.NAME).build()
+        Room.databaseBuilder(appContext, TimetableDatabase::class.java, TimetableDatabase.NAME)
+            .addMigrations(TimetableMigrations.MIGRATION_1_2)
+            .build()
 
     val settings: SettingsStore = SettingsStore(createSettingsDataStore(appContext))
 

@@ -197,6 +197,16 @@ class RepositoriesTest {
         CourseMeeting(MeetingId("m1"), CourseId("c1"), 5, 3, 5, WeekPattern.range(2, 6), location, listOf("刘斯")),
     )
 
+    @Test fun exact_school_times_roundtrip_through_repository() = runBlocking {
+        db.semesterDao().insert(Mappers.toEntity(sem))
+        val exact = snapshotMeetings("TH-B301").single().copy(
+            exactStartTime = LocalTime.of(16, 10),
+            exactEndTime = LocalTime.of(17, 50),
+        )
+        db.applySchoolSnapshot(sem.id, snapshotCourses("高等无机化学"), listOf(exact), "fp", t1)
+        assertEquals(exact, timetable.observeSchool(sem.id).first().second.single())
+    }
+
     @Test fun observeSchool_emits_consistent_course_meeting_snapshot_after_replacement() = runBlocking {
         db.semesterDao().insert(Mappers.toEntity(sem))
         db.applySchoolSnapshot(sem.id, snapshotCourses("高等无机化学"), snapshotMeetings("TH-B301"), "fp1", t1)

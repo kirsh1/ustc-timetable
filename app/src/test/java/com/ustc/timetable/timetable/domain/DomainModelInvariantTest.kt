@@ -2,6 +2,9 @@ package com.ustc.timetable.timetable.domain
 
 import java.time.Instant
 import java.time.LocalTime
+import com.ustc.timetable.scheduleprofile.LocalTimeRange
+import com.ustc.timetable.scheduleprofile.PeriodTime
+import com.ustc.timetable.scheduleprofile.ScheduleProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -28,7 +31,12 @@ class DomainModelInvariantTest {
         location: String = "TH-B301",
         teacherNames: List<String> = listOf("刘斯"),
         source: ItemSource = ItemSource.SCHOOL,
-    ) = CourseMeeting(id, courseId, weekday, startPeriod, endPeriod, weekPattern, location, teacherNames, source)
+        exactStartTime: LocalTime? = null,
+        exactEndTime: LocalTime? = null,
+    ) = CourseMeeting(
+        id, courseId, weekday, startPeriod, endPeriod, weekPattern, location, teacherNames, source,
+        exactStartTime, exactEndTime,
+    )
 
     private fun validManual(
         id: ManualItemId = ManualItemId("i1"),
@@ -90,6 +98,40 @@ class DomainModelInvariantTest {
 
     @Test fun meeting_rejects_inverted_periods() {
         assertThrows(IllegalArgumentException::class.java) { validMeeting(startPeriod = 5, endPeriod = 3) }
+    }
+
+    @Test fun exact_time_pair_is_atomic_and_ordered() {
+        assertThrows(IllegalArgumentException::class.java) {
+            validMeeting(exactStartTime = LocalTime.of(16, 10))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            validMeeting(
+                exactStartTime = LocalTime.of(17, 50),
+                exactEndTime = LocalTime.of(16, 10),
+            )
+        }
+    }
+
+    @Test fun effective_range_prefers_exact_pair_and_standard_meeting_uses_profile() {
+        val periods = (1..13).map { number ->
+            val start = LocalTime.of(7, 0).plusMinutes((number - 1) * 55L)
+            PeriodTime(number, start, start.plusMinutes(45))
+        }
+        val profile = ScheduleProfile(
+            id = "p",
+            name = "fixture",
+            isBundledOfficial = false,
+            periods = periods,
+        )
+        assertEquals(
+            LocalTimeRange(LocalTime.of(16, 10), LocalTime.of(17, 50)),
+            validMeeting(exactStartTime = LocalTime.of(16, 10), exactEndTime = LocalTime.of(17, 50))
+                .effectiveTimeRange(profile),
+        )
+        assertEquals(
+            LocalTimeRange(periods[2].start, periods[4].end),
+            validMeeting().effectiveTimeRange(profile),
+        )
     }
 
     // ---- ManualScheduleItem 结构校验 ----

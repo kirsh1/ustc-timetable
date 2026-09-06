@@ -1,5 +1,7 @@
 package com.ustc.timetable.timetable.domain
 
+import java.time.LocalTime
+
 @JvmInline value class MeetingId(val value: String)
 
 /**
@@ -16,6 +18,8 @@ data class CourseMeeting(
     val location: String,
     val teacherNames: List<String>,
     val source: ItemSource = ItemSource.SCHOOL,
+    val exactStartTime: LocalTime? = null,
+    val exactEndTime: LocalTime? = null,
 ) {
     init {
         require(source == ItemSource.SCHOOL) { "CourseMeeting.source must be SCHOOL: $source" }
@@ -23,5 +27,13 @@ data class CourseMeeting(
         require(startPeriod in 1..13) { "startPeriod out of range: $startPeriod" }
         require(endPeriod in startPeriod..13) { "endPeriod out of range: $startPeriod-$endPeriod" }
         require(weekPattern != WeekPattern.EMPTY) { "weekPattern must not be empty" }
+        require((exactStartTime == null) == (exactEndTime == null)) {
+            "exact start and end must either both be present or both be absent"
+        }
+        if (exactStartTime != null) {
+            require(requireNotNull(exactEndTime) > exactStartTime) {
+                "exact end must be after exact start: $exactStartTime-$exactEndTime"
+            }
+        }
     }
 }

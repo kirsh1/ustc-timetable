@@ -95,6 +95,8 @@ object Mappers {
         location = m.location,
         teacherNamesJoined = joinTeachers(m.teacherNames),
         source = m.source.name,
+        exactStartMinutes = m.exactStartTime?.toMinutesOfDay(),
+        exactEndMinutes = m.exactEndTime?.toMinutesOfDay(),
     )
 
     fun toDomain(e: CourseMeetingEntity): CourseMeeting = CourseMeeting(
@@ -107,6 +109,8 @@ object Mappers {
         location = e.location,
         teacherNames = splitTeachers(e.teacherNamesJoined),
         source = ItemSource.valueOf(e.source),
+        exactStartTime = e.exactStartMinutes?.toLocalTime(),
+        exactEndTime = e.exactEndMinutes?.toLocalTime(),
     )
 
     // ---- ManualScheduleItem ----
@@ -139,3 +143,7 @@ object Mappers {
         updatedAt = Instant.ofEpochMilli(e.updatedAtEpochMilli),
     )
 }
+
+private fun LocalTime.toMinutesOfDay(): Int = hour * 60 + minute
+
+private fun Int.toLocalTime(): LocalTime = LocalTime.of(this / 60, this % 60)

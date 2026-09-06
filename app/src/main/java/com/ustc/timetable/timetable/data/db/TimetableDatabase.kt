@@ -21,7 +21,7 @@ import com.ustc.timetable.timetable.data.db.entity.ScheduleProfileEntity
         CourseMeetingEntity::class,
         ManualItemEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

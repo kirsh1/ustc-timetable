@@ -79,6 +79,8 @@ data class CourseMeetingEntity(
     val location: String,
     val teacherNamesJoined: String,
     val source: String,
+    val exactStartMinutes: Int? = null,
+    val exactEndMinutes: Int? = null,
 )
 
 @Entity(tableName = "manual_items", indices = [Index("semesterId")])
