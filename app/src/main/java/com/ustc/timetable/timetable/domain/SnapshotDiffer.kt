@@ -140,7 +140,7 @@ class SnapshotDiffer {
     }
 
     private fun pairCost(old: FingerprintedMeeting, new: FingerprintedMeeting): Int =
-        (if (old.startPeriod != new.startPeriod || old.endPeriod != new.endPeriod) 1 else 0) +
+        (if (old.timeIdentity() != new.timeIdentity()) 1 else 0) +
             (if (old.weekPatternMask != new.weekPatternMask) 1 else 0) +
             (if (old.location != new.location) 1 else 0) +
             (if (old.teacherNames != new.teacherNames) 1 else 0)
@@ -151,7 +151,7 @@ class SnapshotDiffer {
         new: FingerprintedMeeting,
     ): List<ScheduleChange> = buildList {
         val newWeeks = WeekPattern(new.weekPatternMask)
-        if (old.startPeriod != new.startPeriod || old.endPeriod != new.endPeriod) {
+        if (old.timeIdentity() != new.timeIdentity()) {
             add(ScheduleChange.TimeChanged(courseName, new.weekday, old.periodSpan(), new.periodSpan(), newWeeks))
         }
         if (old.weekPatternMask != new.weekPatternMask) {
@@ -173,7 +173,13 @@ class SnapshotDiffer {
     }
 
     private fun FingerprintedMeeting.periodSpan(): String =
-        if (startPeriod == endPeriod) "$startPeriod" else "$startPeriod-$endPeriod"
+        exactStartMinutes?.let { start -> "${start.clockTime()}-${requireNotNull(exactEndMinutes).clockTime()}" }
+            ?: if (startPeriod == endPeriod) "$startPeriod" else "$startPeriod-$endPeriod"
+
+    private fun FingerprintedMeeting.timeIdentity(): List<Int?> =
+        listOf(startPeriod, endPeriod, exactStartMinutes, exactEndMinutes)
+
+    private fun Int.clockTime(): String = "%02d:%02d".format(this / 60, this % 60)
 
     private fun FingerprintedMeeting.toSummary() = MeetingSummary(
         weekday = weekday,
@@ -182,6 +188,8 @@ class SnapshotDiffer {
         weeks = WeekPattern(weekPatternMask),
         location = location,
         teacherNames = teacherNames,
+        exactStartMinutes = exactStartMinutes,
+        exactEndMinutes = exactEndMinutes,
     )
 
     private data class IndexedPair(val oldIndex: Int, val newIndex: Int)

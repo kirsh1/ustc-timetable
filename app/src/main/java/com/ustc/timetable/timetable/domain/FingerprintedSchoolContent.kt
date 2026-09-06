@@ -1,6 +1,7 @@
 package com.ustc.timetable.timetable.domain
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class FingerprintedSemesterMeta(
@@ -31,6 +32,8 @@ data class FingerprintedMeeting(
     val weekPatternMask: Long,
     val location: String,
     val teacherNames: List<String>,
+    @Transient val exactStartMinutes: Int? = null,
+    @Transient val exactEndMinutes: Int? = null,
 )
 
 @Serializable
@@ -72,6 +75,8 @@ data class FingerprintedSchoolContent(
                     weekPatternMask = meeting.weekPattern.mask,
                     location = meeting.location,
                     teacherNames = meeting.teacherNames,
+                    exactStartMinutes = meeting.exactStartTime?.let { it.hour * 60 + it.minute },
+                    exactEndMinutes = meeting.exactEndTime?.let { it.hour * 60 + it.minute },
                 )
             }
 

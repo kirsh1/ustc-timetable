@@ -127,6 +127,17 @@ class SnapshotDifferTest {
         )
     }
 
+    @Test fun exact_minute_change_emits_one_time_change() {
+        val changes = diffOne(
+            meeting(exactStartMinutes = 16 * 60 + 10, exactEndMinutes = 17 * 60 + 50),
+            meeting(exactStartMinutes = 16 * 60 + 15, exactEndMinutes = 17 * 60 + 50),
+        )
+        assertEquals(
+            listOf(ScheduleChange.TimeChanged("课程A", 1, "16:10-17:50", "16:15-17:50", WeekPattern.of(1))),
+            changes,
+        )
+    }
+
     @Test fun time_change_uses_canonical_period_span() {
         val changes = diffOne(meeting(start = 3, end = 3), meeting(start = 4, end = 6))
         assertEquals(
@@ -272,7 +283,11 @@ class SnapshotDifferTest {
         weeks: WeekPattern = WeekPattern.of(1),
         location: String = "L1",
         teachers: List<String> = listOf("T1"),
-    ) = FingerprintedMeeting(key, weekday, start, end, weeks.mask, location, teachers)
+        exactStartMinutes: Int? = null,
+        exactEndMinutes: Int? = null,
+    ) = FingerprintedMeeting(
+        key, weekday, start, end, weeks.mask, location, teachers, exactStartMinutes, exactEndMinutes,
+    )
 
     private fun FingerprintedMeeting.summary() = MeetingSummary(
         weekday, startPeriod, endPeriod, WeekPattern(weekPatternMask), location, teacherNames,

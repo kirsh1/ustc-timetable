@@ -2,6 +2,7 @@ package com.ustc.timetable.timetable.domain
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertThrows
@@ -9,6 +10,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SchoolSnapshotFingerprintTest {
+    @Test fun standard_only_fingerprint_preserves_legacy_bytes() {
+        assertEquals(
+            "91b965b87f54154c2530107331ec12b17fa0f3a512b834d2d9e0c7af48541956",
+            SchoolSnapshotFingerprint.compute(content()),
+        )
+    }
+
+    @Test fun fingerprint_is_sensitive_to_exact_time_override() {
+        assertDifferentFingerprint(
+            content(meetings = listOf(meeting(exactStart = LocalTime.of(16, 10), exactEnd = LocalTime.of(17, 50)))),
+            content(meetings = listOf(meeting(exactStart = LocalTime.of(16, 15), exactEnd = LocalTime.of(17, 50)))),
+        )
+    }
     @Test fun factory_rejects_duplicate_course_id() {
         assertThrows(IllegalArgumentException::class.java) {
             content(courses = listOf(course(id = "same", key = "C1"), course(id = "same", key = "C2")), meetings = emptyList())
@@ -218,5 +232,11 @@ class SchoolSnapshotFingerprintTest {
         weeks: WeekPattern = WeekPattern.range(2, 6),
         location: String = "TH-B301",
         teachers: List<String> = listOf("教师A"),
-    ) = CourseMeeting(MeetingId(id), CourseId(courseId), weekday, start, end, weeks, location, teachers)
+        exactStart: LocalTime? = null,
+        exactEnd: LocalTime? = null,
+    ) = CourseMeeting(
+        MeetingId(id), CourseId(courseId), weekday, start, end, weeks, location, teachers,
+        exactStartTime = exactStart,
+        exactEndTime = exactEnd,
+    )
 }

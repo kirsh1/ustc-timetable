@@ -7,6 +7,8 @@ data class MeetingSummary(
     val weeks: WeekPattern,
     val location: String,
     val teacherNames: List<String>,
+    val exactStartMinutes: Int? = null,
+    val exactEndMinutes: Int? = null,
 )
 
 sealed interface ScheduleChange {
