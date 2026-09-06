@@ -12,6 +12,7 @@ import com.ustc.timetable.timetable.domain.MeetingId
 import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.WeekPattern
 import java.security.MessageDigest
+import java.time.LocalTime
 
 class UstcSnapshotNormalizer {
     fun normalize(
@@ -46,6 +47,8 @@ class UstcSnapshotNormalizer {
                     weeks = teacherAssignment.weeks,
                     location = entry.locationText.trim(),
                     teacherNames = teacherAssignment.teacherNames,
+                    exactStartTime = entry.exactStartTime,
+                    exactEndTime = entry.exactEndTime,
                 )
             }
         }
@@ -65,6 +68,8 @@ class UstcSnapshotNormalizer {
                             add(assignment.weeks.mask.toString())
                             add(assignment.location)
                             add(assignment.teacherNames.joinToString("\u001f"))
+                            assignment.exactStartTime?.let { add(it.toString()) }
+                            assignment.exactEndTime?.let { add(it.toString()) }
                             assignment.sourceAssignmentKey?.let(::add)
                         },
                     ),
@@ -76,6 +81,8 @@ class UstcSnapshotNormalizer {
                 weekPattern = assignment.weeks,
                 location = assignment.location,
                 teacherNames = assignment.teacherNames,
+                exactStartTime = assignment.exactStartTime,
+                exactEndTime = assignment.exactEndTime,
             )
         }
 
@@ -261,6 +268,8 @@ class UstcSnapshotNormalizer {
                     weeks = WeekPattern(key.weekMask),
                     location = key.location,
                     teacherNames = group.flatMap { it.teacherNames }.distinct().sorted(),
+                    exactStartTime = key.exactStartTime,
+                    exactEndTime = key.exactEndTime,
                 )
             }
 
@@ -276,6 +285,8 @@ class UstcSnapshotNormalizer {
                     weeks = group.map { it.weeks }.reduce(WeekPattern::union),
                     location = key.location,
                     teacherNames = key.teacherNames,
+                    exactStartTime = key.exactStartTime,
+                    exactEndTime = key.exactEndTime,
                 )
             }
             .sortedWith(ASSIGNMENT_ORDER)
@@ -335,6 +346,8 @@ class UstcSnapshotNormalizer {
         val weeks: WeekPattern,
         val location: String,
         val teacherNames: List<String>,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     ) {
         fun teacherMergeKey() = TeacherMergeKey(
             sourceKey,
@@ -344,6 +357,8 @@ class UstcSnapshotNormalizer {
             endPeriod,
             weeks.mask,
             location,
+            exactStartTime,
+            exactEndTime,
         )
 
         fun weekMergeKey() = WeekMergeKey(
@@ -354,6 +369,8 @@ class UstcSnapshotNormalizer {
             endPeriod,
             location,
             teacherNames,
+            exactStartTime,
+            exactEndTime,
         )
     }
 
@@ -365,6 +382,8 @@ class UstcSnapshotNormalizer {
         val endPeriod: Int,
         val weekMask: Long,
         val location: String,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     )
 
     private data class WeekMergeKey(
@@ -375,6 +394,8 @@ class UstcSnapshotNormalizer {
         val endPeriod: Int,
         val location: String,
         val teacherNames: List<String>,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     )
 
     private companion object {
@@ -397,6 +418,8 @@ class UstcSnapshotNormalizer {
             { it.weeks.mask },
             { it.location },
             { it.teacherNames.joinToString("\u001f") },
+            { it.exactStartTime },
+            { it.exactEndTime },
         )
     }
 }

@@ -11,6 +11,7 @@ import com.ustc.timetable.timetable.domain.SemesterId
 import com.ustc.timetable.timetable.domain.Term
 import com.ustc.timetable.timetable.domain.WeekPattern
 import java.time.LocalDate
+import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -405,6 +406,20 @@ class UstcSnapshotNormalizerTest {
 
         assertEquals(ItemSource.SCHOOL, snapshot.courses.single().source)
         assertEquals(ItemSource.SCHOOL, snapshot.meetings.single().source)
+    }
+
+    @Test fun exact_time_pair_survives_normalization_and_changes_stable_identity() {
+        val exact = entry().copy(
+            exactStartTime = LocalTime.of(16, 10),
+            exactEndTime = LocalTime.of(17, 50),
+        )
+        val changed = exact.copy(exactStartTime = LocalTime.of(16, 15))
+
+        val first = normalize(timetable = listOf(exact)).meetings.single()
+        val second = normalize(timetable = listOf(changed)).meetings.single()
+        assertEquals(LocalTime.of(16, 10), first.exactStartTime)
+        assertEquals(LocalTime.of(17, 50), first.exactEndTime)
+        assertNotEquals(first.id, second.id)
     }
 
     @Test fun different_semesters_produce_different_temporary_course_ids() {

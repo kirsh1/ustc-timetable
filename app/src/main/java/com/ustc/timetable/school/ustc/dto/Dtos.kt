@@ -2,6 +2,7 @@ package com.ustc.timetable.school.ustc.dto
 
 import com.ustc.timetable.timetable.domain.Term
 import java.time.LocalDate
+import java.time.LocalTime
 
 data class UstcCourseSummary(
     val courseCode: String,
@@ -22,6 +23,8 @@ data class UstcTimetableEntry(
     val locationText: String,
     val teacherText: String,
     val sourceAssignmentKey: String? = null,
+    val exactStartTime: LocalTime? = null,
+    val exactEndTime: LocalTime? = null,
 )
 
 data class UstcSemesterMetaPartial(

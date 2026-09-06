@@ -4,6 +4,7 @@ import com.ustc.timetable.school.ustc.dto.UstcCourseSummary
 import com.ustc.timetable.school.ustc.dto.UstcSemesterMetaPartial
 import com.ustc.timetable.school.ustc.dto.UstcTimetableEntry
 import com.ustc.timetable.timetable.domain.SemesterId
+import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -178,6 +179,30 @@ class UstcTimetablePageParserTest {
         }
     }
 
+    @Test fun nonstandard_wall_clock_time_uses_containing_period_anchor_and_preserves_exact_pair() {
+        val parsed = parser.parse(exactTimePage(startTime = 1610, endTime = 1750, periods = 2)).single()
+
+        assertEquals("8-9", parsed.periodText)
+        assertEquals(LocalTime.of(16, 10), parsed.exactStartTime)
+        assertEquals(LocalTime.of(17, 50), parsed.exactEndTime)
+    }
+
+    @Test fun standard_start_time_keeps_legacy_null_override() {
+        val parsed = parser.parse(exactTimePage(startTime = 1555, endTime = 1730, periods = 2)).single()
+        assertEquals("8-9", parsed.periodText)
+        assertEquals(null, parsed.exactStartTime)
+        assertEquals(null, parsed.exactEndTime)
+    }
+
+    @Test fun malformed_inverted_gap_and_overflow_exact_times_are_rejected() {
+        listOf(
+            exactTimePage(startTime = 1660, endTime = 1750, periods = 2),
+            exactTimePage(startTime = 1610, endTime = 1600, periods = 2),
+            exactTimePage(startTime = 1642, endTime = 1750, periods = 2),
+            exactTimePage(startTime = 1700, endTime = 1800, periods = 2),
+        ).forEach { page -> assertParseFailed { parser.parse(page) } }
+    }
+
     private fun entry(
         name: String,
         code: String,
@@ -211,6 +236,21 @@ class UstcTimetablePageParserTest {
             }}
         """.trimIndent(),
         digest = """{"result":{"cardA":"1","cardB":"1"}}""",
+    )
+
+    private fun exactTimePage(startTime: Int, endTime: Int, periods: Int) = RealUstcFixturePages.timetable(
+        layout = """{"result":{"courseUnitList":[
+            {"indexNo":8,"startTime":1555,"endTime":1640},
+            {"indexNo":9,"startTime":1645,"endTime":1730}
+        ]}}""",
+        datum = """{"result":{
+            "lessonList":[{"id":1,"code":"TEST.01","courseName":"测试课程","teacherAssignmentList":[]}],
+            "scheduleGroupList":[{"id":10,"lessonId":1}],
+            "scheduleList":[{"lessonId":1,"scheduleGroupId":10,"weekday":1,
+                "startTime":$startTime,"endTime":$endTime,"periods":$periods,"weekIndex":1,
+                "room":{"nameZh":"测试教室"},"personName":"教师甲"}]
+        }}""",
+        digest = """{"result":{"card":"1"}}""",
     )
 
     private fun minimalTimetablePage(

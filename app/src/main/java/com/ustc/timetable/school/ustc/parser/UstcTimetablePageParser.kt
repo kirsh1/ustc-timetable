@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import java.time.LocalTime
 
 class UstcTimetablePageParser : TimetablePageParser {
     override fun parse(page: UstcPortalPage): List<UstcTimetableEntry> = parsePortalPayload {
@@ -32,15 +33,19 @@ class UstcTimetablePageParser : TimetablePageParser {
             val unit = element.requiredObject()
             LayoutUnit(
                 index = unit.requiredInt("indexNo"),
-                startTime = unit.requiredInt("startTime"),
+                startTime = portalTime(unit.requiredInt("startTime")),
+                endTime = unit.optionalPortalTime("endTime"),
             )
         }
         if (parsed.any { it.index !in 1..13 } || parsed.distinctBy(LayoutUnit::index).size != parsed.size) {
             parseFailure()
         }
-        if (parsed.distinctBy(LayoutUnit::startTime).size != parsed.size) parseFailure()
+        if (parsed.distinctBy(LayoutUnit::startTime).size != parsed.size ||
+            parsed.any { it.endTime != null && it.endTime <= it.startTime }
+        ) parseFailure()
         return Layout(
             byStartTime = parsed.associate { it.startTime to it.index },
+            units = parsed,
             indices = parsed.mapTo(mutableSetOf(), LayoutUnit::index),
         )
     }
@@ -100,7 +105,18 @@ class UstcTimetablePageParser : TimetablePageParser {
 
         val weekday = value.requiredInt("weekday")
         if (weekday !in 1..7) parseFailure()
-        val startPeriod = layout.byStartTime[value.requiredInt("startTime")] ?: parseFailure()
+        val actualStart = portalTime(value.requiredInt("startTime"))
+        val standardStart = layout.byStartTime[actualStart]
+        val actualEnd = if (standardStart == null) {
+            portalTime(value.requiredInt("endTime")).also { if (it <= actualStart) parseFailure() }
+        } else {
+            null
+        }
+        val startPeriod = standardStart ?: layout.units
+            .filter { unit -> unit.endTime?.let { actualStart >= unit.startTime && actualStart < it } == true }
+            .singleOrNull()
+            ?.index
+            ?: parseFailure()
         val periodCount = value.requiredInt("periods")
         if (periodCount <= 0) parseFailure()
         val endPeriod = startPeriod + periodCount - 1
@@ -127,6 +143,8 @@ class UstcTimetablePageParser : TimetablePageParser {
             week = week,
             location = location,
             teacher = teacher,
+            exactStartTime = actualStart.takeIf { standardStart == null },
+            exactEndTime = actualEnd,
         )
     }
 
@@ -151,6 +169,8 @@ class UstcTimetablePageParser : TimetablePageParser {
                     locationText = key.location,
                     teacherText = rows.map { it.key.teacher }.distinct().sorted().joinToString("、"),
                     sourceAssignmentKey = "${key.lessonId}:${key.groupId}",
+                    exactStartTime = key.exactStartTime,
+                    exactEndTime = key.exactEndTime,
                 )
             }
             .sortedWith(
@@ -163,6 +183,8 @@ class UstcTimetablePageParser : TimetablePageParser {
                     UstcTimetableEntry::locationText,
                     UstcTimetableEntry::sourceAssignmentKey,
                     UstcTimetableEntry::teacherText,
+                    UstcTimetableEntry::exactStartTime,
+                    UstcTimetableEntry::exactEndTime,
                 ),
             )
     }
@@ -216,9 +238,13 @@ class UstcTimetablePageParser : TimetablePageParser {
         }.joinToString(",")
     }
 
-    private data class LayoutUnit(val index: Int, val startTime: Int)
+    private data class LayoutUnit(val index: Int, val startTime: LocalTime, val endTime: LocalTime?)
 
-    private data class Layout(val byStartTime: Map<Int, Int>, val indices: Set<Int>)
+    private data class Layout(
+        val byStartTime: Map<LocalTime, Int>,
+        val units: List<LayoutUnit>,
+        val indices: Set<Int>,
+    )
 
     private data class Lesson(
         val id: Int,
@@ -242,6 +268,8 @@ class UstcTimetablePageParser : TimetablePageParser {
         val week: Int,
         val location: String,
         val teacher: String,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     ) {
         fun teacherSeriesKey() = TeacherSeriesKey(
             lessonId,
@@ -253,9 +281,13 @@ class UstcTimetablePageParser : TimetablePageParser {
             endPeriod,
             location,
             teacher,
+            exactStartTime,
+            exactEndTime,
         )
 
-        fun slotKey() = SlotKey(lessonId, groupId, weekday, startPeriod, endPeriod, location)
+        fun slotKey() = SlotKey(
+            lessonId, groupId, weekday, startPeriod, endPeriod, location, exactStartTime, exactEndTime,
+        )
     }
 
     private data class TeacherSeriesKey(
@@ -268,6 +300,8 @@ class UstcTimetablePageParser : TimetablePageParser {
         val endPeriod: Int,
         val location: String,
         val teacher: String,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     )
 
     private data class TeacherSeries(val key: TeacherSeriesKey, val weeks: Set<Int>) {
@@ -281,6 +315,8 @@ class UstcTimetablePageParser : TimetablePageParser {
             key.endPeriod,
             weeks,
             key.location,
+            key.exactStartTime,
+            key.exactEndTime,
         )
     }
 
@@ -294,6 +330,8 @@ class UstcTimetablePageParser : TimetablePageParser {
         val endPeriod: Int,
         val weeks: Set<Int>,
         val location: String,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     )
 
     private data class SlotKey(
@@ -303,7 +341,19 @@ class UstcTimetablePageParser : TimetablePageParser {
         val startPeriod: Int,
         val endPeriod: Int,
         val location: String,
+        val exactStartTime: LocalTime?,
+        val exactEndTime: LocalTime?,
     )
+
+    private fun portalTime(value: Int): LocalTime {
+        val hour = value / 100
+        val minute = value % 100
+        if (hour !in 0..23 || minute !in 0..59) parseFailure()
+        return LocalTime.of(hour, minute)
+    }
+
+    private fun JsonObject.optionalPortalTime(name: String): LocalTime? =
+        (get(name) as? JsonPrimitive)?.intOrNull?.let(::portalTime)
 
     private companion object {
         val WEEKDAYS = listOf("一", "二", "三", "四", "五", "六", "日")
