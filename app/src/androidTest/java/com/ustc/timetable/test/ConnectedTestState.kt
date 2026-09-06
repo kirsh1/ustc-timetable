@@ -11,7 +11,7 @@ import kotlinx.coroutines.runBlocking
 import com.ustc.timetable.appearance.AppearanceMode
 import com.ustc.timetable.appearance.WallpaperRuntimeState
 
-object J1TestState {
+object ConnectedTestState {
     val app: TimetableApp
         get() = InstrumentationRegistry.getInstrumentation()
             .targetContext.applicationContext as TimetableApp
@@ -24,7 +24,7 @@ object J1TestState {
         container.settings.setNeedReauth(false)
         container.settings.setShowNonCurrentWeek(false)
         container.settings.setWeeklySyncEnabled(true)
-        container.settings.setViewedSemesterId("j1-no-viewed-semester")
+        container.settings.setViewedSemesterId("test-no-viewed-semester")
         container.settings.setAppearanceMode(AppearanceMode.LIGHT)
         container.settings.setTimetableWallpaperUri(null)
         WallpaperRuntimeState.clear()
@@ -46,14 +46,14 @@ object J1TestState {
     fun seedTwoSemesters(): Pair<Semester, Semester> = runBlocking {
         val container = app.container
         val a = container.semesters.createLocalSemester(
-            SemesterDefaults.AUTUMN_2026("j1-semester-a", "placeholder", Instant.parse("2026-09-01T00:00:00Z"))
-                .copy(displayName = "J1 学期 A"),
+            SemesterDefaults.AUTUMN_2026("test-semester-a", "placeholder", Instant.parse("2026-09-01T00:00:00Z"))
+                .copy(displayName = "测试学期 A"),
             container.bundledOfficial,
         )
         val b = container.semesters.createLocalSemester(
-            SemesterDefaults.AUTUMN_2026("j1-semester-b", "placeholder", Instant.parse("2025-09-01T00:00:00Z"))
+            SemesterDefaults.AUTUMN_2026("test-semester-b", "placeholder", Instant.parse("2025-09-01T00:00:00Z"))
                 .copy(
-                    displayName = "J1 学期 B",
+                    displayName = "测试学期 B",
                     academicYear = "2025-2026",
                     week1Start = java.time.LocalDate.of(2025, 9, 1),
                     startDate = java.time.LocalDate.of(2025, 8, 31),

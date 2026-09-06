@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.test.runner.AndroidJUnitRunner
 import com.ustc.timetable.TimetableApp
 
-class J1AndroidJUnitRunner : AndroidJUnitRunner() {
+class TimetableAndroidJUnitRunner : AndroidJUnitRunner() {
     override fun newApplication(
         cl: ClassLoader,
         className: String,

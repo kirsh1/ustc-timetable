@@ -13,7 +13,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 
 /** Test-owned image source: no gallery, user file, or production provider is involved. */
-public final class UiR4WallpaperProvider extends ContentProvider {
+public final class TestWallpaperProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) { return "image/png"; }
 
@@ -22,7 +22,7 @@ public final class UiR4WallpaperProvider extends ContentProvider {
             throw new FileNotFoundException(uri.toString());
         }
         try {
-            File image = new File(getContext().getCacheDir(), "ui-r4-wallpaper.png");
+            File image = new File(getContext().getCacheDir(), "test-wallpaper.png");
             try (FileOutputStream output = new FileOutputStream(image)) {
                 Bitmap bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888);
                 bitmap.eraseColor(Color.rgb(45, 86, 140));

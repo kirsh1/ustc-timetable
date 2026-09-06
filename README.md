@@ -78,8 +78,6 @@ app/src/main/java/com/ustc/timetable/
 └── timetable/        课表领域、数据、布局与界面
 ```
 
-`docs/superpowers/` 保存设计规格、实施计划及资格验证记录；`icon/` 保存应用图标的 SVG、预览与生成工具。
-
 ## 许可与广告立场
 
 源码采用 [GNU Affero General Public License v3.0 only](LICENSE) 许可。

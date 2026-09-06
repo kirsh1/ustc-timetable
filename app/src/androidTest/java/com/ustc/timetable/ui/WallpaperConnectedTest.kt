@@ -9,7 +9,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.test.ConnectedTestState
 import com.ustc.timetable.appearance.WallpaperRuntimeState
 import com.ustc.timetable.appearance.WallpaperImageLoader
 import androidx.test.platform.app.InstrumentationRegistry
@@ -26,15 +26,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class WallpaperConnectedTest {
     @get:Rule val compose = createEmptyComposeRule()
-    private val activity = J1MainActivityHarness(compose)
+    private val activity = MainActivityTestHarness(compose)
 
-    @Before fun reset() = J1TestState.reset()
+    @Before fun reset() = ConnectedTestState.reset()
     @After fun close() = activity.close()
 
     @Test fun test_owned_wallpaper_renders_only_on_timetable_destination() {
-        J1TestState.seedDebug()
+        ConnectedTestState.seedDebug()
         grantNotificationPermissionIfNeeded()
-        val uri = "content://com.ustc.timetable.test.ui-r4-wallpaper/wallpaper.png"
+        val uri = "content://com.ustc.timetable.test.wallpaper/wallpaper.png"
         val decoded = runBlocking {
             withContext(Dispatchers.IO) {
                 WallpaperImageLoader.load(
@@ -47,7 +47,7 @@ class WallpaperConnectedTest {
         }
         assertNotNull("test-owned content URI must decode before Activity launch", decoded)
         runBlocking {
-            J1TestState.app.container.settings.setTimetableWallpaperUri(uri)
+            ConnectedTestState.app.container.settings.setTimetableWallpaperUri(uri)
         }
         activity.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("timetable_wallpaper_image").fetchSemanticsNodes().isNotEmpty() }
@@ -62,10 +62,10 @@ class WallpaperConnectedTest {
     }
 
     @Test fun unreadable_wallpaper_keeps_solid_timetable_fallback() {
-        J1TestState.seedDebug()
+        ConnectedTestState.seedDebug()
         runBlocking {
-            J1TestState.app.container.settings.setTimetableWallpaperUri(
-                "content://com.ustc.timetable.test.ui-r4-wallpaper/missing.png",
+            ConnectedTestState.app.container.settings.setTimetableWallpaperUri(
+                "content://com.ustc.timetable.test.wallpaper/missing.png",
             )
         }
         activity.launch()

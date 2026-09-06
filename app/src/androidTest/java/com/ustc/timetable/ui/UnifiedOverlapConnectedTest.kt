@@ -8,7 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ustc.timetable.appearance.AppearanceMode
-import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.test.ConnectedTestState
 import com.ustc.timetable.timetable.data.db.applySchoolSnapshot
 import com.ustc.timetable.timetable.domain.*
 import com.ustc.timetable.timetable.ui.ExactOverlapMode
@@ -28,17 +28,17 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class UnifiedOverlapConnectedTest {
     @get:Rule val compose = createEmptyComposeRule()
-    private val activity = J1MainActivityHarness(compose)
+    private val activity = MainActivityTestHarness(compose)
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
-    private val settings get() = J1TestState.app.container.settings
+    private val settings get() = ConnectedTestState.app.container.settings
 
     @Before fun seed() = runBlocking {
         check(android.os.Build.FINGERPRINT.contains("generic") || android.os.Build.MODEL.contains("sdk"))
-        J1TestState.reset()
+        ConnectedTestState.reset()
         settings.setAppearanceMode(AppearanceMode.LIGHT)
         settings.setCoursePaletteSeed(0L)
         settings.setExactOverlapMode(ExactOverlapMode.SPLIT)
-        val c = J1TestState.app.container
+        val c = ConnectedTestState.app.container
         val monday = LocalDate.now().with(java.time.DayOfWeek.MONDAY)
         val semester = c.semesters.createLocalSemester(SemesterDefaults.AUTUMN_2026("overlap", "clone", Instant.EPOCH)
             .copy(displayName="重叠展示验收", week1Start=monday, startDate=monday, endDate=monday.plusWeeks(20).minusDays(1)),c.bundledOfficial)
@@ -133,10 +133,10 @@ class UnifiedOverlapConnectedTest {
         compose.onNodeWithTag("editor_save").assertIsDisplayed()
         compose.onNodeWithTag("editor_save").performClick()
         compose.waitUntil(10_000) {
-            runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
+            runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
                 .any { it.id=="future" && it.title=="future edited" }
         }
-        val items=runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
+        val items=runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
         assertEquals("future edited",items.single { it.id=="future" }.title)
         assertEquals("A",items.single { it.id=="A" }.title)
     }
@@ -155,7 +155,7 @@ class UnifiedOverlapConnectedTest {
         compose.onNodeWithTag("editor_title").assertTextContains("B")
         compose.onNodeWithTag("editor_title").performTextReplacement("B edited")
         compose.onNodeWithTag("editor_save").performScrollTo().performClick()
-        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.title=="B edited" } }
+        compose.waitUntil(10_000) { runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.title=="B edited" } }
         settleFrames()
         compose.onNodeWithTag("editor_title").assertDoesNotExist()
         compose.onNode(hasText("B edited") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
@@ -170,17 +170,17 @@ class UnifiedOverlapConnectedTest {
         settleFrames()
         compose.onNodeWithTag("weekday_4").performScrollTo().performClick()
         compose.onNodeWithTag("editor_save").performScrollTo().performClick()
-        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.weekday==4 } }
+        compose.waitUntil(10_000) { runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.any { it.id=="B" && it.weekday==4 } }
         settleFrames()
         compose.onNode(hasText("B edited") and hasAnyAncestor(hasTestTag("overlap_manual_detail"))).assertIsDisplayed()
         compose.onNodeWithTag("overlap_edit_manual").performClick()
         settleFrames()
         compose.onNodeWithTag("editor_delete").performScrollTo().performClick()
         compose.onNodeWithTag("delete_confirm").performClick()
-        compose.waitUntil(10_000) { runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.none { it.id=="B" } }
+        compose.waitUntil(10_000) { runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }.none { it.id=="B" } }
         settleFrames()
         compose.onNodeWithTag("overlap_manual_detail").assertDoesNotExist()
-        val items=runBlocking { J1TestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
+        val items=runBlocking { ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("overlap") }
         assertEquals("A",items.single { it.id=="A" }.title)
     }
     @Test fun partial_shapes_own_exclusive_and_shared_pixels_and_clicks() {

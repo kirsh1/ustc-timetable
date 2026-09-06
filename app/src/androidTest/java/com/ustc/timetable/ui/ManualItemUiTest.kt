@@ -14,7 +14,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.AnnotatedString
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.test.ConnectedTestState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -28,9 +28,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ManualItemUiTest {
     @get:Rule val compose = createEmptyComposeRule()
-    private val activity = J1MainActivityHarness(compose)
+    private val activity = MainActivityTestHarness(compose)
 
-    @Before fun resetAndSeed() { J1TestState.reset(); J1TestState.seedDebug() }
+    @Before fun resetAndSeed() { ConnectedTestState.reset(); ConnectedTestState.seedDebug() }
     @After fun close() { activity.close() }
 
     @Test
@@ -46,10 +46,10 @@ class ManualItemUiTest {
         compose.onNodeWithTag("editor_content").assertIsDisplayed()
         compose.onNodeWithTag("weekday_7").performScrollTo().assertIsDisplayed()
         assertTrue(compose.onNodeWithTag("start_time").fetchSemanticsNode().config.toString().contains("开始时间"))
-        replaceText("editor_title", "J1 手动项目")
+        replaceText("editor_title", "测试手动项目")
         saveEditor()
-        compose.waitUntil(10_000) { manualRows().any { it.title == "J1 手动项目" } }
-        val created = manualRows().single { it.title == "J1 手动项目" }
+        compose.waitUntil(10_000) { manualRows().any { it.title == "测试手动项目" } }
+        val created = manualRows().single { it.title == "测试手动项目" }
         assertEquals(7, created.weekday)
         assertTrue(created.weekPatternMask and (1L shl 1) != 0L)
         assertTrue(created.startMinutes in (7 * 60 + 50)..(21 * 60 + 55))
@@ -72,7 +72,7 @@ class ManualItemUiTest {
         val afterTitle = manualRows().single { it.id == before.id }
         assertEquals("修改后的讲座", afterTitle.title)
         editDetail()
-        replaceText("editor_location", "J1-ROOM")
+        replaceText("editor_location", "TEST-ROOM")
         saveEditor()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("editor_content").fetchSemanticsNodes().isEmpty() }
 
@@ -81,7 +81,7 @@ class ManualItemUiTest {
         assertEquals(before.id, after.id)
         assertEquals(before.createdAtEpochMilli, after.createdAtEpochMilli)
         assertTrue(after.updatedAtEpochMilli >= before.updatedAtEpochMilli)
-        assertEquals("J1-ROOM", after.location)
+        assertEquals("TEST-ROOM", after.location)
         compose.onNodeWithTag("overlap_manual_detail").assertIsDisplayed()
         assertEquals(schoolBefore, schoolRows())
     }
@@ -130,7 +130,7 @@ class ManualItemUiTest {
     }
 
     private fun manualRows() = runBlocking {
-        J1TestState.app.container.db.manualItemDao().itemsForSemester("debug-seed-2026-autumn")
+        ConnectedTestState.app.container.db.manualItemDao().itemsForSemester("debug-seed-2026-autumn")
     }
 
     private fun replaceText(tag: String, text: String) {
@@ -154,7 +154,7 @@ class ManualItemUiTest {
     }
 
     private fun schoolRows() = runBlocking {
-        val dao = J1TestState.app.container.db.courseDao()
+        val dao = ConnectedTestState.app.container.db.courseDao()
         dao.coursesForSemester("debug-seed-2026-autumn") to dao.meetingsForSemester("debug-seed-2026-autumn")
     }
 }

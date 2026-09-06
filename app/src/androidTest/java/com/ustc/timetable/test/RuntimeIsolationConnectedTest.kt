@@ -8,7 +8,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class J1RuntimeIsolationTest {
+class RuntimeIsolationConnectedTest {
     @Test
     fun target_application_is_base_timetable_app() {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext

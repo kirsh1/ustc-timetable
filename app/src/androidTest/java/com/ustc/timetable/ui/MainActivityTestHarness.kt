@@ -5,7 +5,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ustc.timetable.MainActivity
 
-internal class J1MainActivityHarness(private val compose: ComposeTestRule) {
+internal class MainActivityTestHarness(private val compose: ComposeTestRule) {
     private var scenario: ActivityScenario<MainActivity>? = null
 
     fun launch() {

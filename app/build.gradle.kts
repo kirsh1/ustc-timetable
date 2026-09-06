@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         versionCode = 2
         versionName = "0.1.1"
-        testInstrumentationRunner = "com.ustc.timetable.test.J1AndroidJUnitRunner"
+        testInstrumentationRunner = "com.ustc.timetable.test.TimetableAndroidJUnitRunner"
     }
     buildTypes {
         release {

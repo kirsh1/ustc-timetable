@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [36], qualifiers = "w400dp-h800dp")
 @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
-class UiR4IntegrationTest {
+class TimetablePresentationIntegrationTest {
     @get:Rule val rule = createComposeRule()
 
     @Test fun long_room_code_wraps_without_ellipsis_when_two_lines_fit() {

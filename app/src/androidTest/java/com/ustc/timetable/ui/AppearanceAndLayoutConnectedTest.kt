@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ustc.timetable.appearance.AppearanceMode
-import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.test.ConnectedTestState
 import com.ustc.timetable.timetable.data.db.applySchoolSnapshot
 import com.ustc.timetable.timetable.domain.*
 import com.ustc.timetable.timetable.ui.CoursePalette
@@ -29,23 +29,23 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class UiR4ConnectedTest {
+class AppearanceAndLayoutConnectedTest {
     @get:Rule val compose = createEmptyComposeRule()
-    private val activity = J1MainActivityHarness(compose)
+    private val activity = MainActivityTestHarness(compose)
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
-    private val settings get() = J1TestState.app.container.settings
-    private val wallpaper = "content://com.ustc.timetable.test.ui-r4-wallpaper/wallpaper.png"
+    private val settings get() = ConnectedTestState.app.container.settings
+    private val wallpaper = "content://com.ustc.timetable.test.wallpaper/wallpaper.png"
 
     @Before fun seed() = runBlocking {
-        J1TestState.reset()
+        ConnectedTestState.reset()
         settings.setCoursePaletteSeed(0L)
         settings.setWallpaperVisibilityPercent(65)
         instrumentation.uiAutomation.grantRuntimePermission(instrumentation.targetContext.packageName, Manifest.permission.POST_NOTIFICATIONS)
-        val c = J1TestState.app.container
+        val c = ConnectedTestState.app.container
         val monday = LocalDate.now().with(java.time.DayOfWeek.MONDAY)
         val semester = c.semesters.createLocalSemester(
-            SemesterDefaults.AUTUMN_2026("r4", "clone", Instant.now()).copy(
-                displayName = "UI-R4 本地验收", week1Start = monday, startDate = monday,
+            SemesterDefaults.AUTUMN_2026("appearance-test", "clone", Instant.now()).copy(
+                displayName = "界面测试学期", week1Start = monday, startDate = monday,
                 endDate = monday.plusWeeks(20).minusDays(1)), c.bundledOfficial)
         val courses = listOf(
             Course(CourseId("a"), semester.id, "key:a", "A", "电化学研究方法", 3.0, null),
@@ -57,8 +57,8 @@ class UiR4ConnectedTest {
             CourseMeeting(MeetingId("b3"), CourseId("b"), 2, 3, 5, WeekPattern.of(3), "TH-B301", listOf("教师丁")),
             CourseMeeting(MeetingId("c1"), CourseId("c"), 5, 3, 5, WeekPattern.of(1), "TH-B301", listOf("教师甲")),
             CourseMeeting(MeetingId("c2"), CourseId("c"), 5, 3, 5, WeekPattern.of(2), "TH-A301", listOf("教师乙")))
-        c.db.applySchoolSnapshot(semester.id, courses, meetings, "test-only-r4", Instant.now())
-        c.manual.add(ManualScheduleItem(ManualItemId("r4-manual"), semester.id, "本地讲座", 6,
+        c.db.applySchoolSnapshot(semester.id, courses, meetings, "appearance-test", Instant.now())
+        c.manual.add(ManualScheduleItem(ManualItemId("appearance-manual"), semester.id, "本地讲座", 6,
             LocalTime.of(14, 20), LocalTime.of(16, 0), WeekPattern.range(1, 20), "3C107", null, Instant.now(), Instant.now()))
         settings.setViewedSemesterId(semester.id.value)
         settings.setShowNonCurrentWeek(true)
@@ -90,7 +90,7 @@ class UiR4ConnectedTest {
         // Compose semantics can settle before the window compositor presents that frame.
         // Wait for window-event quiescence before taking the device-side screenshot.
         instrumentation.uiAutomation.waitForIdle(300, 5_000)
-        shell("screencap -p /sdcard/Pictures/ui-r4-$name.png")
+        shell("screencap -p /sdcard/Pictures/appearance-$name.png")
     }
 
     @Test fun gesture_arbitration_and_card_long_press_preserve_manual_editor_authority() {
@@ -135,7 +135,7 @@ class UiR4ConnectedTest {
 
     @Test fun same_course_variants_are_single_page_and_manual_has_no_school_marker() {
         launch()
-        compose.onNode(hasTestTag("overlap_marker:CROSS_WEEK") and hasAnyAncestor(hasTestTag("manual_block:r4-manual")), useUnmergedTree = true).assertDoesNotExist()
+        compose.onNode(hasTestTag("overlap_marker:CROSS_WEEK") and hasAnyAncestor(hasTestTag("manual_block:appearance-manual")), useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("overlap_marker:VARIANT", useUnmergedTree = true).performClick()
         compose.onNodeWithTag("course_detail").assertIsDisplayed()
         compose.onNodeWithTag("overlap_detail_next").assertDoesNotExist()
@@ -198,9 +198,9 @@ class UiR4ConnectedTest {
                 compose.waitForIdle()
                 assertColor(schoolColor, sample("school_block:a1"))
                 assertColor(schoolColor, sample("week_overview_block:1:school:a1"))
-                val manualColor = CoursePalette.containerColor(CoursePalette.colorIndexFor("manual:r4-manual", seed), false)
-                assertColor(manualColor, sample("manual_block:r4-manual"))
-                assertColor(manualColor, sample("week_overview_block:1:manual:r4-manual"))
+                val manualColor = CoursePalette.containerColor(CoursePalette.colorIndexFor("manual:appearance-manual", seed), false)
+                assertColor(manualColor, sample("manual_block:appearance-manual"))
+                assertColor(manualColor, sample("week_overview_block:1:manual:appearance-manual"))
             }
         }
         activity.recreate()

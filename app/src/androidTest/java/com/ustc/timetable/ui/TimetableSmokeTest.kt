@@ -18,7 +18,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.ustc.timetable.test.J1TestState
+import com.ustc.timetable.test.ConnectedTestState
 import com.ustc.timetable.appearance.AppearanceMode
 import java.time.LocalTime
 import kotlinx.coroutines.runBlocking
@@ -34,9 +34,9 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TimetableSmokeTest {
     @get:Rule val compose = createEmptyComposeRule()
-    private val activity = J1MainActivityHarness(compose)
+    private val activity = MainActivityTestHarness(compose)
 
-    @Before fun reset() { J1TestState.reset() }
+    @Before fun reset() { ConnectedTestState.reset() }
     @After fun close() { activity.close() }
 
     @Test
@@ -63,16 +63,16 @@ class TimetableSmokeTest {
         compose.onNodeWithTag("refresh").assertDoesNotExist()
         compose.onNodeWithTag("school_block:debug-m-math-1").assertDoesNotExist()
 
-        val semesters = J1TestState.semesters()
+        val semesters = ConnectedTestState.semesters()
         assertEquals(1, semesters.size)
         assertFalse(semesters.single().portalLinked)
         assertTrue(semesters.single().isCurrentAcademicSemester)
-        assertTrue(runBlocking { J1TestState.app.container.db.courseDao().coursesForSemester(semesters.single().id) }.isEmpty())
+        assertTrue(runBlocking { ConnectedTestState.app.container.db.courseDao().coursesForSemester(semesters.single().id) }.isEmpty())
     }
 
     @Test
     fun explicitly_seeded_timetable_renders_switches_weeks_and_keeps_ui_r1_geometry() {
-        J1TestState.seedDebug()
+        ConnectedTestState.seedDebug()
         activity.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("school_block:debug-m-math-1").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("school_block:debug-m-math-1").assertIsDisplayed()
@@ -126,8 +126,8 @@ class TimetableSmokeTest {
 
     @Test
     fun semester_switch_changes_viewed_only() {
-        val (a, b) = J1TestState.seedTwoSemesters()
-        val before = J1TestState.semesters()
+        val (a, b) = ConnectedTestState.seedTwoSemesters()
+        val before = ConnectedTestState.semesters()
         grantNotificationPermissionIfNeeded()
         activity.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings").fetchSemanticsNodes().isNotEmpty() }
@@ -135,16 +135,16 @@ class TimetableSmokeTest {
         compose.onNodeWithTag("viewed_semester").assertIsDisplayed()
         compose.onNodeWithTag("viewed_semester").performClick()
         compose.onNodeWithTag("semester_item:${b.id.value}").performClick()
-        compose.waitUntil(10_000) { J1TestState.viewedSemesterId() == b.id.value }
-        compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_semester").fetchSemanticsNode().config.toString().contains("J1 学期 B") }
+        compose.waitUntil(10_000) { ConnectedTestState.viewedSemesterId() == b.id.value }
+        compose.waitUntil(10_000) { compose.onNodeWithTag("viewed_semester").fetchSemanticsNode().config.toString().contains("测试学期 B") }
         compose.onNodeWithTag("viewed_semester").assertIsDisplayed()
-        assertEquals(before, J1TestState.semesters())
-        assertTrue(J1TestState.semesters().single { it.id == a.id.value }.isCurrentAcademicSemester)
+        assertEquals(before, ConnectedTestState.semesters())
+        assertTrue(ConnectedTestState.semesters().single { it.id == a.id.value }.isCurrentAcademicSemester)
     }
 
     @Test
     fun settings_and_profile_editor_navigation_smoke() {
-        J1TestState.seedDebug()
+        ConnectedTestState.seedDebug()
         grantNotificationPermissionIfNeeded()
         activity.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings").fetchSemanticsNodes().isNotEmpty() }
@@ -160,7 +160,7 @@ class TimetableSmokeTest {
 
     @Test
     fun appearance_mode_changes_persist_from_settings() {
-        J1TestState.seedDebug()
+        ConnectedTestState.seedDebug()
         grantNotificationPermissionIfNeeded()
         activity.launch()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("settings").fetchSemanticsNodes().isNotEmpty() }
@@ -168,7 +168,7 @@ class TimetableSmokeTest {
         compose.onNodeWithTag("settings_list").performScrollToNode(hasTestTag("appearance_theme"))
         compose.onNodeWithTag("appearance_theme").performClick()
         compose.onNodeWithTag("appearance_option:DARK").performClick()
-        compose.waitUntil(10_000) { J1TestState.appearanceMode() == AppearanceMode.DARK }
+        compose.waitUntil(10_000) { ConnectedTestState.appearanceMode() == AppearanceMode.DARK }
         compose.onNodeWithTag("settings_list").assertIsDisplayed()
     }
 
