@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -15,6 +18,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.view.Gravity
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.lifecycle.lifecycleScope
@@ -36,6 +42,7 @@ interface WebViewLoginDependenciesProvider {
 class WebViewLoginActivity : ComponentActivity() {
     private var webView: WebView? = null
     private var fallbackButton: Button? = null
+    private var displayMode = WebViewDisplayMode.MOBILE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -104,10 +111,33 @@ class WebViewLoginActivity : ComponentActivity() {
             }
         }
         webView = browser
+        val capturedMobile = WebViewSettingsSnapshot(
+            browser.settings.userAgentString.orEmpty(),
+            browser.settings.useWideViewPort,
+            browser.settings.loadWithOverviewMode,
+        )
+        val modeButton = ImageButton(this).apply {
+            setImageDrawable(DisplayModeDrawable())
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription = "切换到桌面版"
+            setOnClickListener {
+                displayMode = if (displayMode == WebViewDisplayMode.MOBILE) WebViewDisplayMode.DESKTOP else WebViewDisplayMode.MOBILE
+                val projection = webViewSettingsFor(displayMode, capturedMobile)
+                browser.settings.userAgentString = projection.userAgent
+                browser.settings.useWideViewPort = projection.useWideViewPort
+                browser.settings.loadWithOverviewMode = projection.loadWithOverviewMode
+                contentDescription = if (displayMode == WebViewDisplayMode.MOBILE) "切换到桌面版" else "切换到手机版"
+                browser.url?.takeIf(::isHttpUrl)?.let(browser::loadUrl)
+            }
+        }
+        val topControl = FrameLayout(this).apply {
+            addView(modeButton, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END or Gravity.CENTER_VERTICAL))
+        }
 
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
+                addView(topControl, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
                 addView(browser, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
                 addView(fallback, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             },
@@ -149,6 +179,30 @@ class WebViewLoginActivity : ComponentActivity() {
 
     private fun isHttp(uri: Uri): Boolean =
         uri.scheme.equals("http", ignoreCase = true) || uri.scheme.equals("https", ignoreCase = true)
+
+    private fun isHttpUrl(url: String): Boolean = isHttp(Uri.parse(url))
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private class DisplayModeDrawable : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.DKGRAY
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+        }
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            val insetX = b.width() * .2f
+            val top = b.height() * .25f
+            val bottom = b.height() * .68f
+            canvas.drawRoundRect(insetX, top, b.width() - insetX, bottom, 3f, 3f, paint)
+            canvas.drawLine(b.width() * .5f, bottom, b.width() * .5f, b.height() * .78f, paint)
+            canvas.drawLine(b.width() * .35f, b.height() * .78f, b.width() * .65f, b.height() * .78f, paint)
+        }
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) { paint.colorFilter = colorFilter }
+        @Deprecated("Deprecated in Java") override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+    }
 
     private class ModuleBootstrapGate(
         private val descriptor: PortalDescriptor,
